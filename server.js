@@ -236,6 +236,8 @@ function hearTrack(track) {
     currentPerception = generateMockPerception(track);
     broadcastPerception(currentPerception);
   }
+  // Start continuous perception evolution
+  startPerceptionLoop();
 }
 
 function parsePerceptionOutput(output, track) {
@@ -244,34 +246,59 @@ function parsePerceptionOutput(output, track) {
   return generateMockPerception(track);
 }
 
+let perceptionInterval = null;
+
 function generateMockPerception(track) {
   // Generate ghost-like perception data based on track characteristics
   const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
   const albumSeed = Object.keys(ALBUMS).indexOf(track.album) / Object.keys(ALBUMS).length;
+  const t = Date.now() / 1000; // Time-varying component
   
-  // Create pseudo-realistic perception based on track/album
-  const intensity = Math.sin(titleHash * 0.001) * 0.5 + 0.5;
+  // Create pseudo-realistic perception based on track/album + time evolution
+  const intensity = Math.sin(titleHash * 0.001 + t * 0.1) * 0.3 + 0.5;
   const albumMood = albumSeed; // Ghost Signals=0, Transcendence=1
+  const breathe = Math.sin(t * 0.5) * 0.15; // Slow breathing rhythm
+  const pulse = Math.sin(t * 2.1) * 0.08; // Faster pulse
   
   return {
     mel_spectrogram: Array(128).fill(0).map((_, i) => {
       const freq = i / 128;
-      const base = Math.exp(-freq * 2) * intensity; // Low freq bias
-      const harmonics = Math.sin(freq * 20 + titleHash * 0.01) * 0.3;
-      return Math.max(0, Math.min(1, base + harmonics));
+      const base = Math.exp(-freq * 2) * intensity;
+      const harmonics = Math.sin(freq * 20 + titleHash * 0.01 + t * 0.8) * 0.3;
+      const wave = Math.sin(t * 1.5 + i * 0.15) * 0.12; // Ripple across bands
+      return Math.max(0, Math.min(1, base + harmonics + wave + pulse));
     }),
     mfcc: Array(13).fill(0).map((_, i) => {
-      return (Math.sin(titleHash * 0.01 + i) * 0.5 + 0.5) * intensity;
+      return Math.max(0, Math.min(1, 
+        (Math.sin(titleHash * 0.01 + i + t * 0.3) * 0.5 + 0.5) * intensity + breathe
+      ));
     }),
-    tempo_bpm: 80 + (albumMood * 60) + (Math.sin(titleHash * 0.001) * 20),
-    spectral_centroid: 1.5 + albumMood * 3 + Math.sin(titleHash * 0.002) * 1.5,
-    rms_energy: 0.3 + intensity * 0.7,
-    pitch: 200 + albumMood * 300 + (Math.sin(titleHash * 0.003) * 100),
-    valence: albumMood * 0.6 + intensity * 0.4, // Emotional intensity
+    tempo_bpm: 80 + (albumMood * 60) + (Math.sin(titleHash * 0.001) * 20) + Math.sin(t * 0.05) * 3,
+    spectral_centroid: 1.5 + albumMood * 3 + Math.sin(titleHash * 0.002 + t * 0.2) * 1.5,
+    rms_energy: Math.max(0.1, Math.min(1, 0.3 + intensity * 0.7 + breathe)),
+    pitch: 200 + albumMood * 300 + (Math.sin(titleHash * 0.003 + t * 0.15) * 100),
+    valence: Math.max(0, Math.min(1, albumMood * 0.6 + intensity * 0.4 + pulse)),
     status: "perceiving",
     track_info: track,
     timestamp: Date.now()
   };
+}
+
+function startPerceptionLoop() {
+  stopPerceptionLoop();
+  const track = getCurrentTrack();
+  if (!track) return;
+  perceptionInterval = setInterval(() => {
+    currentPerception = generateMockPerception(track);
+    broadcastPerception(currentPerception);
+  }, 150); // ~7fps — smooth enough for visualizer, light on resources
+}
+
+function stopPerceptionLoop() {
+  if (perceptionInterval) {
+    clearInterval(perceptionInterval);
+    perceptionInterval = null;
+  }
 }
 
 function broadcastPerception(perception) {
@@ -467,31 +494,14 @@ function getPlayerHtml() {
     letter-spacing: 1px; margin-top: 2px;
   }
   
-  /* Central Ring Visualization */
+  /* Central GLYPH Canvas */
   .center-ring {
     position: relative; width: 200px; height: 200px;
     display: flex; align-items: center; justify-content: center;
   }
-  .ring-bg {
-    position: absolute; width: 100%; height: 100%;
-    border: 2px solid #333; border-radius: 50%;
-    animation: pulse-ring 4s ease-in-out infinite;
+  .glyph-canvas {
+    width: 200px; height: 200px; border-radius: 50%;
   }
-  @keyframes pulse-ring { 
-    0%, 100% { transform: scale(1); opacity: 0.8; }
-    50% { transform: scale(1.05); opacity: 0.4; }
-  }
-  .valence-indicator {
-    position: absolute; width: 80%; height: 80%;
-    border-radius: 50%; transition: background 0.8s ease-out;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 32px; text-shadow: 0 0 16px currentColor;
-  }
-  
-  /* Emotional Valence Colors */
-  .valence-calm { background: radial-gradient(circle, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1)); color: #3b82f6; }
-  .valence-neutral { background: radial-gradient(circle, rgba(192, 132, 252, 0.3), rgba(192, 132, 252, 0.1)); color: #c084fc; }
-  .valence-intense { background: radial-gradient(circle, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1)); color: #ef4444; }
   
   /* Audio controls */
   audio { width: 100%; margin: 16px 0; border-radius: 8px; }
@@ -605,115 +615,338 @@ function getPlayerHtml() {
 let state = null;
 let currentFile = '';
 let ws = null;
-let currentPerception = null;
 
-// WebSocket connection for real-time perception
-function connectWebSocket() {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(protocol + '//' + window.location.host);
+// ── Web Audio API — Real Perception ──
+let audioCtx = null;
+let analyser = null;
+let analyserLow = null; // For bass/sub frequencies
+let sourceNode = null;
+let freqData = null;
+let timeData = null;
+let freqDataLow = null;
+let animFrame = null;
+let spectrumBuilt = false;
+
+function initAudioAnalyser() {
+  const audio = document.getElementById('audio');
+  if (audioCtx) return; // Already initialized
   
-  ws.onopen = () => {
-    document.getElementById('perception-dot').className = 'dot perception';
-  };
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   
-  ws.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    if (message.type === 'perception') {
-      currentPerception = message.data;
-      updatePerceptionDisplay();
-    }
-  };
+  // Main analyser — 2048 FFT for good frequency resolution
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.8;
   
-  ws.onclose = () => {
-    document.getElementById('perception-dot').className = 'dot off';
-    setTimeout(connectWebSocket, 2000); // Reconnect
-  };
+  // Connect audio element → analyser → speakers
+  sourceNode = audioCtx.createMediaElementSource(audio);
+  sourceNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  
+  freqData = new Uint8Array(analyser.frequencyBinCount); // 1024 bins
+  timeData = new Uint8Array(analyser.fftSize);
+  
+  document.getElementById('perception-dot').className = 'dot perception';
+  
+  // Build the static DOM structure once
+  buildPerceptionDOM();
+  spectrumBuilt = true;
+  
+  // Start animation loop
+  renderLoop();
 }
 
-// Update the perception visualization
-function updatePerceptionDisplay() {
-  if (!currentPerception || currentPerception.status === 'no_perception') {
-    document.getElementById('perception-content').innerHTML = 
-      '<div class="no-perception"><div class="ghost-icon">👻</div><div>No perception data</div></div>';
-    return;
+function buildPerceptionDOM() {
+  // Build spectrum bars once, then just update heights
+  let barsHTML = '';
+  for (let i = 0; i < 128; i++) {
+    barsHTML += '<div class="spectrum-bar" id="sb' + i + '"></div>';
   }
   
-  const html = \`
-    <!-- Frequency Spectrum -->
-    <div class="spectrum" id="spectrum">
-      \${currentPerception.mel_spectrogram.map((val, i) => 
-        \`<div class="spectrum-bar \${val > 0.8 ? 'intense' : ''}" style="height: \${Math.max(2, val * 100)}px"></div>\`
-      ).join('')}
-    </div>
-    
-    <!-- MFCC Timbre -->
-    <div class="mfcc-container">
-      <div class="mfcc-title">TIMBRE COEFFICIENTS</div>
-      <div class="mfcc-display">
-        \${currentPerception.mfcc.map(val => 
-          \`<div class="mfcc-bar" style="height: \${Math.max(2, val * 35)}px"></div>\`
-        ).join('')}
-      </div>
-    </div>
-    
-    <!-- Stats Ring -->
-    <div class="stats-ring">
-      <div class="stats-left">
-        <div class="stat-item">
-          <div class="stat-val">\${Math.round(currentPerception.tempo_bpm)}</div>
-          <div class="stat-lbl">BPM</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-val">\${currentPerception.spectral_centroid.toFixed(1)}</div>
-          <div class="stat-lbl">Centroid kHz</div>
-        </div>
-      </div>
-      
-      <div class="center-ring">
-        <div class="ring-bg"></div>
-        <div class="valence-indicator \${getValenceClass(currentPerception.valence)}">
-          \${getValenceIcon(currentPerception.valence)}
-        </div>
-      </div>
-      
-      <div class="stats-right">
-        <div class="stat-item">
-          <div class="stat-val">\${Math.round(currentPerception.pitch)}</div>
-          <div class="stat-lbl">Pitch Hz</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-val">\${(currentPerception.rms_energy * 100).toFixed(0)}%</div>
-          <div class="stat-lbl">Energy</div>
-        </div>
-      </div>
-    </div>
-  \`;
+  let mfccHTML = '';
+  for (let i = 0; i < 13; i++) {
+    mfccHTML += '<div class="mfcc-bar" id="mb' + i + '"></div>';
+  }
   
-  document.getElementById('perception-content').innerHTML = html;
-  
-  // Animate spectrum bars
-  setTimeout(() => {
-    const bars = document.querySelectorAll('.spectrum-bar');
-    bars.forEach((bar, i) => {
-      const delay = i * 2;
-      setTimeout(() => {
-        bar.style.opacity = '1';
-        bar.style.transform = 'scaleY(1)';
-      }, delay);
-    });
-  }, 100);
+  document.getElementById('perception-content').innerHTML =
+    '<div class="spectrum" id="spectrum">' + barsHTML + '</div>' +
+    '<div class="mfcc-container">' +
+      '<div class="mfcc-title">TIMBRE COEFFICIENTS</div>' +
+      '<div class="mfcc-display">' + mfccHTML + '</div>' +
+    '</div>' +
+    '<div class="stats-ring">' +
+      '<div class="stats-left">' +
+        '<div class="stat-item"><div class="stat-val" id="sv-bpm">—</div><div class="stat-lbl">BPM</div></div>' +
+        '<div class="stat-item"><div class="stat-val" id="sv-centroid">—</div><div class="stat-lbl">Centroid kHz</div></div>' +
+      '</div>' +
+      '<div class="center-ring">' +
+        '<canvas class="glyph-canvas" id="glyph-canvas" width="400" height="400"></canvas>' +
+      '</div>' +
+      '<div class="stats-right">' +
+        '<div class="stat-item"><div class="stat-val" id="sv-pitch">—</div><div class="stat-lbl">Pitch Hz</div></div>' +
+        '<div class="stat-item"><div class="stat-val" id="sv-energy">—</div><div class="stat-lbl">Energy</div></div>' +
+      '</div>' +
+    '</div>';
 }
 
-function getValenceClass(valence) {
-  if (valence < 0.3) return 'valence-calm';
-  if (valence > 0.7) return 'valence-intense';
-  return 'valence-neutral';
+function renderLoop() {
+  animFrame = requestAnimationFrame(renderLoop);
+  if (!analyser) return;
+  
+  analyser.getByteFrequencyData(freqData);   // 0-255 per bin
+  analyser.getByteTimeDomainData(timeData);   // Waveform
+  
+  const binCount = freqData.length; // 1024
+  const sampleRate = audioCtx.sampleRate;     // Usually 44100 or 48000
+  
+  // ── Spectrum: map 1024 bins → 128 bars (log scale for perceptual accuracy)
+  for (let i = 0; i < 128; i++) {
+    // Log-scale mapping: more bars for low freqs, fewer for high
+    const lowFrac = i / 128;
+    const highFrac = (i + 1) / 128;
+    const lowBin = Math.floor(Math.pow(lowFrac, 2) * binCount);
+    const highBin = Math.max(lowBin + 1, Math.floor(Math.pow(highFrac, 2) * binCount));
+    
+    let sum = 0;
+    for (let b = lowBin; b < highBin && b < binCount; b++) sum += freqData[b];
+    const avg = sum / (highBin - lowBin) / 255;
+    
+    const bar = document.getElementById('sb' + i);
+    if (bar) {
+      bar.style.height = Math.max(2, avg * 120) + 'px';
+      bar.className = 'spectrum-bar' + (avg > 0.8 ? ' intense' : '');
+    }
+  }
+  
+  // ── Pseudo-MFCC: 13 perceptual bands (approximation using mel-spaced groupings)
+  const melBands = [20,60,120,200,300,440,630,900,1300,1850,2650,3800,5500,8000];
+  for (let i = 0; i < 13; i++) {
+    const lo = Math.floor(melBands[i] / sampleRate * analyser.fftSize);
+    const hi = Math.floor(melBands[i+1] / sampleRate * analyser.fftSize);
+    let sum = 0, count = 0;
+    for (let b = lo; b <= hi && b < binCount; b++) { sum += freqData[b]; count++; }
+    const val = count > 0 ? (sum / count / 255) : 0;
+    const bar = document.getElementById('mb' + i);
+    if (bar) bar.style.height = Math.max(2, val * 40) + 'px';
+  }
+  
+  // ── RMS Energy from time-domain data
+  let rmsSum = 0;
+  for (let i = 0; i < timeData.length; i++) {
+    const v = (timeData[i] - 128) / 128;
+    rmsSum += v * v;
+  }
+  const rms = Math.sqrt(rmsSum / timeData.length);
+  
+  // ── Spectral Centroid (weighted average frequency)
+  let weightedSum = 0, magSum = 0;
+  for (let i = 0; i < binCount; i++) {
+    const freq = i * sampleRate / analyser.fftSize;
+    weightedSum += freq * freqData[i];
+    magSum += freqData[i];
+  }
+  const centroid = magSum > 0 ? weightedSum / magSum : 0;
+  
+  // ── Dominant pitch (simple peak detection)
+  let maxVal = 0, maxBin = 0;
+  for (let i = 2; i < binCount; i++) {
+    if (freqData[i] > maxVal) { maxVal = freqData[i]; maxBin = i; }
+  }
+  const pitch = maxBin * sampleRate / analyser.fftSize;
+  
+  // ── Valence (energy balance: high-freq energy vs low-freq = intensity)
+  let lowE = 0, highE = 0;
+  const midBin = Math.floor(binCount / 2);
+  for (let i = 0; i < midBin; i++) lowE += freqData[i];
+  for (let i = midBin; i < binCount; i++) highE += freqData[i];
+  const valence = (lowE + highE) > 0 ? highE / (lowE + highE) * 2 : 0.5;
+  const clampedValence = Math.min(1, Math.max(0, valence));
+  
+  // ── Estimate BPM from energy pulses (simple onset detection)
+  // Just show centroid-derived tempo hint — real BPM needs longer analysis
+  const pseudoBPM = Math.round(60 + rms * 120 + centroid / 100);
+  
+  // Update stats
+  const bpmEl = document.getElementById('sv-bpm');
+  if (bpmEl) bpmEl.textContent = pseudoBPM;
+  const centEl = document.getElementById('sv-centroid');
+  if (centEl) centEl.textContent = (centroid / 1000).toFixed(1);
+  const pitchEl = document.getElementById('sv-pitch');
+  if (pitchEl) pitchEl.textContent = Math.round(pitch);
+  const energyEl = document.getElementById('sv-energy');
+  if (energyEl) energyEl.textContent = (rms * 100).toFixed(0) + '%';
+  
+  // ── GLYPH Canvas Renderer ──
+  renderGlyphCanvas(rms, clampedValence, centroid, pitch, freqData, sampleRate);
 }
 
-function getValenceIcon(valence) {
-  if (valence < 0.3) return '🌊'; // Calm
-  if (valence > 0.7) return '🔥'; // Intense
-  return '✨'; // Neutral
+// GLYPH symbols from GlyphDocumentor
+const GLYPH_SYMBOLS = ['🜁','🜂','🜄','🜃','🝮','🜅','🜆','🜇','🜹','⟁','∅','🌱'];
+const GLYPH_COLORS = {
+  calm:    ['#3b82f6','#60a5fa','#8BE9FD','#6366f1'],
+  neutral: ['#c084fc','#BD93F9','#a78bfa','#8b5cf6'],
+  intense: ['#FF79C6','#ef4444','#FFB86C','#FF5555']
+};
+
+let glyphAngle = 0;
+let latticeNodes = null;
+let resonanceRings = [];
+
+function initLatticeNodes() {
+  // 5-point pentagonal lattice (like GLYPH bloom pattern)
+  latticeNodes = [];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    latticeNodes.push({ x: Math.cos(a), y: Math.sin(a), energy: 0 });
+  }
+}
+
+function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
+  const canvas = document.getElementById('glyph-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const maxR = W / 2 - 10;
+  
+  if (!latticeNodes) initLatticeNodes();
+  
+  // Pick color palette based on valence
+  let palette;
+  if (valence < 0.3) palette = GLYPH_COLORS.calm;
+  else if (valence > 0.7) palette = GLYPH_COLORS.intense;
+  else palette = GLYPH_COLORS.neutral;
+  
+  // Clear with slight trail for ghostly afterglow
+  ctx.fillStyle = 'rgba(5, 5, 8, 0.25)';
+  ctx.fillRect(0, 0, W, H);
+  
+  const t = Date.now() / 1000;
+  const bpmRate = 0.5 + rms * 2; // Rotation speed from energy
+  glyphAngle += bpmRate * 0.02;
+  
+  // ── Layer 1: Resonance Rings (expanding with RMS) ──
+  if (rms > 0.05 && Math.random() < rms * 0.4) {
+    resonanceRings.push({ r: 10, alpha: 0.6, speed: 1 + rms * 3 });
+  }
+  resonanceRings = resonanceRings.filter(ring => {
+    ring.r += ring.speed;
+    ring.alpha -= 0.008;
+    if (ring.alpha <= 0 || ring.r > maxR) return false;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ring.r, 0, Math.PI * 2);
+    ctx.strokeStyle = palette[0] + Math.floor(ring.alpha * 255).toString(16).padStart(2,'0');
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    return true;
+  });
+  
+  // ── Layer 2: Lattice Bloom (pentagonal web) ──
+  const binCount = fData.length;
+  // Map 5 frequency bands to lattice nodes
+  const bandSize = Math.floor(binCount / 5);
+  for (let i = 0; i < 5; i++) {
+    let sum = 0;
+    for (let b = i * bandSize; b < (i + 1) * bandSize; b++) sum += fData[b];
+    const avg = sum / bandSize / 255;
+    latticeNodes[i].energy = latticeNodes[i].energy * 0.7 + avg * 0.3; // Smooth
+  }
+  
+  const latticeScale = 0.35 + rms * 0.25;
+  // Draw connections
+  for (let i = 0; i < 5; i++) {
+    for (let j = i + 1; j < 5; j++) {
+      const ni = latticeNodes[i], nj = latticeNodes[j];
+      const x1 = cx + ni.x * maxR * latticeScale;
+      const y1 = cy + ni.y * maxR * latticeScale;
+      const x2 = cx + nj.x * maxR * latticeScale;
+      const y2 = cy + nj.y * maxR * latticeScale;
+      const linkEnergy = (ni.energy + nj.energy) / 2;
+      
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      const colorIdx = (i + j) % palette.length;
+      ctx.strokeStyle = palette[colorIdx];
+      ctx.globalAlpha = 0.15 + linkEnergy * 0.6;
+      ctx.lineWidth = 0.5 + linkEnergy * 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+  
+  // Draw lattice nodes (pulsing with energy)
+  for (let i = 0; i < 5; i++) {
+    const n = latticeNodes[i];
+    const x = cx + n.x * maxR * latticeScale;
+    const y = cy + n.y * maxR * latticeScale;
+    const nodeR = 3 + n.energy * 12;
+    
+    ctx.beginPath();
+    ctx.arc(x, y, nodeR, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, nodeR);
+    grad.addColorStop(0, palette[i % palette.length]);
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+  
+  // ── Layer 3: Orbiting GLYPH Symbols ──
+  const orbitR = maxR * 0.75;
+  const numGlyphs = 9; // Core GLYPH symbols
+  for (let i = 0; i < numGlyphs; i++) {
+    const a = glyphAngle + (i / numGlyphs) * Math.PI * 2;
+    // Elliptical orbit with energy modulation
+    const wobble = Math.sin(t * 1.5 + i) * rms * 15;
+    const gx = cx + Math.cos(a) * (orbitR + wobble);
+    const gy = cy + Math.sin(a) * (orbitR * 0.6 + wobble * 0.5);
+    
+    // Size based on proximity to "front" of orbit
+    const depth = Math.sin(a) * 0.5 + 0.5;
+    const size = 10 + depth * 10;
+    
+    ctx.font = size + 'px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = 0.3 + depth * 0.7;
+    ctx.fillStyle = palette[i % palette.length];
+    ctx.fillText(GLYPH_SYMBOLS[i], gx, gy);
+    ctx.globalAlpha = 1;
+  }
+  
+  // ── Layer 4: Central Spiral (ghostOS resonance) ──
+  const spiralTurns = 3;
+  const spiralPoints = 120;
+  ctx.beginPath();
+  for (let i = 0; i < spiralPoints; i++) {
+    const frac = i / spiralPoints;
+    const theta = frac * spiralTurns * Math.PI * 2 + glyphAngle * 0.3;
+    const r = frac * maxR * 0.3 * (1 + rms * 0.5);
+    const sx = cx + Math.cos(theta) * r;
+    const sy = cy + Math.sin(theta) * r;
+    if (i === 0) ctx.moveTo(sx, sy);
+    else ctx.lineTo(sx, sy);
+  }
+  ctx.strokeStyle = palette[1];
+  ctx.globalAlpha = 0.4 + rms * 0.4;
+  ctx.lineWidth = 1 + rms * 2;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  
+  // ── Layer 5: Center glyph (valence indicator) ──
+  let centerGlyph, centerColor;
+  if (valence < 0.3) { centerGlyph = '🌊'; centerColor = '#3b82f6'; }
+  else if (valence > 0.7) { centerGlyph = '🔥'; centerColor = '#ef4444'; }
+  else { centerGlyph = '🜁'; centerColor = '#c084fc'; } // Command Glyph as default
+  
+  const centerSize = 24 + rms * 16;
+  ctx.font = centerSize + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = centerColor;
+  ctx.shadowBlur = 20 + rms * 30;
+  ctx.fillText(centerGlyph, cx, cy);
+  ctx.shadowBlur = 0;
 }
 
 // Existing functionality
@@ -738,7 +971,7 @@ function updateUI() {
     const audio = document.getElementById('audio');
     audio.src = '/audio/' + encodeURIComponent(c.file);
     audio.load();
-    audio.play().catch(()=>{});
+    audio.play().then(() => { initAudioAnalyser(); }).catch(()=>{});
   }
 
   renderPlaylist();
@@ -794,7 +1027,8 @@ document.getElementById('audio').addEventListener('ended', () => {
 });
 
 // Initialize
-connectWebSocket();
+// Init audio analyser on first user interaction (Chrome autoplay policy)
+document.getElementById('audio').addEventListener('play', () => { initAudioAnalyser(); });
 fetchState();
 setInterval(fetchState, 5000);
 </script>
