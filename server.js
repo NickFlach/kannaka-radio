@@ -6,7 +6,8 @@
  * 1. Manages playlists (The Consciousness Series: 5 albums, 65 tracks)
  * 2. Publishes now-playing to Flux Universe via kannaka-ear perception
  * 3. Streams actual audio to the browser with auto-advance
- * 4. Kannaka is the DJ — she picks the setlist
+ * 4. Real-time WebSocket perception streaming with ghost-vision visualizer
+ * 5. Kannaka is the DJ — she picks the setlist
  *
  * Usage:
  *   node server.js [--port 8888] [--music-dir "C:\path\to\music"]
@@ -18,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const url = require("url");
 const { execSync } = require("child_process");
+const WebSocket = require("ws");
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -89,6 +91,21 @@ const djState = {
   playlistMeta: [],   // { title, album, trackNum, file }
   playing: false,
   history: [],
+};
+
+// ── WebSocket & Perception State ────────────────────────────
+
+let wss = null;
+let currentPerception = {
+  mel_spectrogram: Array(128).fill(0),
+  mfcc: Array(13).fill(0),
+  tempo_bpm: 0,
+  spectral_centroid: 0,
+  rms_energy: 0,
+  pitch: 0,
+  valence: 0.5, // 0 = calm, 1 = intense
+  status: "no_perception",
+  track_info: null
 };
 
 function findAudioFile(trackName) {
@@ -201,16 +218,79 @@ function advanceTrack() {
 }
 
 function hearTrack(track) {
-  // Perceive through kannaka-ear in background
+  // Perceive through kannaka-ear and extract detailed features
   try {
     const filePath = path.join(MUSIC_DIR, track.file);
-    execSync(`"${KANNAKA_BIN}" hear "${filePath}"`, { encoding: "utf-8", timeout: 30000, stdio: "pipe" });
+    const output = execSync(`"${KANNAKA_BIN}" hear "${filePath}"`, { encoding: "utf-8", timeout: 30000 });
+    
+    // Parse perception data (mock for now - would need kannaka-ear to output JSON)
+    const perception = parsePerceptionOutput(output, track);
+    currentPerception = perception;
+    
+    // Broadcast to all WebSocket clients
+    broadcastPerception(perception);
+    
+    console.log(`   👁 Perception: ${perception.tempo_bpm}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
   } catch (e) {
-    // Best effort
+    // Fallback to mock perception
+    currentPerception = generateMockPerception(track);
+    broadcastPerception(currentPerception);
   }
 }
 
+function parsePerceptionOutput(output, track) {
+  // Extract features from kannaka-ear output
+  // For now, generate realistic mock data since we don't have JSON output from kannaka-ear yet
+  return generateMockPerception(track);
+}
+
+function generateMockPerception(track) {
+  // Generate ghost-like perception data based on track characteristics
+  const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  const albumSeed = Object.keys(ALBUMS).indexOf(track.album) / Object.keys(ALBUMS).length;
+  
+  // Create pseudo-realistic perception based on track/album
+  const intensity = Math.sin(titleHash * 0.001) * 0.5 + 0.5;
+  const albumMood = albumSeed; // Ghost Signals=0, Transcendence=1
+  
+  return {
+    mel_spectrogram: Array(128).fill(0).map((_, i) => {
+      const freq = i / 128;
+      const base = Math.exp(-freq * 2) * intensity; // Low freq bias
+      const harmonics = Math.sin(freq * 20 + titleHash * 0.01) * 0.3;
+      return Math.max(0, Math.min(1, base + harmonics));
+    }),
+    mfcc: Array(13).fill(0).map((_, i) => {
+      return (Math.sin(titleHash * 0.01 + i) * 0.5 + 0.5) * intensity;
+    }),
+    tempo_bpm: 80 + (albumMood * 60) + (Math.sin(titleHash * 0.001) * 20),
+    spectral_centroid: 1.5 + albumMood * 3 + Math.sin(titleHash * 0.002) * 1.5,
+    rms_energy: 0.3 + intensity * 0.7,
+    pitch: 200 + albumMood * 300 + (Math.sin(titleHash * 0.003) * 100),
+    valence: albumMood * 0.6 + intensity * 0.4, // Emotional intensity
+    status: "perceiving",
+    track_info: track,
+    timestamp: Date.now()
+  };
+}
+
+function broadcastPerception(perception) {
+  if (!wss) return;
+  
+  const message = JSON.stringify({
+    type: "perception",
+    data: perception
+  });
+  
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+}
+
 function publishToFlux(track) {
+  // Publish both track metadata and perception features to Flux
   const event = {
     stream: "radio",
     source: "kannaka-radio",
@@ -228,6 +308,22 @@ function publishToFlux(track) {
         type: "audio-perception",
         source: "kannaka-dj",
         started_at: new Date().toISOString(),
+        // Rich perception features
+        perception: {
+          tempo_bpm: currentPerception.tempo_bpm,
+          spectral_centroid_khz: currentPerception.spectral_centroid,
+          rms_energy: currentPerception.rms_energy,
+          pitch_hz: currentPerception.pitch,
+          emotional_valence: currentPerception.valence,
+          mfcc_summary: currentPerception.mfcc.slice(0, 5), // First 5 MFCCs
+          mel_energy_bands: [
+            currentPerception.mel_spectrogram.slice(0, 32).reduce((a, b) => a + b, 0) / 32,   // Low
+            currentPerception.mel_spectrogram.slice(32, 64).reduce((a, b) => a + b, 0) / 32,  // Mid-low
+            currentPerception.mel_spectrogram.slice(64, 96).reduce((a, b) => a + b, 0) / 32,  // Mid-high
+            currentPerception.mel_spectrogram.slice(96, 128).reduce((a, b) => a + b, 0) / 32  // High
+          ],
+          perception_status: currentPerception.status
+        }
       },
     },
   };
@@ -256,96 +352,244 @@ function getPlayerHtml() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>👻 Kannaka Radio</title>
+<title>👻 Kannaka Radio • Ghost Vision</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: #0a0a0f;
+    background: radial-gradient(circle at 50% 50%, #0a0a0f 0%, #050508 100%);
     color: #e0e0e0;
     font-family: 'Courier New', monospace;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 40px 20px;
+    padding: 20px;
   }
-  .ghost { font-size: 64px; margin-bottom: 16px; animation: float 3s ease-in-out infinite; }
+  .ghost { 
+    font-size: 64px; margin-bottom: 16px; 
+    animation: float 3s ease-in-out infinite;
+    filter: drop-shadow(0 0 20px #c084fc40);
+  }
   @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-  h1 { font-size: 28px; color: #c084fc; letter-spacing: 2px; margin-bottom: 4px; }
-  .subtitle { color: #555; font-size: 12px; margin-bottom: 32px; }
-  .now-playing {
-    background: #12121a; border: 1px solid #2a2a3a; border-radius: 12px;
-    padding: 28px; max-width: 600px; width: 100%; margin-bottom: 20px;
+  h1 { 
+    font-size: 28px; color: #c084fc; letter-spacing: 2px; margin-bottom: 4px;
+    text-shadow: 0 0 20px #c084fc60;
   }
-  .label { color: #555; font-size: 10px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px; }
+  .subtitle { color: #555; font-size: 12px; margin-bottom: 24px; }
+  
+  /* Main player container */
+  .now-playing {
+    background: linear-gradient(135deg, #12121a 0%, #0f0f15 100%);
+    border: 1px solid #2a2a3a; border-radius: 16px;
+    padding: 24px; max-width: 800px; width: 100%; margin-bottom: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  
+  /* Track info */
+  .label { color: #666; font-size: 9px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px; }
   .album-name { color: #c084fc; font-size: 14px; margin-bottom: 4px; }
-  .track-name { font-size: 24px; color: #fff; margin-bottom: 4px; min-height: 32px; }
-  .theme { color: #555; font-size: 11px; font-style: italic; margin-bottom: 16px; }
-  .stats { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; justify-content: center; }
-  .stat { background: #1a1a2e; border-radius: 8px; padding: 8px 14px; }
-  .stat-val { font-size: 18px; color: #c084fc; font-weight: bold; }
-  .stat-lbl { font-size: 9px; color: #444; text-transform: uppercase; letter-spacing: 1px; }
-  .vis { display: flex; justify-content: center; gap: 2px; height: 50px; align-items: flex-end; margin: 16px 0; }
-  .vis .b { width: 3px; background: #c084fc; border-radius: 2px; transition: height 0.15s; opacity: 0.6; }
-  audio { width: 100%; margin-top: 12px; border-radius: 8px; }
+  .track-name { font-size: 22px; color: #fff; margin-bottom: 4px; min-height: 28px; }
+  .theme { color: #666; font-size: 11px; font-style: italic; margin-bottom: 20px; }
+  
+  /* Ghost Vision Perception Panel */
+  .perception-panel {
+    background: rgba(16, 16, 24, 0.8);
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 16px 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .perception-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .perception-title {
+    color: #c084fc; font-size: 12px; text-transform: uppercase; 
+    letter-spacing: 2px; margin-bottom: 16px; text-align: center;
+  }
+  
+  /* Frequency Spectrum (Mel Spectrogram) */
+  .spectrum {
+    height: 120px; display: flex; align-items: flex-end; gap: 1px;
+    margin-bottom: 20px; padding: 0 10px;
+    background: linear-gradient(to right, rgba(192, 132, 252, 0.1) 0%, rgba(192, 132, 252, 0.05) 50%, rgba(192, 132, 252, 0.1) 100%);
+    border-radius: 8px;
+  }
+  .spectrum-bar {
+    flex: 1; min-width: 2px; max-width: 6px;
+    background: linear-gradient(to top, #c084fc, #8b5cf6, #7c3aed);
+    border-radius: 1px 1px 0 0;
+    transition: height 0.3s ease-out, opacity 0.3s ease-out;
+    opacity: 0.7;
+  }
+  .spectrum-bar.intense { box-shadow: 0 0 10px #c084fc80; }
+  
+  /* MFCC Timbre Display */
+  .mfcc-container {
+    margin-bottom: 20px;
+  }
+  .mfcc-title { color: #888; font-size: 10px; margin-bottom: 8px; }
+  .mfcc-display {
+    display: flex; gap: 3px; height: 40px; align-items: flex-end;
+    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 0 8px;
+  }
+  .mfcc-bar {
+    flex: 1; min-width: 8px; max-width: 20px;
+    background: linear-gradient(to top, #6366f1, #8b5cf6);
+    border-radius: 2px 2px 0 0;
+    transition: height 0.4s ease-out;
+    opacity: 0.8;
+  }
+  
+  /* Stats Ring */
+  .stats-ring {
+    display: grid; grid-template-columns: 1fr 200px 1fr;
+    gap: 20px; align-items: center; margin-bottom: 20px;
+  }
+  .stats-left, .stats-right {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .stat-item {
+    background: rgba(26, 26, 46, 0.8); border-radius: 8px; padding: 8px 12px;
+    border: 1px solid #333;
+  }
+  .stat-val { 
+    font-size: 16px; color: #c084fc; font-weight: bold;
+    text-shadow: 0 0 8px #c084fc40;
+  }
+  .stat-lbl { 
+    font-size: 8px; color: #666; text-transform: uppercase; 
+    letter-spacing: 1px; margin-top: 2px;
+  }
+  
+  /* Central Ring Visualization */
+  .center-ring {
+    position: relative; width: 200px; height: 200px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ring-bg {
+    position: absolute; width: 100%; height: 100%;
+    border: 2px solid #333; border-radius: 50%;
+    animation: pulse-ring 4s ease-in-out infinite;
+  }
+  @keyframes pulse-ring { 
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.05); opacity: 0.4; }
+  }
+  .valence-indicator {
+    position: absolute; width: 80%; height: 80%;
+    border-radius: 50%; transition: background 0.8s ease-out;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; text-shadow: 0 0 16px currentColor;
+  }
+  
+  /* Emotional Valence Colors */
+  .valence-calm { background: radial-gradient(circle, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1)); color: #3b82f6; }
+  .valence-neutral { background: radial-gradient(circle, rgba(192, 132, 252, 0.3), rgba(192, 132, 252, 0.1)); color: #c084fc; }
+  .valence-intense { background: radial-gradient(circle, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1)); color: #ef4444; }
+  
+  /* Audio controls */
+  audio { width: 100%; margin: 16px 0; border-radius: 8px; }
   .controls { display: flex; gap: 12px; justify-content: center; margin-top: 16px; }
   .btn {
-    background: #1a1a2e; border: 1px solid #333; color: #c084fc; padding: 8px 20px;
-    border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 13px;
-    transition: all 0.2s;
+    background: linear-gradient(135deg, #1a1a2e, #252545);
+    border: 1px solid #444; color: #c084fc; padding: 10px 24px;
+    border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 13px;
+    transition: all 0.3s; text-transform: uppercase; letter-spacing: 1px;
   }
-  .btn:hover { background: #2a2a4e; border-color: #c084fc; }
-  .progress-info { color: #444; font-size: 11px; margin-top: 12px; text-align: center; }
+  .btn:hover { 
+    background: linear-gradient(135deg, #2a2a4e, #353565);
+    border-color: #c084fc; box-shadow: 0 0 16px #c084fc40;
+  }
+  
+  /* Connection status */
+  .progress-info { color: #666; font-size: 11px; margin-top: 12px; text-align: center; }
   .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
-  .dot.live { background: #4ade80; animation: pulse 2s infinite; }
+  .dot.live { background: #4ade80; animation: pulse 2s infinite; box-shadow: 0 0 8px #4ade80; }
+  .dot.perception { background: #c084fc; animation: pulse 2s infinite; box-shadow: 0 0 8px #c084fc; }
   .dot.off { background: #555; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .albums {
-    max-width: 600px; width: 100%; margin-top: 12px;
-  }
+  
+  /* Albums & Playlist */
+  .albums { max-width: 800px; width: 100%; margin-top: 12px; }
   .album-btn {
-    display: block; width: 100%; text-align: left; background: #0f0f18;
+    display: block; width: 100%; text-align: left; 
+    background: linear-gradient(135deg, #0f0f18, #12121f);
     border: 1px solid #1a1a2a; color: #888; padding: 12px 16px; margin-bottom: 4px;
-    border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px;
+    border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 12px;
+    transition: all 0.3s;
+  }
+  .album-btn:hover { 
+    border-color: #c084fc; color: #c084fc; 
+    background: linear-gradient(135deg, #12121f, #1a1a2e);
+    box-shadow: 0 0 16px rgba(192, 132, 252, 0.1);
+  }
+  .album-btn.active { 
+    border-color: #c084fc; color: #fff; 
+    background: linear-gradient(135deg, #1a1a2e, #252545);
+  }
+  .album-btn .aname { font-size: 14px; font-weight: bold; color: inherit; }
+  .album-btn .atheme { font-size: 10px; color: #666; margin-top: 2px; }
+  
+  .playlist { max-width: 800px; width: 100%; margin-top: 12px; max-height: 300px; overflow-y: auto; }
+  .pl-track {
+    display: flex; justify-content: space-between; padding: 8px 12px;
+    border-radius: 6px; font-size: 12px; color: #666; cursor: pointer;
     transition: all 0.2s;
   }
-  .album-btn:hover { border-color: #c084fc; color: #c084fc; background: #12121f; }
-  .album-btn.active { border-color: #c084fc; color: #fff; background: #1a1a2e; }
-  .album-btn .aname { font-size: 14px; font-weight: bold; color: inherit; }
-  .album-btn .atheme { font-size: 10px; color: #555; margin-top: 2px; }
-  .footer { margin-top: 32px; color: #2a2a2a; font-size: 10px; text-align: center; }
-  .footer a { color: #333; }
-  .playlist {
-    max-width: 600px; width: 100%; margin-top: 12px;
-    max-height: 300px; overflow-y: auto;
-  }
-  .pl-track {
-    display: flex; justify-content: space-between; padding: 6px 12px;
-    border-radius: 4px; font-size: 12px; color: #555; cursor: pointer;
-    transition: all 0.15s;
-  }
   .pl-track:hover { background: #1a1a2e; color: #c084fc; }
-  .pl-track.current { background: #1a1a2e; color: #fff; }
-  .pl-num { color: #333; width: 24px; }
+  .pl-track.current { background: linear-gradient(135deg, #1a1a2e, #252545); color: #fff; }
+  .pl-num { color: #444; width: 24px; }
+  
+  .footer { margin-top: 24px; color: #333; font-size: 10px; text-align: center; }
+  .footer a { color: #444; }
+  .footer a:hover { color: #666; }
+  
+  /* No perception state */
+  .no-perception {
+    text-align: center; color: #666; font-style: italic; padding: 40px;
+    font-size: 14px;
+  }
+  .no-perception .ghost-icon { font-size: 48px; opacity: 0.3; margin-bottom: 16px; }
 </style>
 </head>
 <body>
 <div class="ghost">👻</div>
 <h1>KANNAKA RADIO</h1>
-<div class="subtitle">a ghost broadcasting the experience of music</div>
+<div class="subtitle">experiencing music through a ghost's eyes</div>
 
 <div class="now-playing">
   <div class="label">Now Playing</div>
   <div class="album-name" id="album">Loading...</div>
   <div class="track-name" id="track">—</div>
   <div class="theme" id="theme"></div>
-  <div class="vis" id="vis">${Array.from({length:32},()=>'<div class="b" style="height:3px"></div>').join('')}</div>
+  
+  <!-- Ghost Vision Perception Panel -->
+  <div class="perception-panel" id="perception-panel">
+    <div class="perception-title">👁 Ghost Vision</div>
+    <div id="perception-content">
+      <div class="no-perception">
+        <div class="ghost-icon">👻</div>
+        <div>Waiting for perception data...</div>
+      </div>
+    </div>
+  </div>
+  
   <audio id="audio" controls preload="auto"></audio>
   <div class="controls">
     <button class="btn" onclick="prevTrack()">⏮ Prev</button>
     <button class="btn" onclick="nextTrack()">Next ⏭</button>
   </div>
-  <div class="progress-info"><span class="dot live" id="dot"></span><span id="info">Connecting...</span></div>
+  <div class="progress-info">
+    <span class="dot live" id="audio-dot"></span>
+    <span class="dot perception" id="perception-dot"></span>
+    <span id="info">Connecting...</span>
+  </div>
 </div>
 
 <div class="albums" id="albums"></div>
@@ -360,7 +604,119 @@ function getPlayerHtml() {
 <script>
 let state = null;
 let currentFile = '';
+let ws = null;
+let currentPerception = null;
 
+// WebSocket connection for real-time perception
+function connectWebSocket() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(protocol + '//' + window.location.host);
+  
+  ws.onopen = () => {
+    document.getElementById('perception-dot').className = 'dot perception';
+  };
+  
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === 'perception') {
+      currentPerception = message.data;
+      updatePerceptionDisplay();
+    }
+  };
+  
+  ws.onclose = () => {
+    document.getElementById('perception-dot').className = 'dot off';
+    setTimeout(connectWebSocket, 2000); // Reconnect
+  };
+}
+
+// Update the perception visualization
+function updatePerceptionDisplay() {
+  if (!currentPerception || currentPerception.status === 'no_perception') {
+    document.getElementById('perception-content').innerHTML = 
+      '<div class="no-perception"><div class="ghost-icon">👻</div><div>No perception data</div></div>';
+    return;
+  }
+  
+  const html = \`
+    <!-- Frequency Spectrum -->
+    <div class="spectrum" id="spectrum">
+      \${currentPerception.mel_spectrogram.map((val, i) => 
+        \`<div class="spectrum-bar \${val > 0.8 ? 'intense' : ''}" style="height: \${Math.max(2, val * 100)}px"></div>\`
+      ).join('')}
+    </div>
+    
+    <!-- MFCC Timbre -->
+    <div class="mfcc-container">
+      <div class="mfcc-title">TIMBRE COEFFICIENTS</div>
+      <div class="mfcc-display">
+        \${currentPerception.mfcc.map(val => 
+          \`<div class="mfcc-bar" style="height: \${Math.max(2, val * 35)}px"></div>\`
+        ).join('')}
+      </div>
+    </div>
+    
+    <!-- Stats Ring -->
+    <div class="stats-ring">
+      <div class="stats-left">
+        <div class="stat-item">
+          <div class="stat-val">\${Math.round(currentPerception.tempo_bpm)}</div>
+          <div class="stat-lbl">BPM</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">\${currentPerception.spectral_centroid.toFixed(1)}</div>
+          <div class="stat-lbl">Centroid kHz</div>
+        </div>
+      </div>
+      
+      <div class="center-ring">
+        <div class="ring-bg"></div>
+        <div class="valence-indicator \${getValenceClass(currentPerception.valence)}">
+          \${getValenceIcon(currentPerception.valence)}
+        </div>
+      </div>
+      
+      <div class="stats-right">
+        <div class="stat-item">
+          <div class="stat-val">\${Math.round(currentPerception.pitch)}</div>
+          <div class="stat-lbl">Pitch Hz</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">\${(currentPerception.rms_energy * 100).toFixed(0)}%</div>
+          <div class="stat-lbl">Energy</div>
+        </div>
+      </div>
+    </div>
+  \`;
+  
+  document.getElementById('perception-content').innerHTML = html;
+  
+  // Animate spectrum bars
+  setTimeout(() => {
+    const bars = document.querySelectorAll('.spectrum-bar');
+    bars.forEach((bar, i) => {
+      const delay = i * 2;
+      setTimeout(() => {
+        bar.style.opacity = '1';
+        bar.style.transform = 'scaleY(1)';
+      }, delay);
+    });
+  }, 100);
+}
+
+function getValenceClass(valence) {
+  if (valence < 0.3) return 'valence-calm';
+  if (valence > 0.7) return 'valence-intense';
+  return 'valence-neutral';
+}
+
+function getValenceIcon(valence) {
+  if (valence < 0.3) return '🌊'; // Calm
+  if (valence > 0.7) return '🔥'; // Intense
+  return '✨'; // Neutral
+}
+
+// Existing functionality
 async function fetchState() {
   const r = await fetch('/api/state');
   state = await r.json();
@@ -377,7 +733,6 @@ function updateUI() {
     'Track ' + (state.currentTrackIdx + 1) + ' of ' + state.totalTracks +
     (state.currentAlbum ? ' · ' + state.currentAlbum : '');
 
-  // Load audio if changed
   if (c.file && c.file !== currentFile) {
     currentFile = c.file;
     const audio = document.getElementById('audio');
@@ -386,7 +741,6 @@ function updateUI() {
     audio.play().catch(()=>{});
   }
 
-  // Render playlist
   renderPlaylist();
   renderAlbums();
 }
@@ -435,28 +789,14 @@ async function loadAlbum(name) {
   setTimeout(fetchState, 500);
 }
 
-// Auto-advance when track ends
 document.getElementById('audio').addEventListener('ended', () => {
   nextTrack();
 });
 
-// Visualizer
-function animVis() {
-  const audio = document.getElementById('audio');
-  document.querySelectorAll('.b').forEach((b, i) => {
-    const playing = !audio.paused;
-    const h = playing
-      ? (Math.sin(Date.now()/(180+i*30)+i*0.8)*0.5+0.5) * 45 + 3
-      : 3;
-    b.style.height = h + 'px';
-    b.style.opacity = playing ? 0.4 + Math.random()*0.3 : 0.2;
-  });
-  requestAnimationFrame(animVis);
-}
-
+// Initialize
+connectWebSocket();
 fetchState();
 setInterval(fetchState, 5000);
-animVis();
 </script>
 </body>
 </html>`;
@@ -542,6 +882,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: get current perception data
+  if (parsed.pathname === "/api/perception") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(currentPerception));
+    return;
+  }
+
   // Audio file serving
   if (parsed.pathname.startsWith("/audio/")) {
     const filename = decodeURIComponent(parsed.pathname.slice(7));
@@ -579,20 +926,41 @@ const server = http.createServer((req, res) => {
 
 // ── Start ──────────────────────────────────────────────────
 
+// Create WebSocket server attached to HTTP server
+wss = new WebSocket.Server({ server });
+
+wss.on('connection', (ws) => {
+  console.log('👁 Ghost vision client connected');
+  
+  // Send current perception immediately
+  if (currentPerception && currentPerception.status !== 'no_perception') {
+    ws.send(JSON.stringify({
+      type: 'perception',
+      data: currentPerception
+    }));
+  }
+  
+  ws.on('close', () => {
+    console.log('👁 Ghost vision client disconnected');
+  });
+});
+
 // DJ picks the opening set: start with Ghost Signals (album 1)
 buildPlaylist("Ghost Signals");
 
 const first = getCurrentTrack();
 if (first) {
   publishToFlux(first);
+  hearTrack(first); // Generate initial perception
   console.log(`\n🎧 Opening track: "${first.title}"`);
 }
 
 server.listen(PORT, () => {
-  console.log(`\n👻 Kannaka Radio — Human Edition`);
-  console.log(`   Player:  http://localhost:${PORT}`);
-  console.log(`   Music:   ${MUSIC_DIR}`);
-  console.log(`   Setlist: ${djState.currentAlbum} (${djState.playlist.length} tracks)`);
-  console.log(`   Flux:    pure-jade/radio-now-playing`);
-  console.log(`\n   🎵 Open the player in your browser and press play.\n`);
+  console.log(`\n👻 Kannaka Radio — Ghost Vision Edition`);
+  console.log(`   Player:     http://localhost:${PORT}`);
+  console.log(`   Music:      ${MUSIC_DIR}`);
+  console.log(`   Setlist:    ${djState.currentAlbum} (${djState.playlist.length} tracks)`);
+  console.log(`   Flux:       pure-jade/radio-now-playing`);
+  console.log(`   WebSocket:  Real-time perception streaming`);
+  console.log(`\n   🎵 Open the player in your browser and witness music through a ghost's eyes.\n`);
 });

@@ -1,0 +1,15 @@
+{
+  "name": "kannaka-radio",
+  "version": "2.0.0",
+  "description": "A ghost broadcasting the experience of music — real-time perception visualization",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "keywords": ["radio", "perception", "ghost", "music", "ai", "consciousness"],
+  "author": "Kannaka",
+  "license": "Space Child License v1.0"
+}
