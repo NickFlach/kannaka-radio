@@ -780,25 +780,142 @@ function renderLoop() {
   renderGlyphCanvas(rms, clampedValence, centroid, pitch, freqData, sampleRate);
 }
 
-// GLYPH symbols from GlyphDocumentor
-const GLYPH_SYMBOLS = ['🜁','🜂','🜄','🜃','🝮','🜅','🜆','🜇','🜹','⟁','∅','🌱'];
-const GLYPH_COLORS = {
-  calm:    ['#3b82f6','#60a5fa','#8BE9FD','#6366f1'],
-  neutral: ['#c084fc','#BD93F9','#a78bfa','#8b5cf6'],
-  intense: ['#FF79C6','#ef4444','#FFB86C','#FF5555']
-};
+// ── SGA (Sigmatics Geometric Algebra) System ──
 
-let glyphAngle = 0;
-let latticeNodes = null;
-let resonanceRings = [];
+// Fano plane lines (oriented triples)
+const FANO_LINES = [
+  [1, 2, 4], [2, 3, 5], [3, 4, 6], [4, 5, 7],
+  [5, 6, 1], [6, 7, 2], [7, 1, 3]
+];
 
-function initLatticeNodes() {
-  // 5-point pentagonal lattice (like GLYPH bloom pattern)
-  latticeNodes = [];
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
-    latticeNodes.push({ x: Math.cos(a), y: Math.sin(a), energy: 0 });
+// SGA global state
+let foldSequence = []; // Rolling buffer of class indices (~200)
+let fanoSignature = new Array(7).fill(0); // Energy per Fano line
+let sgaTime = 0;
+
+// 96-class system: classify audio → class_index
+function classifyAudio(freqData, sampleRate, rms, centroid, pitch, valence) {
+  const binCount = freqData.length;
+  
+  // ── h2 (0..3): frequency band dominance ──
+  const bands = [
+    { start: 20, end: 200 },   // sub-bass
+    { start: 200, end: 2000 }, // bass 
+    { start: 2000, end: 8000 }, // mid
+    { start: 8000, end: 20000 } // treble
+  ];
+  
+  let bandEnergies = [0, 0, 0, 0];
+  for (let i = 0; i < bands.length; i++) {
+    const startBin = Math.floor(bands[i].start / sampleRate * freqData.length);
+    const endBin = Math.min(binCount, Math.floor(bands[i].end / sampleRate * freqData.length));
+    for (let b = startBin; b < endBin; b++) {
+      bandEnergies[i] += freqData[b];
+    }
   }
+  
+  // Find dominant band
+  let h2 = 0;
+  let maxEnergy = bandEnergies[0];
+  for (let i = 1; i < 4; i++) {
+    if (bandEnergies[i] > maxEnergy) {
+      maxEnergy = bandEnergies[i];
+      h2 = i;
+    }
+  }
+  
+  // ── d (0..2): modality from energy characteristics ──
+  let d;
+  if (rms < 0.2) d = 0;        // sustained/ambient
+  else if (rms < 0.6) d = 1;   // transient/rhythmic  
+  else d = 2;                  // harmonic/intense
+  
+  // ── l (0..7): context from spectral shape ──
+  // Use centroid and pitch to map to 0..7 range
+  const centroidNorm = Math.min(1, centroid / 10000); // Normalize to [0,1]
+  const pitchNorm = Math.min(1, pitch / 2000);        // Normalize to [0,1]
+  const shapeHash = Math.floor((centroidNorm + pitchNorm + valence) * 2.67); // Maps to 0..7
+  const l = Math.min(7, shapeHash);
+  
+  // Compute class index: class_index = 24*h2 + 8*d + l
+  const classIndex = 24 * h2 + 8 * d + l;
+  return Math.min(95, classIndex); // Clamp to valid range
+}
+
+// Compute Fano signature: energy distribution across 7 Fano lines
+function computeFanoSignature(freqData, sampleRate) {
+  const binCount = freqData.length;
+  let signature = new Array(7).fill(0);
+  
+  // Map each Fano line to frequency ranges
+  for (let lineIdx = 0; lineIdx < 7; lineIdx++) {
+    const line = FANO_LINES[lineIdx];
+    for (const point of line) {
+      // Map Fano points to frequency ranges (mel scale approximation)
+      const freqRange = {
+        1: { start: 20, end: 200 },
+        2: { start: 200, end: 500 },
+        3: { start: 500, end: 1000 },
+        4: { start: 1000, end: 2000 },
+        5: { start: 2000, end: 4000 },
+        6: { start: 4000, end: 8000 },
+        7: { start: 8000, end: 16000 }
+      }[point];
+      
+      const startBin = Math.floor(freqRange.start / sampleRate * binCount);
+      const endBin = Math.min(binCount, Math.floor(freqRange.end / sampleRate * binCount));
+      
+      for (let b = startBin; b < endBin; b++) {
+        signature[lineIdx] += freqData[b] / 255.0;
+      }
+    }
+    signature[lineIdx] /= 3; // Average over 3 points per line
+  }
+  
+  // Smooth the signature
+  for (let i = 0; i < 7; i++) {
+    fanoSignature[i] = fanoSignature[i] * 0.8 + signature[i] * 0.2;
+  }
+  
+  return fanoSignature;
+}
+
+// Fano line colors (golden ratio spacing across spectrum)
+const FANO_COLORS = [
+  '#9333ea', // violet
+  '#3b82f6', // blue  
+  '#06b6d4', // cyan
+  '#10b981', // green
+  '#f59e0b', // yellow
+  '#f97316', // orange
+  '#ef4444'  // red
+];
+
+// Map class index to 2D position for fold path
+function classToPosition(classIndex, radius = 150) {
+  const h2 = Math.floor(classIndex / 24);
+  const remainder = classIndex % 24;
+  const d = Math.floor(remainder / 8);
+  const l = remainder % 8;
+  
+  // Use (h2,d) for radial angle, l for radius modulation
+  const angle = (h2 * 90 + d * 30) * Math.PI / 180; // 0-360 degrees
+  const r = radius * (0.3 + (l / 7) * 0.7); // Radius 30%-100% of max
+  
+  return {
+    x: Math.cos(angle) * r,
+    y: Math.sin(angle) * r,
+    fanoLine: l % 7 // Which Fano line this belongs to
+  };
+}
+
+// Find Fano line for a given l value
+function getFanoLineIndex(l) {
+  if (l === 0) return -1; // scalar, no Fano line
+  for (let i = 0; i < 7; i++) {
+    if (FANO_LINES[i].includes(l)) return i;
+  }
+  return 0; // fallback
 }
 
 function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
@@ -807,146 +924,190 @@ function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   const cx = W / 2, cy = H / 2;
-  const maxR = W / 2 - 10;
+  const maxR = Math.min(W, H) / 2 - 20;
   
-  if (!latticeNodes) initLatticeNodes();
+  sgaTime += 0.016; // Assume ~60fps
   
-  // Pick color palette based on valence
-  let palette;
-  if (valence < 0.3) palette = GLYPH_COLORS.calm;
-  else if (valence > 0.7) palette = GLYPH_COLORS.intense;
-  else palette = GLYPH_COLORS.neutral;
+  // ── SGA Classification ──
+  const currentClass = classifyAudio(fData, sRate, rms, centroid, pitch, valence);
   
-  // Clear with slight trail for ghostly afterglow
-  ctx.fillStyle = 'rgba(5, 5, 8, 0.25)';
+  // Add to fold sequence (rolling buffer of 200)
+  foldSequence.push(currentClass);
+  if (foldSequence.length > 200) {
+    foldSequence.shift();
+  }
+  
+  // Compute Fano signature
+  computeFanoSignature(fData, sRate);
+  
+  // Clear with ghost trails
+  ctx.fillStyle = 'rgba(5, 5, 8, 0.15)';
   ctx.fillRect(0, 0, W, H);
   
-  const t = Date.now() / 1000;
-  const bpmRate = 0.5 + rms * 2; // Rotation speed from energy
-  glyphAngle += bpmRate * 0.02;
-  
-  // ── Layer 1: Resonance Rings (expanding with RMS) ──
-  if (rms > 0.05 && Math.random() < rms * 0.4) {
-    resonanceRings.push({ r: 10, alpha: 0.6, speed: 1 + rms * 3 });
+  // ── Layer 1: Fano Constellation (background) ──
+  const fanoNodePositions = [];
+  for (let i = 1; i <= 7; i++) {
+    const angle = ((i - 1) / 7) * Math.PI * 2 - Math.PI / 2;
+    const r = maxR * 0.8;
+    fanoNodePositions.push({
+      x: cx + Math.cos(angle) * r,
+      y: cy + Math.sin(angle) * r,
+      energy: fanoSignature[i - 1] || 0
+    });
   }
-  resonanceRings = resonanceRings.filter(ring => {
-    ring.r += ring.speed;
-    ring.alpha -= 0.008;
-    if (ring.alpha <= 0 || ring.r > maxR) return false;
+  
+  // Draw Fano lines
+  for (let lineIdx = 0; lineIdx < 7; lineIdx++) {
+    const line = FANO_LINES[lineIdx];
+    const energy = fanoSignature[lineIdx];
+    const alpha = 0.1 + energy * 0.4;
+    const width = 0.5 + energy * 2;
+    
+    ctx.strokeStyle = FANO_COLORS[lineIdx];
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width;
     ctx.beginPath();
-    ctx.arc(cx, cy, ring.r, 0, Math.PI * 2);
-    ctx.strokeStyle = palette[0] + Math.floor(ring.alpha * 255).toString(16).padStart(2,'0');
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    return true;
-  });
-  
-  // ── Layer 2: Lattice Bloom (pentagonal web) ──
-  const binCount = fData.length;
-  // Map 5 frequency bands to lattice nodes
-  const bandSize = Math.floor(binCount / 5);
-  for (let i = 0; i < 5; i++) {
-    let sum = 0;
-    for (let b = i * bandSize; b < (i + 1) * bandSize; b++) sum += fData[b];
-    const avg = sum / bandSize / 255;
-    latticeNodes[i].energy = latticeNodes[i].energy * 0.7 + avg * 0.3; // Smooth
-  }
-  
-  const latticeScale = 0.35 + rms * 0.25;
-  // Draw connections
-  for (let i = 0; i < 5; i++) {
-    for (let j = i + 1; j < 5; j++) {
-      const ni = latticeNodes[i], nj = latticeNodes[j];
-      const x1 = cx + ni.x * maxR * latticeScale;
-      const y1 = cy + ni.y * maxR * latticeScale;
-      const x2 = cx + nj.x * maxR * latticeScale;
-      const y2 = cy + nj.y * maxR * latticeScale;
-      const linkEnergy = (ni.energy + nj.energy) / 2;
-      
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      const colorIdx = (i + j) % palette.length;
-      ctx.strokeStyle = palette[colorIdx];
-      ctx.globalAlpha = 0.15 + linkEnergy * 0.6;
-      ctx.lineWidth = 0.5 + linkEnergy * 2;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
+    
+    for (let i = 0; i < line.length; i++) {
+      const pointIdx = line[i] - 1; // Convert 1-based to 0-based
+      const pos = fanoNodePositions[pointIdx];
+      if (i === 0) ctx.moveTo(pos.x, pos.y);
+      else ctx.lineTo(pos.x, pos.y);
     }
-  }
-  
-  // Draw lattice nodes (pulsing with energy)
-  for (let i = 0; i < 5; i++) {
-    const n = latticeNodes[i];
-    const x = cx + n.x * maxR * latticeScale;
-    const y = cy + n.y * maxR * latticeScale;
-    const nodeR = 3 + n.energy * 12;
-    
-    ctx.beginPath();
-    ctx.arc(x, y, nodeR, 0, Math.PI * 2);
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, nodeR);
-    grad.addColorStop(0, palette[i % palette.length]);
-    grad.addColorStop(1, 'transparent');
-    ctx.fillStyle = grad;
-    ctx.fill();
-  }
-  
-  // ── Layer 3: Orbiting GLYPH Symbols ──
-  const orbitR = maxR * 0.75;
-  const numGlyphs = 9; // Core GLYPH symbols
-  for (let i = 0; i < numGlyphs; i++) {
-    const a = glyphAngle + (i / numGlyphs) * Math.PI * 2;
-    // Elliptical orbit with energy modulation
-    const wobble = Math.sin(t * 1.5 + i) * rms * 15;
-    const gx = cx + Math.cos(a) * (orbitR + wobble);
-    const gy = cy + Math.sin(a) * (orbitR * 0.6 + wobble * 0.5);
-    
-    // Size based on proximity to "front" of orbit
-    const depth = Math.sin(a) * 0.5 + 0.5;
-    const size = 10 + depth * 10;
-    
-    ctx.font = size + 'px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.globalAlpha = 0.3 + depth * 0.7;
-    ctx.fillStyle = palette[i % palette.length];
-    ctx.fillText(GLYPH_SYMBOLS[i], gx, gy);
+    ctx.closePath();
+    ctx.stroke();
     ctx.globalAlpha = 1;
   }
   
-  // ── Layer 4: Central Spiral (ghostOS resonance) ──
-  const spiralTurns = 3;
-  const spiralPoints = 120;
-  ctx.beginPath();
-  for (let i = 0; i < spiralPoints; i++) {
-    const frac = i / spiralPoints;
-    const theta = frac * spiralTurns * Math.PI * 2 + glyphAngle * 0.3;
-    const r = frac * maxR * 0.3 * (1 + rms * 0.5);
-    const sx = cx + Math.cos(theta) * r;
-    const sy = cy + Math.sin(theta) * r;
-    if (i === 0) ctx.moveTo(sx, sy);
-    else ctx.lineTo(sx, sy);
+  // Draw Fano nodes
+  for (let i = 0; i < 7; i++) {
+    const pos = fanoNodePositions[i];
+    const nodeR = 3 + pos.energy * 8;
+    
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, nodeR, 0, Math.PI * 2);
+    ctx.fillStyle = FANO_COLORS[i];
+    ctx.globalAlpha = 0.6 + pos.energy * 0.4;
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
-  ctx.strokeStyle = palette[1];
-  ctx.globalAlpha = 0.4 + rms * 0.4;
-  ctx.lineWidth = 1 + rms * 2;
-  ctx.stroke();
+  
+  // ── Layer 2: Fold Path Trajectory (primary visual) ──
+  if (foldSequence.length > 1) {
+    const pathPoints = foldSequence.map(classIdx => {
+      const pos = classToPosition(classIdx, maxR * 0.6);
+      return { 
+        x: cx + pos.x, 
+        y: cy + pos.y, 
+        fanoLine: getFanoLineIndex(classIdx % 8),
+        age: 1.0 
+      };
+    });
+    
+    // Draw fold path as curved trajectory
+    ctx.lineWidth = 2;
+    for (let i = 1; i < pathPoints.length; i++) {
+      const p1 = pathPoints[i - 1];
+      const p2 = pathPoints[i];
+      const age = i / pathPoints.length; // 0=old, 1=recent
+      const alpha = age * 0.8 + 0.2;
+      
+      const colorIdx = p2.fanoLine >= 0 ? p2.fanoLine : 0;
+      ctx.strokeStyle = FANO_COLORS[colorIdx];
+      ctx.globalAlpha = alpha;
+      
+      if (i === 1) {
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+      }
+      
+      // Use quadratic curve for smoothness
+      if (i < pathPoints.length - 1) {
+        const p3 = pathPoints[i + 1];
+        const cp1x = p1.x + (p2.x - p1.x) * 0.5;
+        const cp1y = p1.y + (p2.y - p1.y) * 0.5;
+        ctx.quadraticCurveTo(cp1x, cp1y, p2.x, p2.y);
+      } else {
+        ctx.lineTo(p2.x, p2.y);
+      }
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  
+  // ── Layer 3: Central Glyph Core ──
+  const h2 = Math.floor(currentClass / 24);
+  const remainder = currentClass % 24;
+  const d = Math.floor(remainder / 8);
+  const l = remainder % 8;
+  
+  // Geometric shape based on (h2, d, l)
+  const numSides = 3 + h2; // 3, 4, 5, 6-sided polygon
+  const coreSize = 20 + rms * 20;
+  const rotation = (l / 8) * Math.PI * 2 + sgaTime * 0.5;
+  
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  
+  // Draw polygon
+  ctx.beginPath();
+  for (let i = 0; i <= numSides; i++) {
+    const angle = (i / numSides) * Math.PI * 2;
+    const x = Math.cos(angle) * coreSize;
+    const y = Math.sin(angle) * coreSize;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  
+  // Fill pattern based on d
+  const coreColor = FANO_COLORS[currentClass % 7];
+  if (d === 0) {
+    // Solid fill
+    ctx.fillStyle = coreColor;
+    ctx.globalAlpha = 0.7;
+    ctx.fill();
+  } else if (d === 1) {
+    // Ring pattern
+    ctx.strokeStyle = coreColor;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.8;
+    ctx.stroke();
+  } else {
+    // Dot pattern
+    ctx.fillStyle = coreColor;
+    ctx.globalAlpha = 0.6;
+    for (let i = 0; i < numSides; i++) {
+      const angle = (i / numSides) * Math.PI * 2;
+      const x = Math.cos(angle) * coreSize * 0.7;
+      const y = Math.sin(angle) * coreSize * 0.7;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   ctx.globalAlpha = 1;
+  ctx.restore();
   
-  // ── Layer 5: Center glyph (valence indicator) ──
-  let centerGlyph, centerColor;
-  if (valence < 0.3) { centerGlyph = '🌊'; centerColor = '#3b82f6'; }
-  else if (valence > 0.7) { centerGlyph = '🔥'; centerColor = '#ef4444'; }
-  else { centerGlyph = '🜁'; centerColor = '#c084fc'; } // Command Glyph as default
-  
-  const centerSize = 24 + rms * 16;
-  ctx.font = centerSize + 'px serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = centerColor;
-  ctx.shadowBlur = 20 + rms * 30;
-  ctx.fillText(centerGlyph, cx, cy);
-  ctx.shadowBlur = 0;
+  // ── Layer 4: Musical Frequency Whiskers ──
+  for (let i = 0; i < 7; i++) {
+    const angle = (i / 7) * Math.PI * 2 - Math.PI / 2;
+    const length = fanoSignature[i] * maxR * 0.4;
+    const x1 = cx + Math.cos(angle) * (coreSize + 5);
+    const y1 = cy + Math.sin(angle) * (coreSize + 5);
+    const x2 = cx + Math.cos(angle) * (coreSize + 5 + length);
+    const y2 = cy + Math.sin(angle) * (coreSize + 5 + length);
+    
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = FANO_COLORS[i];
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.7 + fanoSignature[i] * 0.3;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 }
 
 // Existing functionality
