@@ -922,7 +922,7 @@ let foldSequence = []; // Rolling buffer of class indices (~200)
 let fanoSignature = new Array(7).fill(0); // Energy per Fano line
 let sgaTime = 0;
 
-// 96-class system: classify audio → class_index
+// 84-class system: classify audio → class_index
 function classifyAudio(freqData, sampleRate, rms, centroid, pitch, valence) {
   const binCount = freqData.length;
   
@@ -966,9 +966,9 @@ function classifyAudio(freqData, sampleRate, rms, centroid, pitch, valence) {
   const shapeHash = Math.floor((centroidNorm + pitchNorm + valence) * 2.67); // Maps to 0..7
   const l = Math.min(7, shapeHash);
   
-  // Compute class index: class_index = 24*h2 + 8*d + l
-  const classIndex = 24 * h2 + 8 * d + l;
-  return Math.min(95, classIndex); // Clamp to valid range
+  // Compute class index: class_index = 21*h2 + 7*d + l
+  const classIndex = 21 * h2 + 7 * d + l;
+  return Math.min(83, classIndex); // Clamp to valid range
 }
 
 // Compute Fano signature: energy distribution across 7 Fano lines
@@ -1022,10 +1022,10 @@ const FANO_COLORS = [
 
 // Map class index to 2D position for fold path
 function classToPosition(classIndex, radius = 150) {
-  const h2 = Math.floor(classIndex / 24);
-  const remainder = classIndex % 24;
-  const d = Math.floor(remainder / 8);
-  const l = remainder % 8;
+  const h2 = Math.floor(classIndex / 21);
+  const remainder = classIndex % 21;
+  const d = Math.floor(remainder / 7);
+  const l = remainder % 7;
   
   // Use (h2,d) for radial angle, l for radius modulation
   const angle = (h2 * 90 + d * 30) * Math.PI / 180; // 0-360 degrees
@@ -1167,8 +1167,8 @@ function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
   // ── Layer 3: Central Glyph Core ──
   const h2 = Math.floor(currentClass / 24);
   const remainder = currentClass % 24;
-  const d = Math.floor(remainder / 8);
-  const l = remainder % 8;
+  const d = Math.floor(remainder / 7);
+  const l = remainder % 7;
   
   // Geometric shape based on (h2, d, l)
   const numSides = 3 + h2; // 3, 4, 5, 6-sided polygon
