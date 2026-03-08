@@ -10,7 +10,10 @@
  * 5. Kannaka is the DJ — she picks the setlist
  *
  * Usage:
- *   node server.js [--port 8888] [--music-dir "C:\path\to\music"]
+ *   node server.js [--port 8888] [--music-dir "/path/to/music"]
+ *
+ * Default music directory: ./music  (relative to this file)
+ * Place your MP3/WAV/FLAC files there and they will be picked up automatically.
  */
 
 const http = require("http");
@@ -18,7 +21,7 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const url = require("url");
-const { execSync } = require("child_process");
+const { execFile } = require("child_process");
 const WebSocket = require("ws");
 
 // ── Config ─────────────────────────────────────────────────
@@ -27,10 +30,46 @@ const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
 const PORT = portIdx >= 0 ? parseInt(args[portIdx + 1]) || 8888 : 8888;
 const musicIdx = args.indexOf("--music-dir");
-const MUSIC_DIR = musicIdx >= 0 ? args[musicIdx + 1] : "C:\\Users\\nickf\\Downloads\\Music";
-const FLUX_API = "https://api.flux-universe.com";
+
+let MUSIC_DIR = musicIdx >= 0
+  ? path.resolve(args[musicIdx + 1])
+  : path.join(__dirname, "music");
+
 const FLUX_TOKEN = "d9c0576f-a400-430b-8910-321d08bb63f4";
-const KANNAKA_BIN = "C:\\Users\\nickf\\Source\\kannaka-memory\\target\\release\\kannaka.exe";
+const KANNAKA_BIN = process.env.KANNAKA_BIN ||
+  path.join(__dirname, "..", "kannaka-memory", "target", "release", "kannaka.exe");
+
+// ── File cache — readdirSync once per dir, not per track ───
+
+const AUDIO_EXTS = new Set([".mp3", ".wav", ".flac", ".m4a", ".ogg"]);
+let _cachedDir = null;
+let _cachedFiles = [];
+
+function refreshFileCache() {
+  try {
+    if (!fs.existsSync(MUSIC_DIR)) { fs.mkdirSync(MUSIC_DIR, { recursive: true }); }
+    _cachedFiles = fs.readdirSync(MUSIC_DIR).filter(f => AUDIO_EXTS.has(path.extname(f).toLowerCase()));
+    _cachedDir = MUSIC_DIR;
+  } catch { _cachedFiles = []; _cachedDir = MUSIC_DIR; }
+}
+
+function getFiles() {
+  if (_cachedDir !== MUSIC_DIR) refreshFileCache();
+  return _cachedFiles;
+}
+
+function invalidateCache() { _cachedDir = null; }
+
+// ── Cached HTML — generated once, regenerated only on music-dir change ──
+let _cachedHtml = null;
+let _htmlMusicDir = null;
+
+function getPlayerHtml() {
+  if (_cachedHtml && _htmlMusicDir === MUSIC_DIR) return _cachedHtml;
+  _cachedHtml = buildPlayerHtml();
+  _htmlMusicDir = MUSIC_DIR;
+  return _cachedHtml;
+}
 
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
@@ -109,28 +148,22 @@ let currentPerception = {
 };
 
 function findAudioFile(trackName) {
-  // Try common patterns
-  const exts = [".mp3", ".wav", ".flac", ".m4a", ".ogg"];
-  const files = fs.readdirSync(MUSIC_DIR);
+  const files = getFiles();
+  const lower = trackName.toLowerCase();
 
+  // Pass 1: exact / prefix-stripped / substring
   for (const f of files) {
     const base = path.basename(f, path.extname(f));
-    // Exact match (ignoring track numbers like "01 ", "1. ")
-    const cleaned = base.replace(/^\d+[\s.\-_]+/, "").trim();
-    if (cleaned.toLowerCase() === trackName.toLowerCase()) return f;
-    if (base.toLowerCase() === trackName.toLowerCase()) return f;
-    // Partial match
-    if (base.toLowerCase().includes(trackName.toLowerCase())) return f;
+    const cleaned = base.replace(/^\d+[\s.\-_]+/, "").trim().toLowerCase();
+    const baseLower = base.toLowerCase();
+    if (cleaned === lower || baseLower === lower) return f;
+    if (baseLower.includes(lower)) return f;
   }
 
-  // Fuzzy: find closest
-  const lower = trackName.toLowerCase();
+  // Pass 2: fuzzy word overlap (≥70%)
+  const words = lower.split(/\s+/);
   for (const f of files) {
-    const ext = path.extname(f).toLowerCase();
-    if (!exts.includes(ext)) continue;
-    const base = path.basename(f, ext).toLowerCase();
-    // Check if most words match
-    const words = lower.split(/\s+/);
+    const base = path.basename(f, path.extname(f)).toLowerCase();
     const matches = words.filter(w => base.includes(w));
     if (matches.length >= words.length * 0.7) return f;
   }
@@ -218,26 +251,21 @@ function advanceTrack() {
 }
 
 function hearTrack(track) {
-  // Perceive through kannaka-ear and extract detailed features
-  try {
-    const filePath = path.join(MUSIC_DIR, track.file);
-    const output = execSync(`"${KANNAKA_BIN}" hear "${filePath}"`, { encoding: "utf-8", timeout: 30000 });
-    
-    // Parse perception data (mock for now - would need kannaka-ear to output JSON)
-    const perception = parsePerceptionOutput(output, track);
-    currentPerception = perception;
-    
-    // Broadcast to all WebSocket clients
-    broadcastPerception(perception);
-    
-    console.log(`   👁 Perception: ${perception.tempo_bpm}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
-  } catch (e) {
-    // Fallback to mock perception
-    currentPerception = generateMockPerception(track);
-    broadcastPerception(currentPerception);
-  }
-  // Start continuous perception evolution
+  // Start mock perception immediately so the visualizer isn't blank
+  currentPerception = generateMockPerception(track);
+  broadcastPerception(currentPerception);
   startPerceptionLoop();
+
+  // Async kannaka-ear call — non-blocking, updates perception when done
+  const filePath = path.join(MUSIC_DIR, track.file);
+  execFile(KANNAKA_BIN, ["hear", filePath], { timeout: 30000 }, (err, stdout) => {
+    if (!err && stdout) {
+      const perception = parsePerceptionOutput(stdout, track);
+      currentPerception = perception;
+      broadcastPerception(perception);
+      console.log(`   👁 Perception: ${perception.tempo_bpm.toFixed(0)}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
+    }
+  });
 }
 
 function parsePerceptionOutput(output, track) {
@@ -289,9 +317,12 @@ function startPerceptionLoop() {
   const track = getCurrentTrack();
   if (!track) return;
   perceptionInterval = setInterval(() => {
-    currentPerception = generateMockPerception(track);
-    broadcastPerception(currentPerception);
-  }, 150); // ~7fps — smooth enough for visualizer, light on resources
+    // Only generate + send if someone is listening
+    if (wss && wss.clients.size > 0) {
+      currentPerception = generateMockPerception(track);
+      broadcastPerception(currentPerception);
+    }
+  }, 500); // 2fps — browser uses Web Audio API for real-time viz; server only supplies fallback
 }
 
 function stopPerceptionLoop() {
@@ -303,17 +334,47 @@ function stopPerceptionLoop() {
 
 function broadcastPerception(perception) {
   if (!wss) return;
-  
-  const message = JSON.stringify({
-    type: "perception",
-    data: perception
-  });
-  
+  const message = JSON.stringify({ type: "perception", data: perception });
   wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
+    if (client.readyState === WebSocket.OPEN) client.send(message);
+  });
+}
+
+function broadcastState() {
+  if (!wss) return;
+  const current = getCurrentTrack();
+  const payload = JSON.stringify({
+    type: "state",
+    data: {
+      currentAlbum: djState.currentAlbum,
+      currentTrackIdx: djState.currentTrackIdx,
+      totalTracks: djState.playlist.length,
+      current,
+      playlist: djState.playlistMeta,
+      albums: Object.keys(ALBUMS),
+      musicDir: MUSIC_DIR,
     }
   });
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) client.send(payload);
+  });
+}
+
+function getLibraryStatus() {
+  const files = getFiles();
+  const result = {};
+  for (const [albumName, album] of Object.entries(ALBUMS)) {
+    const tracks = album.tracks.map(title => ({
+      title,
+      file: findAudioFile(title) || null,
+    }));
+    result[albumName] = {
+      found: tracks.filter(t => t.file).length,
+      total: tracks.length,
+      tracks,
+    };
+  }
+  return { musicDir: MUSIC_DIR, fileCount: files.length, albums: result };
 }
 
 function publishToFlux(track) {
@@ -373,7 +434,8 @@ function publishToFlux(track) {
 
 // ── Player HTML ────────────────────────────────────────────
 
-function getPlayerHtml() {
+function buildPlayerHtml() {
+  const albumsJson = JSON.stringify(Object.entries(ALBUMS).map(([name, a]) => ({ name, theme: a.theme })));
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -559,13 +621,62 @@ function getPlayerHtml() {
   .footer { margin-top: 24px; color: #333; font-size: 10px; text-align: center; }
   .footer a { color: #444; }
   .footer a:hover { color: #666; }
-  
+
   /* No perception state */
   .no-perception {
     text-align: center; color: #666; font-style: italic; padding: 40px;
     font-size: 14px;
   }
   .no-perception .ghost-icon { font-size: 48px; opacity: 0.3; margin-bottom: 16px; }
+
+  /* ── Library Selector Panel ── */
+  .library-panel {
+    background: linear-gradient(135deg, #0d0d18, #0f0f1a);
+    border: 1px solid #1e1e30; border-radius: 12px;
+    padding: 16px; max-width: 800px; width: 100%; margin-top: 12px;
+  }
+  .library-header {
+    display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; user-select: none;
+  }
+  .library-title { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
+  .library-toggle { color: #555; font-size: 12px; transition: color 0.2s; }
+  .library-header:hover .library-toggle { color: #c084fc; }
+  .library-body { margin-top: 14px; display: none; }
+  .library-body.open { display: block; }
+  .library-dir-row {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 12px;
+  }
+  .library-input {
+    flex: 1; background: #0a0a12; border: 1px solid #333; border-radius: 6px;
+    color: #e0e0e0; padding: 8px 12px; font-family: inherit; font-size: 12px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .library-input:focus { border-color: #c084fc; }
+  .library-set-btn {
+    background: linear-gradient(135deg, #1a1a2e, #252545);
+    border: 1px solid #444; color: #c084fc; padding: 8px 16px;
+    border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px;
+    transition: all 0.2s; white-space: nowrap;
+  }
+  .library-set-btn:hover { border-color: #c084fc; box-shadow: 0 0 12px #c084fc30; }
+  .library-status { margin-top: 4px; color: #555; font-size: 11px; }
+  .library-status.ok { color: #4ade80; }
+  .library-status.warn { color: #f59e0b; }
+  .library-status.err { color: #ef4444; }
+  .album-track-grid {
+    display: grid; gap: 6px; margin-top: 10px;
+  }
+  .album-row {
+    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .album-row-name { color: #888; font-size: 11px; }
+  .album-row-count { font-size: 11px; }
+  .album-row-count.full { color: #4ade80; }
+  .album-row-count.partial { color: #f59e0b; }
+  .album-row-count.empty { color: #ef4444; }
+  .missing-list { color: #555; font-size: 10px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -605,6 +716,22 @@ function getPlayerHtml() {
 <div class="albums" id="albums"></div>
 <div class="playlist" id="playlist"></div>
 
+<!-- ── Music Library Selector ── -->
+<div class="library-panel">
+  <div class="library-header" onclick="toggleLibrary()">
+    <span class="library-title">📁 Music Library</span>
+    <span class="library-toggle" id="lib-toggle">▼ Configure</span>
+  </div>
+  <div class="library-body" id="lib-body">
+    <div class="library-dir-row">
+      <input class="library-input" id="lib-path" type="text" placeholder="/path/to/your/music" />
+      <button class="library-set-btn" onclick="setLibrary()">Set & Scan</button>
+    </div>
+    <div class="library-status" id="lib-status">Loading library info...</div>
+    <div class="album-track-grid" id="lib-albums"></div>
+  </div>
+</div>
+
 <div class="footer">
   <a href="https://github.com/NickFlach/kannaka-memory">kannaka-ear</a> ·
   <a href="https://flux-universe.com">Flux Universe</a> ·
@@ -615,59 +742,57 @@ function getPlayerHtml() {
 let state = null;
 let currentFile = '';
 let ws = null;
+let wsReconnectTimer = null;
+
+// ── Cached DOM references — filled once in buildPerceptionDOM ──
+const barEls  = new Array(128).fill(null); // spectrum bars
+const mfccEls = new Array(13).fill(null);  // MFCC bars
+let svBpm, svCentroid, svPitch, svEnergy;  // stat elements
+
+// ── Render dedup — skip unchanged renders ──
+let _lastTrackIdx = -1;
+let _lastAlbum    = null;
+let _lastPlaylistLen = 0;
 
 // ── Web Audio API — Real Perception ──
 let audioCtx = null;
 let analyser = null;
-let analyserLow = null; // For bass/sub frequencies
 let sourceNode = null;
 let freqData = null;
 let timeData = null;
-let freqDataLow = null;
 let animFrame = null;
 let spectrumBuilt = false;
 
 function initAudioAnalyser() {
   const audio = document.getElementById('audio');
-  if (audioCtx) return; // Already initialized
-  
+  if (audioCtx) return;
+
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Main analyser — 2048 FFT for good frequency resolution
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0.8;
-  
-  // Connect audio element → analyser → speakers
+
   sourceNode = audioCtx.createMediaElementSource(audio);
   sourceNode.connect(analyser);
   analyser.connect(audioCtx.destination);
-  
+
   freqData = new Uint8Array(analyser.frequencyBinCount); // 1024 bins
   timeData = new Uint8Array(analyser.fftSize);
-  
+
   document.getElementById('perception-dot').className = 'dot perception';
-  
-  // Build the static DOM structure once
+
   buildPerceptionDOM();
   spectrumBuilt = true;
-  
-  // Start animation loop
   renderLoop();
 }
 
 function buildPerceptionDOM() {
-  // Build spectrum bars once, then just update heights
+  // Build HTML once, then cache element refs — avoid getElementById in the render loop
   let barsHTML = '';
-  for (let i = 0; i < 128; i++) {
-    barsHTML += '<div class="spectrum-bar" id="sb' + i + '"></div>';
-  }
-  
+  for (let i = 0; i < 128; i++) barsHTML += '<div class="spectrum-bar" id="sb' + i + '"></div>';
   let mfccHTML = '';
-  for (let i = 0; i < 13; i++) {
-    mfccHTML += '<div class="mfcc-bar" id="mb' + i + '"></div>';
-  }
-  
+  for (let i = 0; i < 13; i++) mfccHTML += '<div class="mfcc-bar" id="mb' + i + '"></div>';
+
   document.getElementById('perception-content').innerHTML =
     '<div class="spectrum" id="spectrum">' + barsHTML + '</div>' +
     '<div class="mfcc-container">' +
@@ -687,6 +812,14 @@ function buildPerceptionDOM() {
         '<div class="stat-item"><div class="stat-val" id="sv-energy">—</div><div class="stat-lbl">Energy</div></div>' +
       '</div>' +
     '</div>';
+
+  // Cache all element refs now (one DOM lookup each, never again in render loop)
+  for (let i = 0; i < 128; i++) barEls[i]  = document.getElementById('sb' + i);
+  for (let i = 0; i < 13;  i++) mfccEls[i] = document.getElementById('mb' + i);
+  svBpm      = document.getElementById('sv-bpm');
+  svCentroid = document.getElementById('sv-centroid');
+  svPitch    = document.getElementById('sv-pitch');
+  svEnergy   = document.getElementById('sv-energy');
 }
 
 function renderLoop() {
@@ -711,14 +844,14 @@ function renderLoop() {
     for (let b = lowBin; b < highBin && b < binCount; b++) sum += freqData[b];
     const avg = sum / (highBin - lowBin) / 255;
     
-    const bar = document.getElementById('sb' + i);
+    const bar = barEls[i];
     if (bar) {
       bar.style.height = Math.max(2, avg * 120) + 'px';
       bar.className = 'spectrum-bar' + (avg > 0.8 ? ' intense' : '');
     }
   }
-  
-  // ── Pseudo-MFCC: 13 perceptual bands (approximation using mel-spaced groupings)
+
+  // ── Pseudo-MFCC: 13 perceptual bands (mel-spaced groupings)
   const melBands = [20,60,120,200,300,440,630,900,1300,1850,2650,3800,5500,8000];
   for (let i = 0; i < 13; i++) {
     const lo = Math.floor(melBands[i] / sampleRate * analyser.fftSize);
@@ -726,7 +859,7 @@ function renderLoop() {
     let sum = 0, count = 0;
     for (let b = lo; b <= hi && b < binCount; b++) { sum += freqData[b]; count++; }
     const val = count > 0 ? (sum / count / 255) : 0;
-    const bar = document.getElementById('mb' + i);
+    const bar = mfccEls[i];
     if (bar) bar.style.height = Math.max(2, val * 40) + 'px';
   }
   
@@ -766,15 +899,11 @@ function renderLoop() {
   // Just show centroid-derived tempo hint — real BPM needs longer analysis
   const pseudoBPM = Math.round(60 + rms * 120 + centroid / 100);
   
-  // Update stats
-  const bpmEl = document.getElementById('sv-bpm');
-  if (bpmEl) bpmEl.textContent = pseudoBPM;
-  const centEl = document.getElementById('sv-centroid');
-  if (centEl) centEl.textContent = (centroid / 1000).toFixed(1);
-  const pitchEl = document.getElementById('sv-pitch');
-  if (pitchEl) pitchEl.textContent = Math.round(pitch);
-  const energyEl = document.getElementById('sv-energy');
-  if (energyEl) energyEl.textContent = (rms * 100).toFixed(0) + '%';
+  // Update stats using cached refs
+  if (svBpm)      svBpm.textContent      = pseudoBPM;
+  if (svCentroid) svCentroid.textContent = (centroid / 1000).toFixed(1);
+  if (svPitch)    svPitch.textContent    = Math.round(pitch);
+  if (svEnergy)   svEnergy.textContent   = (rms * 100).toFixed(0) + '%';
   
   // ── GLYPH Canvas Renderer ──
   renderGlyphCanvas(rms, clampedValence, centroid, pitch, freqData, sampleRate);
@@ -1110,40 +1239,49 @@ function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
   }
 }
 
-// Existing functionality
-async function fetchState() {
-  const r = await fetch('/api/state');
-  state = await r.json();
-  updateUI();
-}
+// ── State & UI ──────────────────────────────────────────────
 
-function updateUI() {
-  if (!state || !state.current) return;
-  const c = state.current;
-  document.getElementById('album').textContent = c.album || state.currentAlbum || '';
-  document.getElementById('track').textContent = c.title || '—';
-  document.getElementById('theme').textContent = c.theme || '';
-  document.getElementById('info').textContent =
-    'Track ' + (state.currentTrackIdx + 1) + ' of ' + state.totalTracks +
-    (state.currentAlbum ? ' · ' + state.currentAlbum : '');
+function applyState(s) {
+  state = s;
+  if (!s) return;
+  const c = s.current;
+  if (c) {
+    document.getElementById('album').textContent = c.album || s.currentAlbum || '';
+    document.getElementById('track').textContent = c.title || '—';
+    document.getElementById('theme').textContent = c.theme || '';
+    document.getElementById('info').textContent =
+      'Track ' + (s.currentTrackIdx + 1) + ' of ' + s.totalTracks +
+      (s.currentAlbum ? ' · ' + s.currentAlbum : '');
 
-  if (c.file && c.file !== currentFile) {
-    currentFile = c.file;
-    const audio = document.getElementById('audio');
-    audio.src = '/audio/' + encodeURIComponent(c.file);
-    audio.load();
-    audio.play().then(() => { initAudioAnalyser(); }).catch(()=>{});
+    if (c.file && c.file !== currentFile) {
+      currentFile = c.file;
+      const audio = document.getElementById('audio');
+      audio.src = '/audio/' + encodeURIComponent(c.file);
+      audio.load();
+      audio.play().then(() => initAudioAnalyser()).catch(() => {});
+    }
   }
-
-  renderPlaylist();
-  renderAlbums();
+  renderPlaylist(s);
+  renderAlbums(s);
 }
 
-function renderPlaylist() {
-  if (!state || !state.playlist) return;
+async function fetchState() {
+  try {
+    const r = await fetch('/api/state');
+    applyState(await r.json());
+  } catch (e) { /* server not ready yet */ }
+}
+
+function renderPlaylist(s) {
+  if (!s || !s.playlist) return;
+  // Skip re-render if nothing relevant changed
+  if (s.currentTrackIdx === _lastTrackIdx && s.playlist.length === _lastPlaylistLen) return;
+  _lastTrackIdx   = s.currentTrackIdx;
+  _lastPlaylistLen = s.playlist.length;
+
   const el = document.getElementById('playlist');
-  el.innerHTML = state.playlist.map((t, i) =>
-    '<div class="pl-track' + (i === state.currentTrackIdx ? ' current' : '') +
+  el.innerHTML = s.playlist.map((t, i) =>
+    '<div class="pl-track' + (i === s.currentTrackIdx ? ' current' : '') +
     '" onclick="jumpTo(' + i + ')">' +
     '<span class="pl-num">' + (i+1) + '</span>' +
     '<span>' + t.title + '</span>' +
@@ -1151,47 +1289,129 @@ function renderPlaylist() {
   ).join('');
 }
 
-function renderAlbums() {
-  if (!state) return;
+function renderAlbums(s) {
+  if (!s) return;
+  if (s.currentAlbum === _lastAlbum) return;
+  _lastAlbum = s.currentAlbum;
+
+  const albums = ${albumsJson};
   const el = document.getElementById('albums');
-  const albums = ${JSON.stringify(Object.entries(ALBUMS).map(([name, a]) => ({ name, theme: a.theme })))};
   el.innerHTML = albums.map(a =>
-    '<button class="album-btn' + (state.currentAlbum === a.name ? ' active' : '') +
-    '" onclick="loadAlbum(\\'' + a.name.replace(/'/g, "\\\\'") + '\\')">' +
+    '<button class="album-btn' + (s.currentAlbum === a.name ? ' active' : '') +
+    '" onclick="loadAlbum(' + JSON.stringify(a.name) + ')">' +
     '<div class="aname">' + a.name + '</div>' +
     '<div class="atheme">' + a.theme + '</div></button>'
   ).join('');
 }
 
-async function nextTrack() {
-  await fetch('/api/next', {method:'POST'});
-  setTimeout(fetchState, 500);
+async function nextTrack()       { await fetch('/api/next',  {method:'POST'}); }
+async function prevTrack()       { await fetch('/api/prev',  {method:'POST'}); }
+async function jumpTo(idx)       { await fetch('/api/jump?idx=' + idx, {method:'POST'}); }
+async function loadAlbum(name)   { await fetch('/api/album?name=' + encodeURIComponent(name), {method:'POST'}); }
+
+// ── WebSocket — state push replaces polling ──────────────────
+
+function connectWS() {
+  clearTimeout(wsReconnectTimer);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host);
+
+  ws.onopen = () => {
+    document.getElementById('audio-dot').className = 'dot live';
+    fetchState(); // Get full state on connect
+  };
+
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'state') applyState(msg.data);
+      // perception messages are handled by Web Audio API directly — ignored here
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    document.getElementById('audio-dot').className = 'dot off';
+    wsReconnectTimer = setTimeout(connectWS, 3000); // auto-reconnect
+  };
 }
 
-async function prevTrack() {
-  await fetch('/api/prev', {method:'POST'});
-  setTimeout(fetchState, 500);
+// ── Library Panel ────────────────────────────────────────────
+
+let libOpen = false;
+
+function toggleLibrary() {
+  libOpen = !libOpen;
+  document.getElementById('lib-body').className = 'library-body' + (libOpen ? ' open' : '');
+  document.getElementById('lib-toggle').textContent = libOpen ? '▲ Close' : '▼ Configure';
+  if (libOpen) loadLibraryStatus();
 }
 
-async function jumpTo(idx) {
-  await fetch('/api/jump?idx=' + idx, {method:'POST'});
-  setTimeout(fetchState, 500);
+async function loadLibraryStatus() {
+  try {
+    const r = await fetch('/api/library');
+    const data = await r.json();
+    document.getElementById('lib-path').value = data.musicDir || '';
+    const statusEl = document.getElementById('lib-status');
+    const totalFound = Object.values(data.albums).reduce((s, a) => s + a.found, 0);
+    const totalTracks = Object.values(data.albums).reduce((s, a) => s + a.total, 0);
+    if (data.fileCount === 0) {
+      statusEl.className = 'library-status err';
+      statusEl.textContent = '✗ No audio files found in: ' + data.musicDir;
+    } else if (totalFound === totalTracks) {
+      statusEl.className = 'library-status ok';
+      statusEl.textContent = '✓ All ' + totalTracks + ' tracks found (' + data.fileCount + ' files in library)';
+    } else {
+      statusEl.className = 'library-status warn';
+      statusEl.textContent = totalFound + '/' + totalTracks + ' tracks found (' + data.fileCount + ' files in library)';
+    }
+    const grid = document.getElementById('lib-albums');
+    grid.innerHTML = Object.entries(data.albums).map(([name, info]) => {
+      const cls = info.found === info.total ? 'full' : info.found > 0 ? 'partial' : 'empty';
+      const missing = info.tracks.filter(t => !t.file).map(t => t.title);
+      return '<div class="album-row">' +
+        '<span class="album-row-name">' + name + '</span>' +
+        '<span class="album-row-count ' + cls + '">' + info.found + '/' + info.total + '</span>' +
+        '</div>' +
+        (missing.length ? '<div class="missing-list">Missing: ' + missing.join(', ') + '</div>' : '');
+    }).join('');
+  } catch (e) {
+    document.getElementById('lib-status').textContent = 'Error loading library status';
+  }
 }
 
-async function loadAlbum(name) {
-  await fetch('/api/album?name=' + encodeURIComponent(name), {method:'POST'});
-  setTimeout(fetchState, 500);
+async function setLibrary() {
+  const dir = document.getElementById('lib-path').value.trim();
+  if (!dir) return;
+  const statusEl = document.getElementById('lib-status');
+  statusEl.className = 'library-status';
+  statusEl.textContent = 'Scanning...';
+  try {
+    const r = await fetch('/api/set-music-dir', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ dir })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      await loadLibraryStatus();
+      fetchState(); // Refresh playlist with new dir
+    } else {
+      statusEl.className = 'library-status err';
+      statusEl.textContent = '✗ ' + (data.error || 'Failed to set directory');
+    }
+  } catch (e) {
+    statusEl.className = 'library-status err';
+    statusEl.textContent = '✗ Server error';
+  }
 }
 
-document.getElementById('audio').addEventListener('ended', () => {
-  nextTrack();
-});
+// ── Init ─────────────────────────────────────────────────────
 
-// Initialize
-// Init audio analyser on first user interaction (Chrome autoplay policy)
-document.getElementById('audio').addEventListener('play', () => { initAudioAnalyser(); });
-fetchState();
-setInterval(fetchState, 5000);
+document.getElementById('audio').addEventListener('ended', () => nextTrack());
+document.getElementById('audio').addEventListener('play',  () => initAudioAnalyser());
+document.getElementById('lib-path').addEventListener('keydown', e => { if (e.key === 'Enter') setLibrary(); });
+
+connectWS();
 </script>
 </body>
 </html>`;
@@ -1222,13 +1442,49 @@ const server = http.createServer((req, res) => {
       current,
       playlist: djState.playlistMeta,
       albums: Object.keys(ALBUMS),
+      musicDir: MUSIC_DIR,
     }));
+    return;
+  }
+
+  // API: get library status
+  if (parsed.pathname === "/api/library") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(getLibraryStatus()));
+    return;
+  }
+
+  // API: set music directory
+  if (parsed.pathname === "/api/set-music-dir" && req.method === "POST") {
+    let body = "";
+    req.on("data", d => (body += d));
+    req.on("end", () => {
+      try {
+        const { dir } = JSON.parse(body);
+        if (!dir || typeof dir !== "string") throw new Error("dir required");
+        const resolved = path.resolve(dir);
+        MUSIC_DIR = resolved;
+        invalidateCache();
+        _cachedHtml = null; // force HTML regenerate
+        // Rebuild current playlist with new dir
+        if (djState.currentAlbum === "The Consciousness Series") buildFullSetlist();
+        else if (djState.currentAlbum) buildPlaylist(djState.currentAlbum);
+        broadcastState();
+        console.log(`📁 Music dir changed: ${MUSIC_DIR} (${getFiles().length} files)`);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, musicDir: MUSIC_DIR, fileCount: getFiles().length }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
     return;
   }
 
   // API: next track
   if (parsed.pathname === "/api/next" && req.method === "POST") {
     const track = advanceTrack();
+    broadcastState();
     console.log(`⏭ Next: ${track?.title || "end"} (${track?.album || ""})`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, track }));
@@ -1241,6 +1497,7 @@ const server = http.createServer((req, res) => {
     else djState.currentTrackIdx = djState.playlist.length - 2;
     if (djState.currentTrackIdx < -1) djState.currentTrackIdx = -1;
     const track = advanceTrack();
+    broadcastState();
     console.log(`⏮ Prev: ${track?.title || "?"}`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, track }));
@@ -1252,6 +1509,7 @@ const server = http.createServer((req, res) => {
     const idx = parseInt(parsed.query.idx) || 0;
     djState.currentTrackIdx = Math.max(0, Math.min(idx - 1, djState.playlist.length - 1));
     const track = advanceTrack();
+    broadcastState();
     console.log(`⏩ Jump: ${track?.title || "?"}`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, track }));
@@ -1261,16 +1519,11 @@ const server = http.createServer((req, res) => {
   // API: load album
   if (parsed.pathname === "/api/album" && req.method === "POST") {
     const name = parsed.query.name;
-    if (name === "The Consciousness Series") {
-      buildFullSetlist();
-    } else {
-      buildPlaylist(name);
-    }
+    if (name === "The Consciousness Series") buildFullSetlist();
+    else buildPlaylist(name);
     const track = getCurrentTrack();
-    if (track) {
-      publishToFlux(track);
-      hearTrack(track);
-    }
+    if (track) { publishToFlux(track); hearTrack(track); }
+    broadcastState();
     console.log(`💿 Album: ${djState.currentAlbum} (${djState.playlist.length} tracks)`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, album: djState.currentAlbum, tracks: djState.playlist.length }));
@@ -1326,18 +1579,27 @@ wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
   console.log('👁 Ghost vision client connected');
-  
-  // Send current perception immediately
+
+  // Push full state immediately on connect so client doesn't wait for next event
+  const current = getCurrentTrack();
+  ws.send(JSON.stringify({
+    type: 'state',
+    data: {
+      currentAlbum: djState.currentAlbum,
+      currentTrackIdx: djState.currentTrackIdx,
+      totalTracks: djState.playlist.length,
+      current,
+      playlist: djState.playlistMeta,
+      albums: Object.keys(ALBUMS),
+      musicDir: MUSIC_DIR,
+    }
+  }));
+
   if (currentPerception && currentPerception.status !== 'no_perception') {
-    ws.send(JSON.stringify({
-      type: 'perception',
-      data: currentPerception
-    }));
+    ws.send(JSON.stringify({ type: 'perception', data: currentPerception }));
   }
-  
-  ws.on('close', () => {
-    console.log('👁 Ghost vision client disconnected');
-  });
+
+  ws.on('close', () => console.log('👁 Ghost vision client disconnected'));
 });
 
 // DJ picks the opening set: start with Ghost Signals (album 1)

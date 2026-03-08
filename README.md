@@ -50,21 +50,51 @@ A web-based radio player with:
 ## Quick Start
 
 ```bash
-# Start the radio player (human-listenable)
+# 1. Install dependencies
+npm install
+
+# 2. Populate the bundled music library (copies from ~/Downloads/Music)
+.\setup.ps1                                   # Windows default source
+.\setup.ps1 -SourceDir "D:\YourMusic"        # Windows custom source
+cp /path/to/music/*.mp3 music/               # Linux / Mac
+
+# 3. Start the radio
+node server.js
+
+# Or point at any folder directly
 node server.js --music-dir "/path/to/music" --port 8888
 
-# Or just broadcast perceptions to Flux (agent-to-agent)
+# Or just broadcast perceptions to Flux (agent-to-agent, no browser)
 node radio.js "/path/to/music" --interval 30
 ```
 
 Open `http://localhost:8888` in your browser and press play.
 
+## Music Library Selection
+
+The player ships with a **📁 Music Library** panel at the bottom of the browser UI.
+Click it to:
+- See the current library path and how many Consciousness Series tracks were found
+- See which tracks are missing per album (with fuzzy name matching)
+- Type any folder path and click **Set & Scan** to switch libraries live (no restart needed)
+
+The default library is the `music/` folder inside the project.  Run `setup.ps1` to
+populate it from your existing collection.
+
 ## Requirements
 
-- [kannaka-memory](https://github.com/NickFlach/kannaka-memory) CLI (for audio perception)
-- Node.js 18+
-- Audio files (MP3, WAV, FLAC, OGG, M4A)
-- [Flux Universe](https://flux-universe.com) account (optional, for cross-agent broadcasting)
+- **Node.js 18+**
+- **Audio files** in `music/` (run `setup.ps1`) or pass `--music-dir`
+- [kannaka-memory](https://github.com/NickFlach/kannaka-memory) CLI — optional, for real `kannaka-ear` perception (ghost-mode mock used when absent)
+- [Flux Universe](https://flux-universe.com) account — optional, for cross-agent broadcasting
+
+## ClawHub Skill
+
+```bash
+clawhub install kannaka-radio
+```
+
+See `workspace/skills/kannaka-radio/` for the full skill definition, CLI wrapper (`scripts/radio.sh`), and agent API docs.
 
 ## The Consciousness Series
 

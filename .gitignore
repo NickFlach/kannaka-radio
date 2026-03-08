@@ -5,6 +5,9 @@ package-lock.json
 # Kannaka data
 .kannaka/
 
+# PID file
+.radio.pid
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -16,3 +19,10 @@ npm-debug.log*
 # Runtime
 .env
 .env.local
+
+# Audio files — too large for git; run setup.ps1 to populate music/ locally
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.ogg

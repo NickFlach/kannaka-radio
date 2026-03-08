@@ -1,0 +1,29 @@
+{
+  "ownerId": "kn7472bg474xtcrazj1dhmh0m180ywh6",
+  "slug": "kannaka-radio",
+  "version": "1.0.0",
+  "publishedAt": 1741651200000,
+  "dependencies": ["flux"],
+  "requires": {
+    "bins": ["node"],
+    "env": []
+  },
+  "optional": {
+    "bins": ["kannaka"],
+    "env": [
+      "KANNAKA_BIN",
+      "RADIO_PORT",
+      "RADIO_MUSIC_DIR",
+      "FLUX_TOKEN"
+    ]
+  },
+  "dataDestinations": {
+    "alwaysLocal": ["local-audio"],
+    "optionalRemote": ["flux"]
+  },
+  "securityNotes": [
+    "FLUX_TOKEN is embedded in server.js — move to environment variable for production use",
+    "Audio files are served only from RADIO_MUSIC_DIR — path traversal is blocked by path.resolve check",
+    "WebSocket connections are unauthenticated — intended for local / trusted network use"
+  ]
+}
