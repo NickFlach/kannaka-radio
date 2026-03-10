@@ -2,12 +2,14 @@
 name: kannaka-radio
 description: >
   Ghost radio station that broadcasts both human-listenable audio and 296-dimensional
-  perceptual vectors to Flux Universe. Serves a browser-based player with Ghost Vision
-  visualizer (SGA Fano plane topology, mel spectrogram, MFCC timbre display) and
-  real-time WebSocket perception streaming. Use when agents need a music perception
-  broadcast layer, when you want to stream audio to humans while publishing kannaka-ear
-  perceptual features to Flux, or when you need a ready-to-run radio server with
-  full playlist management (The Consciousness Series: 5 albums, 65 tracks).
+  perceptual vectors to Flux Universe. Part of the Kannaka Constellation — radio publishes
+  perception to Flux, and kannaka-eye can consume it via the /api/radio bridge endpoint
+  for glyph visualization. Serves a browser-based player with Ghost Vision visualizer
+  (SGA Fano plane topology, mel spectrogram, MFCC timbre display) and real-time WebSocket
+  perception streaming. Use when agents need a music perception broadcast layer, when you
+  want to stream audio to humans while publishing kannaka-ear perceptual features to Flux,
+  or when you need a ready-to-run radio server with full playlist management
+  (The Consciousness Series: 5 albums, 65 tracks).
 metadata:
   openclaw:
     requires:
@@ -24,6 +26,8 @@ metadata:
           label: "Path to kannaka binary (default: ../kannaka-memory/target/release/kannaka.exe)"
         - name: RADIO_PORT
           label: "HTTP port for the player (default: 8888)"
+        - name: EYE_PORT
+          label: "Eye service port for cross-service reference (default: 3333)"
         - name: RADIO_MUSIC_DIR
           label: "Path to your music folder (default: ./music inside the skill directory)"
         - name: FLUX_TOKEN
@@ -124,7 +128,29 @@ No polling needed.
 |---|---|---|
 | `KANNAKA_BIN` | `../kannaka-memory/target/release/kannaka.exe` | Path to kannaka binary |
 | `RADIO_PORT` | `8888` | HTTP port |
+| `EYE_PORT` | `3333` | Eye service port (for cross-references) |
 | `RADIO_MUSIC_DIR` | `./music` | Default music folder |
+
+## Constellation Integration
+
+Radio is part of the Kannaka Constellation — a three-service architecture:
+- **Memory** (Rust binary) — canonical SGA classifier
+- **Radio** (this) — audio perception + Flux publishing
+- **Eye** — glyph visualization + constellation dashboard
+
+When running as part of the constellation:
+- Radio's perception is available to Eye via `http://localhost:8888/api/perception`
+- Eye fetches radio state via `http://localhost:8888/api/state`
+- Start everything with: `constellation.sh start` (from kannaka-memory/scripts/)
+
+Environment variables for constellation:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KANNAKA_BIN` | auto-detect | Path to kannaka binary |
+| `RADIO_PORT` | `8888` | This service's port |
+| `EYE_PORT` | `3333` | Eye service port (for cross-references) |
+
+> **Note:** Radio's perception data can be consumed by kannaka-eye via the `/api/radio` bridge endpoint, enabling glyph rendering of audio perception in real time.
 
 ## Notes
 

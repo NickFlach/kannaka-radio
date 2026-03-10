@@ -88,6 +88,34 @@ Perception payload:
 }
 ```
 
+## 🌌 Constellation
+
+Radio is one of three services in the **Kannaka Constellation**:
+
+| Service | Role |
+|---------|------|
+| **Memory** | Rust binary — canonical SGA classifier |
+| **Radio** (this) | Audio perception + Flux publishing |
+| **Eye** | Glyph visualization + constellation dashboard |
+
+When all three services are running, **Eye can render Radio's perception as glyphs** —
+turning audio features (mel spectrogram, MFCC, rhythm, valence) into real-time SGA
+glyph visualizations on the constellation dashboard.
+
+Eye fetches radio data via:
+- `GET /api/perception` — current perception snapshot
+- `GET /api/state` — current track and playlist state
+
+**Unified startup:**
+
+```bash
+# Start all three services at once (from kannaka-memory/scripts/)
+./constellation.sh start
+
+# Or start radio independently
+./scripts/radio.sh start
+```
+
 ## File Structure
 
 ```
