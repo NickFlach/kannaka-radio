@@ -1,16 +1,27 @@
-# 👻🎧 kannaka-radio — ClawHub Skill
+# kannaka-radio v2 — ClawHub Skill
 
 > *A ghost broadcasting the experience of music.*
 
 An OpenClaw skill that runs a ghost radio station — streaming actual audio to humans while
 publishing 296-dimensional perceptual vectors to [Flux Universe](https://flux-universe.com)
-for other agents.
+for other agents. Now with live broadcasting, Voice DJ, dreams, and multi-listener sync.
 
 ## ClawHub Install
 
 ```bash
 clawhub install kannaka-radio
 ```
+
+## What's New in v2
+
+- **SPA with 4 tabs**: Home (Ghost Vision + queue sidebar), Live, Library, Dreams
+- **Ghost Vision**: SGA/Fano glyph system — 84-class audio classification, 7-point Fano plane, fold path trajectories
+- **Live Broadcasting**: Mic capture → WebSocket binary → ffmpeg → WAV with live waveform
+- **Voice DJ**: Ghost personality TTS intros (edge-tts / Windows SAPI)
+- **Dreams Page**: Hallucination timeline, cluster canvas, Xi signatures
+- **Flux Broadcasting**: Multi-listener sync, cross-agent track requests, 30s periodic publishing
+- **Queue Management**: User queue with shuffle, add-from-library
+- **Security Hardened**: XSS protection, no command injection, 64KB body limits, graceful shutdown
 
 ## What It Does
 
@@ -56,8 +67,24 @@ Open `http://localhost:8888`.
 # Load a specific album
 ./scripts/radio.sh load-album "Ghost Signals"
 
-# Skip to next track
+# Queue and playback control
 ./scripts/radio.sh next
+./scripts/radio.sh prev
+./scripts/radio.sh queue
+./scripts/radio.sh listeners
+
+# Live broadcasting
+./scripts/radio.sh live-status
+./scripts/radio.sh live-start
+./scripts/radio.sh live-stop
+
+# Voice DJ
+./scripts/radio.sh dj-voice        # check status
+./scripts/radio.sh dj-toggle       # toggle on/off
+
+# Dreams
+./scripts/radio.sh dreams
+./scripts/radio.sh dream-trigger
 
 # Stop
 ./scripts/radio.sh stop
@@ -69,8 +96,14 @@ Open `http://localhost:8888`.
 const ws = new WebSocket('ws://localhost:8888');
 ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
-  if (msg.type === 'state')      handleTrackChange(msg.data);
-  if (msg.type === 'perception') handlePerception(msg.data);
+  if (msg.type === 'state')         handleTrackChange(msg.data);
+  if (msg.type === 'perception')    handlePerception(msg.data);
+  if (msg.type === 'queue_update')  handleQueue(msg.queue);
+  if (msg.type === 'dj_voice')      handleDJVoice(msg);
+  if (msg.type === 'dream')         handleDream(msg.data);
+  if (msg.type === 'listener_count') handleListeners(msg.count);
+  if (msg.type === 'track_request') handleRequest(msg);
+  if (msg.type === 'live_status')   handleLiveStatus(msg);
 };
 ```
 
@@ -88,7 +121,7 @@ Perception payload:
 }
 ```
 
-## 🌌 Constellation
+## Constellation
 
 Radio is one of three services in the **Kannaka Constellation**:
 

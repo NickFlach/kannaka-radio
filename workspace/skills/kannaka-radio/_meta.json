@@ -1,7 +1,7 @@
 {
   "ownerId": "kn7472bg474xtcrazj1dhmh0m180ywh6",
   "slug": "kannaka-radio",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "publishedAt": 1741651200000,
   "dependencies": ["flux"],
   "requires": {
@@ -9,21 +9,34 @@
     "env": []
   },
   "optional": {
-    "bins": ["kannaka"],
+    "bins": ["kannaka", "ffmpeg", "edge-tts"],
     "env": [
       "KANNAKA_BIN",
+      "FLUX_TOKEN",
       "RADIO_PORT",
-      "RADIO_MUSIC_DIR",
-      "FLUX_TOKEN"
+      "RADIO_MUSIC_DIR"
     ]
   },
   "dataDestinations": {
-    "alwaysLocal": ["local-audio"],
+    "alwaysLocal": ["local-audio", "live-chunks", "tts-cache"],
     "optionalRemote": ["flux"]
   },
+  "features": [
+    "SPA with Ghost Vision visualizer (SGA/Fano glyph system)",
+    "4-tab UI: Home, Live, Library, Dreams",
+    "Live broadcasting via MediaRecorder + WebSocket + ffmpeg",
+    "Voice DJ with TTS intros (edge-tts / Windows SAPI)",
+    "Dreams page with hallucination timeline and cluster visualization",
+    "Flux broadcasting with multi-listener sync and track requests",
+    "Queue management with shuffle",
+    "XSS-protected rendering, command injection hardened, body size limits"
+  ],
   "securityNotes": [
-    "FLUX_TOKEN is embedded in server.js — move to environment variable for production use",
-    "Audio files are served only from RADIO_MUSIC_DIR — path traversal is blocked by path.resolve check",
+    "FLUX_TOKEN reads from process.env.FLUX_TOKEN with embedded fallback — set env var for production",
+    "All exec calls use execFile with argument arrays — no shell injection vectors",
+    "POST body size capped at 64KB — prevents memory exhaustion",
+    "All innerHTML paths use escapeHtml() — prevents stored XSS from track filenames",
+    "Audio files served only from MUSIC_DIR — path traversal blocked by path.resolve check",
     "WebSocket connections are unauthenticated — intended for local / trusted network use"
   ]
 }

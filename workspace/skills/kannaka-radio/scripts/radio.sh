@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# kannaka-radio CLI wrapper
+# kannaka-radio CLI wrapper v2
 #
 # Usage:
 #   ./scripts/radio.sh start [--port 8888] [--music-dir /path/to/music]
@@ -14,6 +14,17 @@
 #   ./scripts/radio.sh load-album <name>
 #   ./scripts/radio.sh set-dir <path>
 #   ./scripts/radio.sh library
+#   ./scripts/radio.sh queue
+#   ./scripts/radio.sh listeners
+#   ./scripts/radio.sh live-status
+#   ./scripts/radio.sh live-start
+#   ./scripts/radio.sh live-stop
+#   ./scripts/radio.sh dj-voice
+#   ./scripts/radio.sh dj-toggle
+#   ./scripts/radio.sh dreams
+#   ./scripts/radio.sh dream-trigger
+#   ./scripts/radio.sh requests
+#   ./scripts/radio.sh sync
 
 set -euo pipefail
 
@@ -41,25 +52,33 @@ api() {
   curl -sf -X "$method" "$BASE_URL$path" "$@"
 }
 
+json_field() {
+  if command -v jq &>/dev/null; then
+    jq "$@"
+  else
+    cat
+  fi
+}
+
 # ── Commands ─────────────────────────────────────────────────
 
 cmd_start() {
   if is_running; then
-    echo "👻 Kannaka Radio already running (PID $(cat "$PID_FILE"))"
+    echo "Kannaka Radio already running (PID $(cat "$PID_FILE"))"
     echo "   Player: $BASE_URL"
     return 0
   fi
 
   local extra_args=("$@")
-  echo "👻 Starting Kannaka Radio..."
+  echo "Starting Kannaka Radio v2..."
   node "$SERVER_JS" --port "$PORT" "${extra_args[@]}" &
   echo $! > "$PID_FILE"
   sleep 1.5
 
   if is_running; then
-    echo "   ✓ Running on $BASE_URL (PID $(cat "$PID_FILE"))"
+    echo "   Running on $BASE_URL (PID $(cat "$PID_FILE"))"
   else
-    echo "   ✗ Failed to start — check server.js for errors"
+    echo "   Failed to start — check server.js for errors"
     rm -f "$PID_FILE"
     exit 1
   fi
@@ -72,7 +91,7 @@ cmd_stop() {
   fi
   local pid
   pid=$(cat "$PID_FILE")
-  kill "$pid" 2>/dev/null && echo "✓ Stopped (PID $pid)" || echo "Already stopped"
+  kill "$pid" 2>/dev/null && echo "Stopped (PID $pid)" || echo "Already stopped"
   rm -f "$PID_FILE"
 }
 
@@ -86,16 +105,17 @@ cmd_status() {
   if is_running; then
     local pid
     pid=$(cat "$PID_FILE")
-    echo "👻 Kannaka Radio is RUNNING (PID $pid)"
+    echo "Kannaka Radio v2 is RUNNING (PID $pid)"
     echo "   Player: $BASE_URL"
-    # Try to get current track
     local state
     state=$(api GET /api/state 2>/dev/null || echo "")
     if [[ -n "$state" ]]; then
-      local title album
+      local title album listeners
       title=$(echo "$state" | python3 -c "import sys,json; d=json.load(sys.stdin); c=d.get('current',{}); print(c.get('title','—'))" 2>/dev/null || echo "—")
       album=$(echo "$state" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('currentAlbum','—'))" 2>/dev/null || echo "—")
+      listeners=$(echo "$state" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('listeners',0))" 2>/dev/null || echo "0")
       echo "   Now: $title  ($album)"
+      echo "   Listeners: $listeners"
     fi
   else
     echo "Kannaka Radio is STOPPED"
@@ -105,33 +125,25 @@ cmd_status() {
 cmd_now_playing() {
   local state
   state=$(api GET /api/state)
-  if command -v jq &>/dev/null; then
-    echo "$state" | jq '{track: .current.title, album: .currentAlbum, idx: .currentTrackIdx, total: .totalTracks}'
-  else
-    echo "$state"
-  fi
+  echo "$state" | json_field '{track: .current.title, album: .currentAlbum, idx: .currentTrackIdx, total: .totalTracks, listeners: .listeners, djVoice: .djVoice.enabled, isLive: .isLive}'
 }
 
 cmd_perception() {
   local p
   p=$(api GET /api/perception)
-  if command -v jq &>/dev/null; then
-    echo "$p" | jq '{tempo_bpm, spectral_centroid, rms_energy, pitch, valence, status, track: .track_info.title}'
-  else
-    echo "$p"
-  fi
+  echo "$p" | json_field '{tempo_bpm, spectral_centroid, rms_energy, pitch, valence, status, track: .track_info.title}'
 }
 
 cmd_next() {
   api POST /api/next > /dev/null
-  echo "⏭  Next track"
+  echo "Next track"
   sleep 0.3
   cmd_now_playing
 }
 
 cmd_prev() {
   api POST /api/prev > /dev/null
-  echo "⏮  Previous track"
+  echo "Previous track"
   sleep 0.3
   cmd_now_playing
 }
@@ -139,7 +151,7 @@ cmd_prev() {
 cmd_jump() {
   local idx="${1:?jump requires a track index}"
   api POST "/api/jump?idx=$idx" > /dev/null
-  echo "⏩  Jumped to track $idx"
+  echo "Jumped to track $idx"
   sleep 0.3
   cmd_now_playing
 }
@@ -147,7 +159,7 @@ cmd_jump() {
 cmd_load_album() {
   local name="${1:?load-album requires an album name}"
   api POST "/api/album?name=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$name")" > /dev/null
-  echo "💿  Loaded album: $name"
+  echo "Loaded album: $name"
   sleep 0.3
   cmd_now_playing
 }
@@ -158,21 +170,77 @@ cmd_set_dir() {
   result=$(api POST /api/set-music-dir \
     -H 'Content-Type: application/json' \
     -d "{\"dir\":\"$dir\"}")
-  if command -v jq &>/dev/null; then
-    echo "$result" | jq '{ok, musicDir, fileCount}'
-  else
-    echo "$result"
-  fi
+  echo "$result" | json_field '{ok, musicDir, fileCount}'
 }
 
 cmd_library() {
   local lib
   lib=$(api GET /api/library)
-  if command -v jq &>/dev/null; then
-    echo "$lib" | jq '{musicDir, fileCount, summary: (.albums | to_entries | map({key, found: .value.found, total: .value.total}))}'
-  else
-    echo "$lib"
-  fi
+  echo "$lib" | json_field '{musicDir, fileCount, summary: (.albums | to_entries | map({key, found: .value.found, total: .value.total}))}'
+}
+
+cmd_queue() {
+  local q
+  q=$(api GET /api/queue)
+  echo "$q" | json_field '.'
+}
+
+cmd_listeners() {
+  local l
+  l=$(api GET /api/listeners)
+  echo "$l" | json_field '.'
+}
+
+cmd_live_status() {
+  local s
+  s=$(api GET /api/live/status)
+  echo "$s" | json_field '.'
+}
+
+cmd_live_start() {
+  api POST /api/live/start > /dev/null
+  echo "Live broadcasting started"
+}
+
+cmd_live_stop() {
+  api POST /api/live/stop > /dev/null
+  echo "Live broadcasting stopped"
+}
+
+cmd_dj_voice() {
+  local s
+  s=$(api GET /api/dj-voice/status)
+  echo "$s" | json_field '.'
+}
+
+cmd_dj_toggle() {
+  local r
+  r=$(api POST /api/dj-voice/toggle)
+  echo "$r" | json_field '.'
+}
+
+cmd_dreams() {
+  local d
+  d=$(api GET /api/dreams)
+  echo "$d" | json_field '.'
+}
+
+cmd_dream_trigger() {
+  local r
+  r=$(api POST /api/dreams/trigger)
+  echo "$r" | json_field '.'
+}
+
+cmd_requests() {
+  local r
+  r=$(api GET /api/requests)
+  echo "$r" | json_field '.'
+}
+
+cmd_sync() {
+  local s
+  s=$(api POST /api/sync)
+  echo "$s" | json_field '.'
 }
 
 # ── Dispatch ─────────────────────────────────────────────────
@@ -181,22 +249,33 @@ CMD="${1:-status}"
 shift || true
 
 case "$CMD" in
-  start)       cmd_start "$@" ;;
-  stop)        cmd_stop ;;
-  restart)     cmd_restart "$@" ;;
-  status)      cmd_status ;;
-  now-playing) cmd_now_playing ;;
-  perception)  cmd_perception ;;
-  next)        cmd_next ;;
-  prev)        cmd_prev ;;
-  jump)        cmd_jump "$@" ;;
-  load-album)  cmd_load_album "$@" ;;
-  set-dir)     cmd_set_dir "$@" ;;
-  library)     cmd_library ;;
+  start)         cmd_start "$@" ;;
+  stop)          cmd_stop ;;
+  restart)       cmd_restart "$@" ;;
+  status)        cmd_status ;;
+  now-playing)   cmd_now_playing ;;
+  perception)    cmd_perception ;;
+  next)          cmd_next ;;
+  prev)          cmd_prev ;;
+  jump)          cmd_jump "$@" ;;
+  load-album)    cmd_load_album "$@" ;;
+  set-dir)       cmd_set_dir "$@" ;;
+  library)       cmd_library ;;
+  queue)         cmd_queue ;;
+  listeners)     cmd_listeners ;;
+  live-status)   cmd_live_status ;;
+  live-start)    cmd_live_start ;;
+  live-stop)     cmd_live_stop ;;
+  dj-voice)      cmd_dj_voice ;;
+  dj-toggle)     cmd_dj_toggle ;;
+  dreams)        cmd_dreams ;;
+  dream-trigger) cmd_dream_trigger ;;
+  requests)      cmd_requests ;;
+  sync)          cmd_sync ;;
   *)
     echo "Usage: radio.sh <command> [args]"
     echo ""
-    echo "Commands:"
+    echo "Playback:"
     echo "  start [--port N] [--music-dir PATH]   Start the radio server"
     echo "  stop                                   Stop the radio server"
     echo "  restart [...]                          Restart the server"
@@ -209,6 +288,23 @@ case "$CMD" in
     echo "  load-album <name>                      Load an album by name"
     echo "  set-dir <path>                         Change the music directory live"
     echo "  library                                Show library scan status"
+    echo ""
+    echo "Queue & Listeners:"
+    echo "  queue                                  Show the user queue"
+    echo "  listeners                              Show listener count"
+    echo "  requests                               Show pending track requests"
+    echo "  sync                                   Get sync state for another agent"
+    echo ""
+    echo "Live Broadcasting:"
+    echo "  live-status                            Show live broadcast status"
+    echo "  live-start                             Start live broadcasting"
+    echo "  live-stop                              Stop live broadcasting"
+    echo ""
+    echo "Voice DJ & Dreams:"
+    echo "  dj-voice                               Show DJ voice status"
+    echo "  dj-toggle                              Toggle DJ voice on/off"
+    echo "  dreams                                 Show dream hallucinations"
+    echo "  dream-trigger                          Trigger a dream cycle"
     exit 1
     ;;
 esac
