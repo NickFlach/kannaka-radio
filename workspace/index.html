@@ -325,6 +325,18 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 .live-perception-log h4 { color: #06b6d4; margin-bottom: 0.5rem; font-size: 12px; }
 .live-status-text { color: #666; font-size: 13px; margin-top: 1rem; }
 
+/* Live status badge active state */
+.live-status-badge.active { display: inline-block; }
+
+/* Go Live button on-air state */
+.go-live-btn.on-air { background: #22c55e; animation: livepulse 2s infinite; }
+
+/* Live perception entries */
+.live-perception-entry {
+  font-size: 11px; color: #94a3b8; margin-bottom: 6px; padding: 6px 8px;
+  background: #0a0a0f; border-radius: 4px; border-left: 2px solid #ef4444;
+}
+
 /* ── Library Tab ── */
 .library-container { max-width: 1000px; margin: 0 auto; }
 .library-top {
@@ -587,6 +599,16 @@ let spectrumBuilt = false;
 
 // ── Config panel state ──
 let configOpen = false;
+
+// ── Live Broadcasting ──
+let isLive = false;
+let mediaRecorder = null;
+let liveAudioCtx = null;
+let liveAnalyser = null;
+let liveStream = null;
+let liveAnimFrame = null;
+let liveStartTime = null;
+let liveDurationInterval = null;
 
 // ══════════════════════════════════════════════════════
 //  Tab Switching
@@ -1079,6 +1101,8 @@ var ALBUMS_META = [
 function applyState(s) {
   state = s;
   if (!s) return;
+  // If live, don't update now-playing from playlist state
+  if (isLive) return;
   var c = s.current;
   if (c) {
     document.getElementById('album').textContent = c.album || s.currentAlbum || '';
@@ -1203,6 +1227,188 @@ function playQueueItem(index) {
     audio.src = '/audio/' + encodeURIComponent(filename);
     audio.load();
     audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  Live Broadcasting Functions
+// ══════════════════════════════════════════════════════
+
+var liveChunkCount = 0;
+
+async function startLive() {
+  try {
+    // Request mic access
+    liveStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 44100 }
+    });
+
+    // Notify server
+    await fetch('/api/live/start', { method: 'POST' });
+
+    // Set up audio context for live visualization
+    if (liveAudioCtx) { try { liveAudioCtx.close(); } catch(e) {} }
+    liveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var source = liveAudioCtx.createMediaStreamSource(liveStream);
+    liveAnalyser = liveAudioCtx.createAnalyser();
+    liveAnalyser.fftSize = 256;
+    source.connect(liveAnalyser);
+
+    // Set up MediaRecorder
+    var mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/webm';
+
+    mediaRecorder = new MediaRecorder(liveStream, { mimeType: mimeType });
+
+    mediaRecorder.ondataavailable = function(event) {
+      if (event.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(event.data);
+      }
+    };
+
+    mediaRecorder.start(15000); // 15-second chunks
+    isLive = true;
+    liveStartTime = Date.now();
+    liveChunkCount = 0;
+
+    updateLiveUI();
+    startLiveWaveform();
+    startLiveDurationCounter();
+
+    console.log('Live broadcasting started');
+  } catch(err) {
+    console.error('Failed to start live:', err);
+    alert('Could not access microphone. Please allow mic access and try again.');
+  }
+}
+
+function stopLive() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  if (liveStream) {
+    liveStream.getTracks().forEach(function(track) { track.stop(); });
+    liveStream = null;
+  }
+  if (liveAudioCtx) {
+    try { liveAudioCtx.close(); } catch(e) {}
+    liveAudioCtx = null;
+    liveAnalyser = null;
+  }
+  if (liveAnimFrame) {
+    cancelAnimationFrame(liveAnimFrame);
+    liveAnimFrame = null;
+  }
+  if (liveDurationInterval) {
+    clearInterval(liveDurationInterval);
+    liveDurationInterval = null;
+  }
+
+  isLive = false;
+  mediaRecorder = null;
+  liveStartTime = null;
+
+  // Notify server
+  fetch('/api/live/stop', { method: 'POST' });
+
+  updateLiveUI();
+  console.log('Live broadcasting stopped');
+}
+
+function updateLiveUI() {
+  var startBtn = document.getElementById('startLiveBtn');
+  var stopBtn = document.getElementById('stopLiveBtn');
+  var statusBadge = document.getElementById('liveStatus');
+  var goLiveBtn = document.querySelector('.go-live-btn');
+  var statusText = document.querySelector('.live-status-text');
+
+  if (isLive) {
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-block';
+    statusBadge.classList.add('active');
+    if (goLiveBtn) goLiveBtn.classList.add('on-air');
+    if (statusText) statusText.textContent = 'You are LIVE — broadcasting through Kannaka Radio';
+  } else {
+    startBtn.style.display = 'inline-block';
+    stopBtn.style.display = 'none';
+    statusBadge.classList.remove('active');
+    if (goLiveBtn) goLiveBtn.classList.remove('on-air');
+    if (statusText) statusText.textContent = 'Go Live to broadcast through the station';
+  }
+}
+
+function startLiveWaveform() {
+  var canvas = document.getElementById('liveWaveform');
+  var ctx = canvas.getContext('2d');
+
+  function draw() {
+    if (!liveAnalyser || !isLive) return;
+    liveAnimFrame = requestAnimationFrame(draw);
+
+    var bufferLength = liveAnalyser.frequencyBinCount;
+    var dataArray = new Uint8Array(bufferLength);
+    liveAnalyser.getByteFrequencyData(dataArray);
+
+    ctx.fillStyle = '#0a0a0f';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    var barWidth = canvas.width / bufferLength * 2;
+    var x = 0;
+
+    for (var i = 0; i < bufferLength; i++) {
+      var barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+
+      // Red-to-orange gradient for live mode
+      var gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+      gradient.addColorStop(0, '#ef4444');
+      gradient.addColorStop(1, '#f97316');
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+      x += barWidth + 1;
+    }
+  }
+  draw();
+}
+
+function startLiveDurationCounter() {
+  if (liveDurationInterval) clearInterval(liveDurationInterval);
+  liveDurationInterval = setInterval(function() {
+    if (!liveStartTime) return;
+    var elapsed = Math.floor((Date.now() - liveStartTime) / 1000);
+    var mins = Math.floor(elapsed / 60);
+    var secs = elapsed % 60;
+    var durationText = mins + ':' + (secs < 10 ? '0' : '') + secs;
+    var statusText = document.querySelector('.live-status-text');
+    if (statusText && isLive) {
+      statusText.textContent = 'LIVE for ' + durationText + ' — ' + liveChunkCount + ' chunks sent';
+    }
+  }, 1000);
+}
+
+function addLivePerception(text, timestamp) {
+  var list = document.getElementById('livePerceptionsList');
+  if (!list) return;
+
+  var entry = document.createElement('div');
+  entry.className = 'live-perception-entry';
+  var time = new Date(timestamp).toLocaleTimeString();
+  entry.innerHTML = '<small style="color:#666">' + time + '</small> ' + text;
+  list.insertBefore(entry, list.firstChild);
+
+  // Keep only last 20 perceptions
+  while (list.children.length > 20) {
+    list.removeChild(list.lastChild);
+  }
+
+  // Also add to the main perceptions panel if it exists
+  var mainPerceptions = document.getElementById('perceptionsList');
+  if (mainPerceptions) {
+    var clone = entry.cloneNode(true);
+    mainPerceptions.insertBefore(clone, mainPerceptions.firstChild);
+    while (mainPerceptions.children.length > 20) {
+      mainPerceptions.removeChild(mainPerceptions.lastChild);
+    }
   }
 }
 
@@ -1386,6 +1592,27 @@ function connectWS() {
         userQueue = msg.queue || [];
         renderQueue();
       }
+      if (msg.type === 'live_status') {
+        if (msg.active) {
+          var npAlbum = document.getElementById('album');
+          var npTrack = document.getElementById('track');
+          var npTheme = document.getElementById('theme');
+          if (npAlbum) npAlbum.textContent = 'LIVE BROADCAST';
+          if (npTrack) npTrack.textContent = 'LIVE';
+          if (npTheme) npTheme.textContent = 'Broadcasting through Kannaka Radio';
+        }
+        if (msg.active && !isLive) {
+          updateLiveUI();
+        } else if (!msg.active && isLive) {
+          stopLive();
+        }
+      }
+      if (msg.type === 'live_perception') {
+        addLivePerception(msg.text, msg.timestamp);
+      }
+      if (msg.type === 'new_chunk') {
+        liveChunkCount = msg.chunkNumber || (liveChunkCount + 1);
+      }
       // perception messages from server are supplementary;
       // Web Audio API handles real-time viz locally
     } catch(e) {}
@@ -1416,6 +1643,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Audio events
   document.getElementById('audio').addEventListener('ended', function() { nextTrack(); });
   document.getElementById('audio').addEventListener('play', function() { initAudioAnalyser(); });
+
+  // Live broadcast buttons
+  document.getElementById('startLiveBtn').addEventListener('click', startLive);
+  document.getElementById('stopLiveBtn').addEventListener('click', stopLive);
 
   // Config panel enter key
   document.getElementById('config-path').addEventListener('keydown', function(e) {

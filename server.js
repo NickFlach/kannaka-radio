@@ -146,8 +146,14 @@ let userQueue = [];
 
 // ── Live Broadcasting State (Wave 2) ───────────────────────
 
-let isLive = false;
-let liveChunks = [];
+const liveState = {
+  active: false,
+  startedAt: null,
+  chunkCount: 0,
+  savedTrackIdx: -1, // playlist position to resume
+  clients: new Set(), // WebSocket clients that are sending live audio
+};
+let chunkFiles = [];
 
 // ── Chunks Directory ───────────────────────────────────────
 
@@ -460,6 +466,120 @@ function publishToFlux(track) {
   req.end();
 }
 
+// ── Live Broadcasting ─────────────────────────────────────
+
+function cleanupChunks() {
+  if (chunkFiles.length > 10) {
+    const toDelete = chunkFiles.slice(0, -10);
+    toDelete.forEach(fp => {
+      try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch {}
+    });
+    chunkFiles = chunkFiles.slice(-10);
+  }
+}
+
+function convertToWav(inputBuffer, callback) {
+  const timestamp = Date.now();
+  const tempInput = path.join(CHUNKS_DIR, `temp_${timestamp}.webm`);
+  const outputPath = path.join(CHUNKS_DIR, `chunk_${timestamp}.wav`);
+
+  fs.writeFile(tempInput, inputBuffer, (err) => {
+    if (err) return callback(err);
+    exec(`ffmpeg -i "${tempInput}" -ar 22050 -ac 1 -y "${outputPath}"`, (error) => {
+      try { fs.unlinkSync(tempInput); } catch {}
+      if (error) return callback(error);
+      console.log(`   Converted chunk: ${path.basename(outputPath)}`);
+      chunkFiles.push(outputPath);
+      cleanupChunks();
+      // Write latest chunk path
+      fs.writeFile(path.join(CHUNKS_DIR, 'latest.txt'), outputPath, () => {});
+      callback(null, outputPath);
+    });
+  });
+}
+
+function goLive() {
+  if (liveState.active) return;
+  liveState.active = true;
+  liveState.startedAt = Date.now();
+  liveState.chunkCount = 0;
+  liveState.savedTrackIdx = djState.currentTrackIdx;
+  stopPerceptionLoop(); // Stop playlist perception
+  console.log(`\n\uD83D\uDD34 LIVE \u2014 Broadcasting started`);
+
+  // Broadcast live status to all clients
+  broadcastLiveStatus();
+
+  // Publish live status to Flux
+  publishLiveToFlux(true);
+}
+
+function stopLive() {
+  if (!liveState.active) return;
+  liveState.active = false;
+  const duration = Date.now() - liveState.startedAt;
+  liveState.startedAt = null;
+  liveState.clients.clear();
+  console.log(`\n\u23F9 LIVE ended \u2014 ${liveState.chunkCount} chunks, ${(duration / 1000).toFixed(0)}s`);
+
+  // Resume playlist from saved position
+  if (liveState.savedTrackIdx >= 0) {
+    djState.currentTrackIdx = liveState.savedTrackIdx;
+    const track = getCurrentTrack();
+    if (track) {
+      hearTrack(track);
+      publishToFlux(track);
+    }
+  }
+
+  broadcastLiveStatus();
+  broadcastState();
+  publishLiveToFlux(false);
+}
+
+function broadcastLiveStatus() {
+  if (!wss) return;
+  const msg = JSON.stringify({
+    type: "live_status",
+    active: liveState.active,
+    startedAt: liveState.startedAt,
+    chunkCount: liveState.chunkCount,
+  });
+  wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+}
+
+function publishLiveToFlux(isLive) {
+  const event = {
+    stream: "radio",
+    source: "kannaka-radio",
+    timestamp: Date.now(),
+    payload: {
+      entity_id: "pure-jade/radio-now-playing",
+      properties: {
+        status: isLive ? "live" : "playing",
+        type: "live-broadcast",
+        source: "kannaka-radio-live",
+        live_started: isLive ? new Date().toISOString() : null,
+        title: isLive ? "LIVE BROADCAST" : (getCurrentTrack()?.title || ""),
+      },
+    },
+  };
+  const data = JSON.stringify(event);
+  const req = https.request({
+    hostname: "api.flux-universe.com",
+    path: "/api/events",
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(data),
+      Authorization: `Bearer ${FLUX_TOKEN}`,
+    },
+  });
+  req.on("error", () => {});
+  req.write(data);
+  req.end();
+}
+
 // ── Server ─────────────────────────────────────────────────
 
 const MIME = {".mp3":"audio/mpeg",".wav":"audio/wav",".flac":"audio/flac",".ogg":"audio/ogg",".m4a":"audio/mp4"};
@@ -486,6 +606,7 @@ const server = http.createServer((req, res) => {
       playlist: djState.playlistMeta,
       albums: Object.keys(ALBUMS),
       musicDir: MUSIC_DIR,
+      isLive: liveState.active,
     }));
     return;
   }
@@ -638,6 +759,36 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Live API ──────────────────────────────────────────────
+
+  // POST /api/live/start — start live broadcasting
+  if (parsed.pathname === "/api/live/start" && req.method === "POST") {
+    goLive();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, live: true }));
+    return;
+  }
+
+  // POST /api/live/stop — stop live broadcasting
+  if (parsed.pathname === "/api/live/stop" && req.method === "POST") {
+    stopLive();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, live: false }));
+    return;
+  }
+
+  // GET /api/live/status — get live status
+  if (parsed.pathname === "/api/live/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      active: liveState.active,
+      startedAt: liveState.startedAt,
+      chunkCount: liveState.chunkCount,
+      duration: liveState.startedAt ? Date.now() - liveState.startedAt : 0,
+    }));
+    return;
+  }
+
   // Audio file serving
   if (parsed.pathname.startsWith("/audio/")) {
     const filename = decodeURIComponent(parsed.pathname.slice(7));
@@ -703,16 +854,69 @@ wss.on('connection', (ws) => {
   // Send queue state to new clients
   ws.send(JSON.stringify({ type: "queue_update", queue: userQueue }));
 
+  // Send live status to new clients
+  ws.send(JSON.stringify({
+    type: "live_status",
+    active: liveState.active,
+    startedAt: liveState.startedAt,
+    chunkCount: liveState.chunkCount,
+  }));
+
   // Handle incoming messages
   ws.on('message', (message) => {
     if (Buffer.isBuffer(message)) {
-      // Wave 2: live audio chunk processing
-      console.log(`\uD83C\uDF99 Live audio chunk: ${message.length} bytes`);
+      if (!liveState.active) {
+        // Auto-start live mode when first audio chunk arrives
+        goLive();
+      }
+      liveState.clients.add(ws);
+      liveState.chunkCount++;
+      console.log(`\uD83C\uDF99 Live chunk #${liveState.chunkCount}: ${message.length} bytes`);
+
+      // Convert to WAV and process through kannaka-ear
+      convertToWav(message, (err, wavPath) => {
+        if (err) {
+          console.error('Conversion failed:', err.message);
+          ws.send(JSON.stringify({ type: 'error', message: 'Audio conversion failed' }));
+          return;
+        }
+
+        // Broadcast new chunk to all clients
+        if (wss) {
+          const chunkMsg = JSON.stringify({
+            type: 'new_chunk',
+            path: wavPath,
+            timestamp: new Date().toISOString(),
+            chunkNumber: liveState.chunkCount,
+          });
+          wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(chunkMsg); });
+        }
+
+        // Process through kannaka-ear for live perception
+        execFile(KANNAKA_BIN, ["hear", wavPath], { timeout: 30000 }, (hearErr, stdout) => {
+          if (!hearErr && stdout) {
+            console.log(`   \uD83D\uDC41 Live perception generated`);
+            // Broadcast live perception
+            const livePerception = {
+              type: "live_perception",
+              text: stdout.trim().split('\n').slice(0, 3).join(' '),
+              timestamp: new Date().toISOString(),
+              chunkNumber: liveState.chunkCount,
+            };
+            if (wss) {
+              const msg = JSON.stringify(livePerception);
+              wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+            }
+          }
+        });
+      });
       return;
     }
+
     try {
       const parsed = JSON.parse(message.toString());
-      // Handle client messages if needed
+      if (parsed.type === 'go_live') goLive();
+      else if (parsed.type === 'stop_live') stopLive();
     } catch {}
   });
 
