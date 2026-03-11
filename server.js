@@ -181,6 +181,13 @@ if (!fs.existsSync(djVoice.voiceDir)) fs.mkdirSync(djVoice.voiceDir, { recursive
 const CHUNKS_DIR = path.join(__dirname, "chunks");
 if (!fs.existsSync(CHUNKS_DIR)) fs.mkdirSync(CHUNKS_DIR, { recursive: true });
 
+// ── Flux Broadcasting State ───────────────────────────────
+const listeners = {
+  count: 0,           // WebSocket client count
+  sessions: new Map(), // sessionId -> {ws, joinedAt, lastActivity}
+  requests: [],        // Track requests from other agents
+};
+
 // ── WebSocket & Perception State ────────────────────────────
 
 let wss = null;
@@ -851,6 +858,111 @@ function generateTrackClusters() {
   return { clusters, generated: new Date().toISOString() };
 }
 
+// ── Flux Broadcasting ─────────────────────────────────────
+
+function getListenerCount() {
+  return wss ? wss.clients.size : 0;
+}
+
+function broadcastListenerCount() {
+  if (!wss) return;
+  const count = getListenerCount();
+  const msg = JSON.stringify({ type: "listener_count", count });
+  wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+}
+
+function publishFullStateToFlux() {
+  const track = getCurrentTrack();
+  const event = {
+    stream: "radio",
+    source: "kannaka-radio",
+    timestamp: Date.now(),
+    payload: {
+      entity_id: "pure-jade/radio-now-playing",
+      properties: {
+        title: track ? track.title : (liveState.active ? "LIVE BROADCAST" : "Silence"),
+        album: track ? track.album : null,
+        track_number: track ? track.trackNum : null,
+        status: liveState.active ? "live" : (track ? "playing" : "idle"),
+        type: "radio-full-state",
+        source: "kannaka-radio",
+        dj_voice: djVoice.enabled,
+        listeners: getListenerCount(),
+        uptime: Math.floor(process.uptime()),
+        current_perception: {
+          tempo_bpm: currentPerception.tempo_bpm,
+          spectral_centroid_khz: currentPerception.spectral_centroid,
+          rms_energy: currentPerception.rms_energy,
+          pitch_hz: currentPerception.pitch,
+          emotional_valence: currentPerception.valence,
+          status: currentPerception.status,
+        },
+        playlist: {
+          album: djState.currentAlbum,
+          trackIdx: djState.currentTrackIdx,
+          totalTracks: djState.playlist.length,
+        },
+        pending_requests: listeners.requests.length,
+      },
+    },
+  };
+
+  const data = JSON.stringify(event);
+  const req = https.request({
+    hostname: "api.flux-universe.com",
+    path: "/api/events",
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(data),
+      Authorization: `Bearer ${FLUX_TOKEN}`,
+    },
+  });
+  req.on("error", () => {});
+  req.write(data);
+  req.end();
+}
+
+function handleTrackRequest(request) {
+  const { from, trackTitle, message: reqMessage } = request;
+
+  // Try to find the requested track
+  const file = trackTitle ? findAudioFile(trackTitle) : null;
+
+  listeners.requests.push({
+    from: from || "unknown-agent",
+    trackTitle: trackTitle || null,
+    message: reqMessage || null,
+    file,
+    timestamp: Date.now(),
+    fulfilled: false,
+  });
+
+  console.log(`\u{1F4E1} Track request from ${from}: "${trackTitle || reqMessage}"`);
+
+  // Broadcast request to all listeners
+  if (wss) {
+    const msg = JSON.stringify({
+      type: "track_request",
+      from: from || "unknown-agent",
+      trackTitle,
+      message: reqMessage,
+      found: !!file,
+      timestamp: new Date().toISOString(),
+    });
+    wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+  }
+
+  return { found: !!file, file };
+}
+
+// Periodic Flux state broadcast (every 30 seconds)
+setInterval(() => {
+  if (getListenerCount() > 0 || liveState.active) {
+    publishFullStateToFlux();
+  }
+}, 30000);
+
 // ── Server ─────────────────────────────────────────────────
 
 const MIME = {".mp3":"audio/mpeg",".wav":"audio/wav",".flac":"audio/flac",".ogg":"audio/ogg",".m4a":"audio/mp4"};
@@ -879,6 +991,7 @@ const server = http.createServer((req, res) => {
       musicDir: MUSIC_DIR,
       isLive: liveState.active,
       djVoice: { enabled: djVoice.enabled },
+      listeners: getListenerCount(),
     }));
     return;
   }
@@ -1143,6 +1256,65 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Flux Broadcasting API ───────────────────────────────
+
+  // GET /api/listeners — get listener count and session info
+  if (parsed.pathname === "/api/listeners") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      count: getListenerCount(),
+      uptime: Math.floor(process.uptime()),
+    }));
+    return;
+  }
+
+  // POST /api/request — submit a track request (from agents or listeners)
+  if (parsed.pathname === "/api/request" && req.method === "POST") {
+    let body = "";
+    req.on("data", d => body += d);
+    req.on("end", () => {
+      try {
+        const request = JSON.parse(body);
+        const result = handleTrackRequest(request);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ...result }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/requests — get pending track requests
+  if (parsed.pathname === "/api/requests") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(listeners.requests.slice(-20)));
+    return;
+  }
+
+  // POST /api/sync — get current playback state for syncing
+  if (parsed.pathname === "/api/sync") {
+    const track = getCurrentTrack();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      track,
+      isLive: liveState.active,
+      album: djState.currentAlbum,
+      trackIdx: djState.currentTrackIdx,
+      totalTracks: djState.playlist.length,
+      perception: {
+        tempo_bpm: currentPerception.tempo_bpm,
+        valence: currentPerception.valence,
+        energy: currentPerception.rms_energy,
+      },
+      listeners: getListenerCount(),
+      djVoice: djVoice.enabled,
+      timestamp: Date.now(),
+    }));
+    return;
+  }
+
   // Voice audio serving (DJ TTS files)
   if (parsed.pathname.startsWith("/audio-voice/")) {
     const filename = decodeURIComponent(parsed.pathname.slice(13));
@@ -1231,6 +1403,9 @@ wss.on('connection', (ws) => {
     chunkCount: liveState.chunkCount,
   }));
 
+  // Send listener count on connect
+  broadcastListenerCount();
+
   // Handle incoming messages
   ws.on('message', (message) => {
     if (Buffer.isBuffer(message)) {
@@ -1286,10 +1461,14 @@ wss.on('connection', (ws) => {
       const parsed = JSON.parse(message.toString());
       if (parsed.type === 'go_live') goLive();
       else if (parsed.type === 'stop_live') stopLive();
+      else if (parsed.type === 'track_request') handleTrackRequest(parsed);
     } catch {}
   });
 
-  ws.on('close', () => console.log('\uD83D\uDC41 Ghost vision client disconnected'));
+  ws.on('close', () => {
+    console.log('\uD83D\uDC41 Ghost vision client disconnected');
+    broadcastListenerCount();
+  });
 });
 
 // DJ picks the opening set: start with Ghost Signals (album 1)

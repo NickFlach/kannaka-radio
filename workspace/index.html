@@ -83,6 +83,29 @@ body {
   border: 1px solid #ef4444; color: #ef4444;
 }
 
+/* ── Flux Broadcasting ── */
+.listener-count {
+  position: fixed; top: 0.75rem; left: 0.75rem;
+  padding: 4px 10px; border-radius: 20px;
+  font-size: 10px; z-index: 1001;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #c084fc;
+}
+.listener-count .count { font-weight: bold; }
+.track-request-toast {
+  position: fixed; top: 50px; right: 1rem;
+  background: linear-gradient(135deg, #1a0a2e, #13131a);
+  border: 1px solid #8b5cf6; border-radius: 8px;
+  padding: 10px 14px; z-index: 1001;
+  color: #c084fc; font-size: 11px;
+  transform: translateX(120%); transition: transform 0.4s ease;
+  max-width: 280px;
+}
+.track-request-toast.visible { transform: translateX(0); }
+.track-request-from { color: #06b6d4; font-size: 10px; }
+.track-request-title { color: #fff; margin-top: 4px; }
+
 /* ── Go Live Floating Button ── */
 .go-live-btn {
   position: fixed; bottom: 2rem; right: 2rem;
@@ -551,6 +574,11 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 
 <div class="connection-status disconnected" id="connectionStatus">Disconnected</div>
 
+<!-- Listener Count -->
+<div class="listener-count" id="listenerCount">
+  <span class="count" id="listenerNum">0</span> listeners
+</div>
+
 <header class="header">
   <h1>KANNAKA RADIO</h1>
   <div class="subtitle">experiencing music through a ghost's eyes</div>
@@ -703,6 +731,7 @@ let wsReconnectTimer = null;
 let userQueue = [];
 let libraryData = null;
 let allTracks = [];
+var listenerCount = 0;
 
 // ── Render dedup ──
 let _lastTrackIdx = -1;
@@ -1442,6 +1471,28 @@ var ALBUMS_META = [
   { name: "The Transcendence Tapes", theme: "Beyond \u2014 the final transmission from the other side" }
 ];
 
+// ── Flux Broadcasting Functions ──
+
+function updateListenerCount(count) {
+  listenerCount = count;
+  var el = document.getElementById('listenerNum');
+  if (el) el.textContent = count;
+}
+
+function showTrackRequest(data) {
+  var toast = document.getElementById('requestToast');
+  var fromEl = document.getElementById('requestFrom');
+  var titleEl = document.getElementById('requestTitle');
+
+  if (!toast || !fromEl || !titleEl) return;
+
+  fromEl.textContent = (data.from || 'Unknown agent') + ' requests:';
+  titleEl.textContent = data.trackTitle || data.message || 'a track';
+
+  toast.classList.add('visible');
+  setTimeout(function() { toast.classList.remove('visible'); }, 5000);
+}
+
 function applyState(s) {
   state = s;
   if (!s) return;
@@ -1454,7 +1505,8 @@ function applyState(s) {
     document.getElementById('theme').textContent = c.theme || '';
     document.getElementById('info').textContent =
       'Track ' + (s.currentTrackIdx + 1) + ' of ' + s.totalTracks +
-      (s.currentAlbum ? ' \u00b7 ' + s.currentAlbum : '');
+      (s.currentAlbum ? ' \u00b7 ' + s.currentAlbum : '') +
+      ' | ' + listenerCount + ' listening';
 
     if (c.file && c.file !== currentFile) {
       currentFile = c.file;
@@ -2024,6 +2076,12 @@ function connectWS() {
         dreamsData.dreams.unshift(msg.data);
         renderDreamTimeline(dreamsData);
       }
+      if (msg.type === 'listener_count') {
+        updateListenerCount(msg.count);
+      }
+      if (msg.type === 'track_request') {
+        showTrackRequest(msg);
+      }
       // perception messages from server are supplementary;
       // Web Audio API handles real-time viz locally
     } catch(e) {}
@@ -2076,7 +2134,19 @@ document.addEventListener('DOMContentLoaded', function() {
     djVoiceEnabled = data.enabled;
     updateDJVoiceToggle();
   }).catch(function() {});
+
+  // Fetch initial listener count
+  fetch('/api/listeners').then(function(r) { return r.json(); }).then(function(data) {
+    updateListenerCount(data.count);
+  }).catch(function() {});
 });
 </script>
+
+<!-- Track Request Toast -->
+<div class="track-request-toast" id="requestToast">
+  <div class="track-request-from" id="requestFrom"></div>
+  <div class="track-request-title" id="requestTitle"></div>
+</div>
+
 </body>
 </html>
