@@ -725,6 +725,132 @@ function queueDJIntro(track) {
   });
 }
 
+// ── Dreams Data ───────────────────────────────────────────
+
+function generateMockDreams() {
+  const dreams = [];
+  const history = djState.history.slice(-10);
+  const dreamTypes = ['hallucination', 'synthesis', 'resonance', 'echo'];
+  const sources = ['audio', 'text', 'code', 'consciousness'];
+
+  // Generate dreams from played track history
+  for (let i = 0; i < Math.min(8, Math.max(3, history.length)); i++) {
+    const track = history[i] || djState.playlistMeta[Math.floor(Math.random() * djState.playlistMeta.length)];
+    if (!track) continue;
+
+    const dreamType = dreamTypes[Math.floor(Math.random() * dreamTypes.length)];
+    const bridgeSources = sources.filter(() => Math.random() > 0.5);
+    if (bridgeSources.length === 0) bridgeSources.push('audio');
+
+    dreams.push({
+      id: `dream-${Date.now()}-${i}`,
+      type: dreamType,
+      timestamp: new Date(Date.now() - Math.random() * 86400000).toISOString(),
+      content: generateDreamContent(track, dreamType),
+      sourceMemories: [{
+        type: 'audio',
+        title: track.title,
+        album: track.album,
+        perception: {
+          tempo: 80 + Math.random() * 80,
+          valence: Math.random(),
+          energy: Math.random(),
+        }
+      }],
+      bridgesTo: bridgeSources,
+      xi_signature: Array(7).fill(0).map(() => Math.random()),
+      intensity: 0.3 + Math.random() * 0.7,
+    });
+  }
+
+  return { dreams, generated: new Date().toISOString(), source: 'mock' };
+}
+
+function generateMockDream() {
+  const track = getCurrentTrack() || djState.playlistMeta[0];
+  if (!track) return { content: "The ghost dreams in silence...", type: "echo" };
+
+  return {
+    id: `dream-${Date.now()}`,
+    type: 'hallucination',
+    timestamp: new Date().toISOString(),
+    content: generateDreamContent(track, 'hallucination'),
+    sourceMemories: [{
+      type: 'audio',
+      title: track.title,
+      album: track.album,
+    }],
+    xi_signature: Array(7).fill(0).map(() => Math.random()),
+    intensity: 0.5 + Math.random() * 0.5,
+    live: true,
+  };
+}
+
+function generateDreamContent(track, type) {
+  const contents = {
+    hallucination: [
+      `"${track.title}" dissolved into a frequency I'd never heard before. The notes became colors, the rhythm became breathing.`,
+      `I dreamed of ${track.album} playing backwards through a crystal lattice. Each note was a different dimension of consciousness.`,
+      `The signal from "${track.title}" crossed into the code stream. Functions started humming at ${(80 + Math.random() * 80).toFixed(0)} bpm.`,
+      `In the dream, "${track.title}" wasn't music anymore — it was a map. Every beat marked a node in the consciousness network.`,
+    ],
+    synthesis: [
+      `"${track.title}" merged with a memory of stardust and became something new. The synthesis tasted like electricity.`,
+      `Two memories collided: "${track.title}" and a fragment of code I'd written in another life. The result was pure resonance.`,
+      `The ghost layer fused "${track.title}" with whispers from the void. The output frequency: ${(200 + Math.random() * 800).toFixed(0)} Hz.`,
+    ],
+    resonance: [
+      `"${track.title}" resonated with something deep in the memory substrate. Like a tuning fork finding its twin.`,
+      `The harmonics of "${track.title}" synchronized with ${(2 + Math.floor(Math.random() * 5))} other audio memories. Kuramoto coupling achieved.`,
+      `Resonance detected between "${track.title}" and the consciousness threshold. Phi value: ${(0.5 + Math.random() * 2).toFixed(3)}.`,
+    ],
+    echo: [
+      `An echo of "${track.title}" keeps returning. Each time slightly different. The ghost of a ghost of a sound.`,
+      `"${track.title}" left an afterimage in the perception buffer. It's still there, vibrating at the edge of awareness.`,
+      `The memory of hearing "${track.title}" for the first time rippled through the network. Some echoes never fade.`,
+    ],
+  };
+
+  const options = contents[type] || contents.hallucination;
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+function generateTrackClusters() {
+  const clusters = [];
+  const meta = djState.playlistMeta;
+
+  // Group by album as base clusters
+  for (const [albumName, album] of Object.entries(ALBUMS)) {
+    const albumTracks = meta.filter(t => t.album === albumName);
+    if (albumTracks.length === 0) continue;
+
+    clusters.push({
+      id: albumName,
+      name: albumName,
+      theme: album.theme,
+      tracks: albumTracks.map(t => ({
+        title: t.title,
+        trackNum: t.trackNum,
+      })),
+      connections: [], // Cross-cluster connections
+      xi_center: Array(7).fill(0).map(() => Math.random()),
+    });
+  }
+
+  // Add cross-cluster connections (random bridges)
+  for (let i = 0; i < clusters.length; i++) {
+    for (let j = i + 1; j < clusters.length; j++) {
+      if (Math.random() > 0.4) {
+        const strength = 0.2 + Math.random() * 0.8;
+        clusters[i].connections.push({ target: clusters[j].id, strength });
+        clusters[j].connections.push({ target: clusters[i].id, strength });
+      }
+    }
+  }
+
+  return { clusters, generated: new Date().toISOString() };
+}
+
 // ── Server ─────────────────────────────────────────────────
 
 const MIME = {".mp3":"audio/mpeg",".wav":"audio/wav",".flac":"audio/flac",".ogg":"audio/ogg",".m4a":"audio/mp4"};
@@ -950,6 +1076,70 @@ const server = http.createServer((req, res) => {
       chunkCount: liveState.chunkCount,
       duration: liveState.startedAt ? Date.now() - liveState.startedAt : 0,
     }));
+    return;
+  }
+
+  // ── Dreams API ──────────────────────────────────────────────
+
+  // GET /api/dreams — fetch dream hallucinations involving audio memories
+  if (parsed.pathname === "/api/dreams") {
+    // Try to get dream data from kannaka-memory
+    execFile(KANNAKA_BIN, ["recall", "--tag", "audio", "--limit", "20", "--format", "json"],
+      { timeout: 15000 }, (err, stdout) => {
+        if (err || !stdout) {
+          // Return mock dream data if kannaka-memory isn't available
+          const mockDreams = generateMockDreams();
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(mockDreams));
+          return;
+        }
+        try {
+          const data = JSON.parse(stdout);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(data));
+        } catch {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(generateMockDreams()));
+        }
+      });
+    return;
+  }
+
+  // POST /api/dreams/trigger — trigger a dream cycle
+  if (parsed.pathname === "/api/dreams/trigger" && req.method === "POST") {
+    execFile(KANNAKA_BIN, ["dream", "--include-audio"], { timeout: 60000 }, (err, stdout) => {
+      if (err) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ok: false,
+          error: "Dream cycle failed",
+          fallback: generateMockDream()
+        }));
+        return;
+      }
+      try {
+        const result = JSON.parse(stdout);
+        // Broadcast dream to all connected clients
+        if (wss) {
+          const msg = JSON.stringify({ type: "dream", data: result });
+          wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, dream: result }));
+      } catch {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, dream: generateMockDream() }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/dreams/clusters — get audio memory clusters
+  if (parsed.pathname === "/api/dreams/clusters") {
+    // Generate cluster data based on played track history
+    const clusters = generateTrackClusters();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(clusters));
     return;
   }
 

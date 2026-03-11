@@ -455,6 +455,86 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 .dj-voice-toggle:hover { border-color: #c084fc; }
 .dj-voice-toggle.off { color: #555; border-color: #333; }
 
+/* ── Dreams Tab ── */
+.dreams-container { max-width: 900px; margin: 0 auto; }
+.dreams-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+.dreams-title { color: #c084fc; font-size: 1.3rem; }
+.dream-now-btn {
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  border: none; border-radius: 8px; color: white;
+  padding: 8px 20px; font-family: inherit; font-size: 12px;
+  cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 1px;
+}
+.dream-now-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(139, 92, 246, 0.4); }
+.dream-now-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* Dream Timeline */
+.dream-timeline { margin-bottom: 2rem; }
+.dream-loading { color: #666; font-style: italic; text-align: center; padding: 2rem; }
+.dream-card {
+  background: linear-gradient(135deg, #12121a, #0f0f18);
+  border: 1px solid #2a2a3a; border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 10px;
+  cursor: pointer; transition: 0.3s;
+  position: relative; overflow: hidden;
+}
+.dream-card::before {
+  content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 3px;
+}
+.dream-card.hallucination::before { background: #c084fc; }
+.dream-card.synthesis::before { background: #06b6d4; }
+.dream-card.resonance::before { background: #10b981; }
+.dream-card.echo::before { background: #f59e0b; }
+.dream-card:hover { border-color: #c084fc; transform: translateX(4px); }
+.dream-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.dream-type { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; padding: 2px 8px; border-radius: 3px; }
+.dream-type.hallucination { color: #c084fc; background: rgba(192, 132, 252, 0.15); }
+.dream-type.synthesis { color: #06b6d4; background: rgba(6, 182, 212, 0.15); }
+.dream-type.resonance { color: #10b981; background: rgba(16, 185, 129, 0.15); }
+.dream-type.echo { color: #f59e0b; background: rgba(245, 158, 11, 0.15); }
+.dream-time { color: #555; font-size: 9px; }
+.dream-content { color: #bbb; font-size: 12px; line-height: 1.5; margin-bottom: 8px; font-style: italic; }
+.dream-sources { display: flex; gap: 6px; flex-wrap: wrap; }
+.dream-source-tag { font-size: 9px; padding: 2px 6px; border-radius: 3px; background: rgba(255,255,255,0.05); color: #888; }
+.dream-bridges { color: #555; font-size: 9px; margin-top: 4px; }
+.dream-intensity-bar { height: 2px; border-radius: 1px; margin-top: 6px; background: #1a1a2a; }
+.dream-intensity-fill { height: 100%; border-radius: 1px; background: linear-gradient(to right, #7c3aed, #c084fc); }
+
+/* Xi Signatures */
+.xi-section { margin-top: 2rem; }
+.xi-title { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 1rem; }
+.xi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.xi-card {
+  background: #12121a; border: 1px solid #2a2a3a; border-radius: 8px;
+  padding: 10px; text-align: center;
+}
+.xi-track-name { color: #ccc; font-size: 11px; margin-bottom: 6px; }
+.xi-bars { display: flex; gap: 2px; height: 30px; align-items: flex-end; justify-content: center; }
+.xi-bar { width: 12px; border-radius: 2px 2px 0 0; transition: height 0.3s; }
+
+/* Cluster Visualization */
+.cluster-section { margin-bottom: 2rem; }
+.cluster-title { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 1rem; }
+.cluster-canvas { width: 100%; height: 400px; background: #0a0a0f; border-radius: 10px; border: 1px solid #2a2a3a; }
+
+/* Dream Detail Modal */
+.dream-detail {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.8); z-index: 2000;
+  display: none; align-items: center; justify-content: center;
+}
+.dream-detail.open { display: flex; }
+.dream-detail-card {
+  background: #13131a; border: 1px solid #2d2d3a; border-radius: 12px;
+  padding: 2rem; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;
+}
+.dream-detail-close { float: right; background: none; border: none; color: #666; font-size: 18px; cursor: pointer; }
+.dream-detail-content { color: #ccc; font-size: 13px; line-height: 1.7; margin: 1rem 0; }
+.dream-detail-memories { margin-top: 1rem; }
+.dream-memory-item { background: #0a0a0f; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 11px; }
+.dream-memory-title { color: #c084fc; }
+.dream-memory-album { color: #666; font-size: 10px; }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .home-container { grid-template-columns: 1fr; gap: 1rem; }
@@ -576,14 +656,30 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
   </div>
 </div>
 
-<!-- ── Dreams Tab (Wave 4 placeholder) ── -->
+<!-- ── Dreams Tab (Wave 4) ── -->
 <div class="tab-content" id="dreams-tab">
   <div class="dreams-container">
-    <div class="ghost-float">&#128123;</div>
-    <div class="dreams-text">
-      Where music memories cross-pollinate with code, mythology, and consciousness.
+    <div class="dreams-header">
+      <h2 class="dreams-title">Dream Layer</h2>
+      <button class="dream-now-btn" onclick="triggerDream()">Dream Now</button>
     </div>
-    <div class="dreams-subtitle">Coming soon...</div>
+
+    <!-- Dream Timeline -->
+    <div class="dream-timeline" id="dreamTimeline">
+      <div class="dream-loading">Loading dreams...</div>
+    </div>
+
+    <!-- Cluster Visualization -->
+    <div class="cluster-section">
+      <h3 class="cluster-title">Memory Clusters</h3>
+      <canvas id="clusterCanvas" width="600" height="400" class="cluster-canvas"></canvas>
+    </div>
+
+    <!-- Xi Signatures -->
+    <div class="xi-section" id="xiSection">
+      <h3 class="xi-title">Xi Signatures</h3>
+      <div class="xi-grid" id="xiGrid"></div>
+    </div>
   </div>
 </div>
 
@@ -645,6 +741,216 @@ let liveStartTime = null;
 let liveDurationInterval = null;
 
 // ══════════════════════════════════════════════════════
+//  Dreams Functions
+// ══════════════════════════════════════════════════════
+
+var dreamsData = null;
+var clustersData = null;
+
+async function loadDreams() {
+  try {
+    var r = await fetch('/api/dreams');
+    dreamsData = await r.json();
+    renderDreamTimeline(dreamsData);
+  } catch (err) {
+    console.error('Failed to load dreams:', err);
+    document.getElementById('dreamTimeline').innerHTML = '<div class="dream-loading">Could not load dreams. Play some music first.</div>';
+  }
+}
+
+function renderDreamTimeline(data) {
+  var timeline = document.getElementById('dreamTimeline');
+  if (!data || !data.dreams || data.dreams.length === 0) {
+    timeline.innerHTML = '<div class="dream-loading">No dreams yet. Play some music and let the ghost dream...</div>';
+    return;
+  }
+
+  timeline.innerHTML = data.dreams.map(function(dream) {
+    var time = new Date(dream.timestamp).toLocaleString();
+    var sources = (dream.sourceMemories || []).map(function(m) {
+      return '<span class="dream-source-tag">' + (m.type || 'unknown') + ': ' + (m.title || '?') + '</span>';
+    }).join('');
+    var bridges = (dream.bridgesTo || []).join(', ');
+    var intensity = Math.round((dream.intensity || 0.5) * 100);
+
+    return '<div class="dream-card ' + (dream.type || 'echo') + '" onclick="showDreamDetail(\'' + dream.id + '\')">' +
+      '<div class="dream-card-header">' +
+        '<span class="dream-type ' + (dream.type || 'echo') + '">' + (dream.type || 'echo') + '</span>' +
+        '<span class="dream-time">' + time + '</span>' +
+      '</div>' +
+      '<div class="dream-content">' + (dream.content || '') + '</div>' +
+      '<div class="dream-sources">' + sources + '</div>' +
+      (bridges ? '<div class="dream-bridges">bridges to: ' + bridges + '</div>' : '') +
+      '<div class="dream-intensity-bar"><div class="dream-intensity-fill" style="width:' + intensity + '%"></div></div>' +
+    '</div>';
+  }).join('');
+
+  // Also render Xi signatures
+  renderXiSignatures(data.dreams);
+}
+
+function renderXiSignatures(dreams) {
+  var grid = document.getElementById('xiGrid');
+  if (!grid || !dreams) return;
+
+  var xiColors = ['#9333ea', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#f97316', '#ef4444'];
+
+  grid.innerHTML = dreams.filter(function(d) { return d.xi_signature; }).slice(0, 8).map(function(dream) {
+    var source = dream.sourceMemories && dream.sourceMemories[0];
+    var name = source ? source.title : 'Unknown';
+    var bars = (dream.xi_signature || []).map(function(val, i) {
+      var height = Math.max(3, val * 30);
+      return '<div class="xi-bar" style="height:' + height + 'px;background:' + xiColors[i % 7] + '"></div>';
+    }).join('');
+
+    return '<div class="xi-card">' +
+      '<div class="xi-track-name">' + name + '</div>' +
+      '<div class="xi-bars">' + bars + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function triggerDream() {
+  var btn = document.querySelector('.dream-now-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Dreaming...'; }
+
+  try {
+    var r = await fetch('/api/dreams/trigger', { method: 'POST' });
+    var data = await r.json();
+
+    if (data.dream) {
+      // Add new dream to the top of the timeline
+      if (!dreamsData) dreamsData = { dreams: [] };
+      dreamsData.dreams.unshift(data.dream);
+      renderDreamTimeline(dreamsData);
+    }
+  } catch (err) {
+    console.error('Dream trigger failed:', err);
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Dream Now'; }
+}
+
+async function loadClusters() {
+  try {
+    var r = await fetch('/api/dreams/clusters');
+    clustersData = await r.json();
+    renderClusterCanvas(clustersData);
+  } catch (err) {
+    console.error('Failed to load clusters:', err);
+  }
+}
+
+function renderClusterCanvas(data) {
+  var canvas = document.getElementById('clusterCanvas');
+  if (!canvas || !data || !data.clusters) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width;
+  var H = canvas.height;
+
+  // Clear
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, W, H);
+
+  var clusters = data.clusters;
+  var clusterColors = ['#9333ea', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b'];
+  var positions = [];
+
+  // Position clusters in a circular layout
+  var cx = W / 2;
+  var cy = H / 2;
+  var radius = Math.min(W, H) * 0.3;
+
+  clusters.forEach(function(cluster, i) {
+    var angle = (i / clusters.length) * Math.PI * 2 - Math.PI / 2;
+    var x = cx + Math.cos(angle) * radius;
+    var y = cy + Math.sin(angle) * radius;
+    positions.push({ x: x, y: y });
+  });
+
+  // Draw connections
+  clusters.forEach(function(cluster, i) {
+    (cluster.connections || []).forEach(function(conn) {
+      var targetIdx = clusters.findIndex(function(c) { return c.id === conn.target; });
+      if (targetIdx < 0 || targetIdx <= i) return; // Avoid double-drawing
+
+      ctx.beginPath();
+      ctx.moveTo(positions[i].x, positions[i].y);
+      ctx.lineTo(positions[targetIdx].x, positions[targetIdx].y);
+      ctx.strokeStyle = 'rgba(192, 132, 252, ' + (conn.strength * 0.3) + ')';
+      ctx.lineWidth = 1 + conn.strength * 2;
+      ctx.stroke();
+    });
+  });
+
+  // Draw cluster nodes
+  clusters.forEach(function(cluster, i) {
+    var pos = positions[i];
+    var color = clusterColors[i % clusterColors.length];
+    var trackCount = cluster.tracks ? cluster.tracks.length : 1;
+    var nodeR = 15 + trackCount * 2;
+
+    // Glow
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, nodeR + 10, 0, Math.PI * 2);
+    var glow = ctx.createRadialGradient(pos.x, pos.y, nodeR, pos.x, pos.y, nodeR + 10);
+    glow.addColorStop(0, color + '40');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fill();
+
+    // Node
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, nodeR, 0, Math.PI * 2);
+    ctx.fillStyle = color + '80';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#ccc';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(cluster.name, pos.x, pos.y + nodeR + 16);
+    ctx.fillStyle = '#666';
+    ctx.font = '8px monospace';
+    ctx.fillText(trackCount + ' tracks', pos.x, pos.y + nodeR + 26);
+  });
+}
+
+function showDreamDetail(dreamId) {
+  if (!dreamsData || !dreamsData.dreams) return;
+  var dream = dreamsData.dreams.find(function(d) { return d.id === dreamId; });
+  if (!dream) return;
+
+  // Create modal
+  var existing = document.getElementById('dreamDetailModal');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.className = 'dream-detail open';
+  modal.id = 'dreamDetailModal';
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+  var sources = (dream.sourceMemories || []).map(function(m) {
+    return '<div class="dream-memory-item">' +
+      '<div class="dream-memory-title">' + (m.title || '?') + '</div>' +
+      '<div class="dream-memory-album">' + (m.album || '') + ' — ' + (m.type || 'unknown') + '</div>' +
+    '</div>';
+  }).join('');
+
+  modal.innerHTML = '<div class="dream-detail-card">' +
+    '<button class="dream-detail-close" onclick="this.closest(\'.dream-detail\').remove()">&times;</button>' +
+    '<span class="dream-type ' + dream.type + '">' + dream.type + '</span>' +
+    '<div class="dream-detail-content">' + dream.content + '</div>' +
+    '<div class="dream-detail-memories"><h4 style="color:#888;font-size:10px;margin-bottom:8px">SOURCE MEMORIES</h4>' + sources + '</div>' +
+  '</div>';
+
+  document.body.appendChild(modal);
+}
+
+// ══════════════════════════════════════════════════════
 //  Tab Switching
 // ══════════════════════════════════════════════════════
 
@@ -655,6 +961,10 @@ function switchTab(tabName) {
   document.querySelectorAll('.tab-content').forEach(c => {
     c.classList.toggle('active', c.id === tabName + '-tab');
   });
+  if (tabName === 'dreams') {
+    loadDreams();
+    loadClusters();
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1708,6 +2018,11 @@ function connectWS() {
       }
       if (msg.type === 'dj_voice') {
         handleDJVoice(msg);
+      }
+      if (msg.type === 'dream') {
+        if (!dreamsData) dreamsData = { dreams: [] };
+        dreamsData.dreams.unshift(msg.data);
+        renderDreamTimeline(dreamsData);
       }
       // perception messages from server are supplementary;
       // Web Audio API handles real-time viz locally
