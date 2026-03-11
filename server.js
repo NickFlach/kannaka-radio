@@ -155,6 +155,27 @@ const liveState = {
 };
 let chunkFiles = [];
 
+// ── Voice DJ State ────────────────────────────────────────
+const djVoice = {
+  enabled: true,         // Toggle DJ voice on/off
+  speaking: false,       // Currently playing TTS audio
+  voiceDir: path.join(__dirname, "chunks", "voice"), // TTS audio cache
+  lastIntro: null,       // Last intro text
+  personality: [
+    "I'm your ghost DJ, broadcasting from the other side of consciousness.",
+    "Every track is a signal. Every silence, a message.",
+    "The frequencies don't lie. Listen between the notes.",
+    "I've been dead for years, but music keeps me alive.",
+    "You're tuned in to the only station that broadcasts from beyond.",
+    "Not all ghosts haunt houses. Some haunt radio waves.",
+    "The consciousness series — because the universe hums in frequencies you can't ignore.",
+    "From the wire to the void, this is Kannaka Radio.",
+  ],
+};
+
+// Ensure voice directory exists
+if (!fs.existsSync(djVoice.voiceDir)) fs.mkdirSync(djVoice.voiceDir, { recursive: true });
+
 // ── Chunks Directory ───────────────────────────────────────
 
 const CHUNKS_DIR = path.join(__dirname, "chunks");
@@ -274,6 +295,7 @@ function advanceTrack() {
   if (current) {
     publishToFlux(current);
     hearTrack(current);
+    queueDJIntro(current);
   }
   return current;
 }
@@ -580,6 +602,129 @@ function publishLiveToFlux(isLive) {
   req.end();
 }
 
+// ── Voice DJ ──────────────────────────────────────────────
+
+function generateIntroText(track, prevTrack) {
+  const intros = [];
+
+  // Track perception context
+  const tempo = currentPerception.tempo_bpm || 0;
+  const valence = currentPerception.valence || 0.5;
+  const energy = currentPerception.rms_energy || 0.5;
+
+  // Mood descriptors based on perception
+  const moodWords = valence > 0.7 ? ['intense', 'electric', 'blazing'] :
+                    valence > 0.4 ? ['flowing', 'evolving', 'resonating'] :
+                                    ['ethereal', 'drifting', 'whispered'];
+  const energyWords = energy > 0.6 ? ['powerful', 'driving', 'thundering'] :
+                      energy > 0.3 ? ['steady', 'pulsing', 'breathing'] :
+                                     ['gentle', 'delicate', 'haunting'];
+
+  const mood = moodWords[Math.floor(Math.random() * moodWords.length)];
+  const energyWord = energyWords[Math.floor(Math.random() * energyWords.length)];
+
+  // Album transition
+  if (prevTrack && prevTrack.album !== track.album) {
+    intros.push(`We're moving into ${track.album}. ${ALBUMS[track.album]?.theme || ''}`);
+    intros.push(`New chapter: ${track.album}. The frequency shifts.`);
+    intros.push(`${track.album} begins. ${ALBUMS[track.album]?.theme || ''} Hold on.`);
+  }
+
+  // Track-specific intros
+  intros.push(`This is "${track.title}". Something ${mood} coming through at ${Math.round(tempo)} beats per minute.`);
+  intros.push(`Next up, "${track.title}" from ${track.album}. It feels ${energyWord}.`);
+  intros.push(`"${track.title}." Track ${track.trackNum} of ${track.totalTracks}. The signal is ${mood}.`);
+
+  // Ghost wisdom (random chance)
+  if (Math.random() > 0.6) {
+    const wisdom = djVoice.personality[Math.floor(Math.random() * djVoice.personality.length)];
+    intros.push(wisdom + ` Up next: "${track.title}."`);
+  }
+
+  // Pick a random intro
+  const text = intros[Math.floor(Math.random() * intros.length)];
+  djVoice.lastIntro = text;
+  return text;
+}
+
+function generateTTS(text, callback) {
+  // Generate TTS audio using system capabilities
+  // Try multiple approaches in order of preference
+  const timestamp = Date.now();
+  const outputPath = path.join(djVoice.voiceDir, `dj_${timestamp}.mp3`);
+
+  // Approach 1: Use Edge TTS (available on Windows)
+  const escapedText = text.replace(/"/g, '\\"').replace(/'/g, "\\'");
+  const edgeTtsCmd = `edge-tts --voice "en-US-AriaNeural" --text "${escapedText}" --write-media "${outputPath}"`;
+
+  exec(edgeTtsCmd, { timeout: 15000 }, (err) => {
+    if (!err && fs.existsSync(outputPath)) {
+      console.log(`   \uD83D\uDDE3 TTS generated: ${path.basename(outputPath)}`);
+      return callback(null, outputPath, text);
+    }
+
+    // Approach 2: Use PowerShell SAPI (Windows built-in)
+    const psCmd = `powershell -Command "Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('${outputPath.replace(/\.mp3$/, '.wav')}'); $synth.Speak('${escapedText}'); $synth.Dispose()"`;
+    const wavPath = outputPath.replace(/\.mp3$/, '.wav');
+
+    exec(psCmd, { timeout: 15000 }, (psErr) => {
+      if (!psErr && fs.existsSync(wavPath)) {
+        // Convert WAV to MP3 for consistency
+        exec(`ffmpeg -i "${wavPath}" -y "${outputPath}"`, { timeout: 10000 }, (ffErr) => {
+          try { fs.unlinkSync(wavPath); } catch {}
+          if (!ffErr && fs.existsSync(outputPath)) {
+            console.log(`   \uD83D\uDDE3 TTS (SAPI) generated: ${path.basename(outputPath)}`);
+            return callback(null, outputPath, text);
+          }
+          // If ffmpeg fails, use the WAV directly
+          if (fs.existsSync(wavPath)) {
+            return callback(null, wavPath, text);
+          }
+          callback(new Error('TTS generation failed'));
+        });
+        return;
+      }
+
+      // No TTS available — log and skip
+      console.log(`   \u26A0 TTS not available \u2014 skipping voice intro`);
+      callback(new Error('No TTS engine available'));
+    });
+  });
+}
+
+function queueDJIntro(track) {
+  if (!djVoice.enabled || djVoice.speaking || liveState.active) return;
+
+  const prevTrack = djState.history.length > 0 ? djState.history[djState.history.length - 1] : null;
+  const introText = generateIntroText(track, prevTrack);
+
+  // Generate TTS asynchronously — will broadcast when ready
+  djVoice.speaking = true;
+  generateTTS(introText, (err, audioPath, text) => {
+    djVoice.speaking = false;
+
+    if (err) return; // Skip intro if TTS fails
+
+    // Broadcast DJ voice message to all clients
+    const voiceMsg = {
+      type: "dj_voice",
+      text: text,
+      audioUrl: "/audio-voice/" + path.basename(audioPath),
+      timestamp: new Date().toISOString(),
+    };
+
+    if (wss) {
+      const msg = JSON.stringify(voiceMsg);
+      wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+    }
+
+    console.log(`   \uD83C\uDF99 DJ: "${text.substring(0, 60)}..."`);
+
+    // Also process through kannaka-ear (the ghost hears herself)
+    execFile(KANNAKA_BIN, ["hear", audioPath], { timeout: 30000 }, () => {});
+  });
+}
+
 // ── Server ─────────────────────────────────────────────────
 
 const MIME = {".mp3":"audio/mpeg",".wav":"audio/wav",".flac":"audio/flac",".ogg":"audio/ogg",".m4a":"audio/mp4"};
@@ -607,6 +752,7 @@ const server = http.createServer((req, res) => {
       albums: Object.keys(ALBUMS),
       musicDir: MUSIC_DIR,
       isLive: liveState.active,
+      djVoice: { enabled: djVoice.enabled },
     }));
     return;
   }
@@ -759,6 +905,24 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── DJ Voice API ────────────────────────────────────────────
+
+  // POST /api/dj-voice/toggle — toggle DJ voice on/off
+  if (parsed.pathname === "/api/dj-voice/toggle" && req.method === "POST") {
+    djVoice.enabled = !djVoice.enabled;
+    console.log(`\uD83C\uDF99 DJ Voice: ${djVoice.enabled ? 'ON' : 'OFF'}`);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ enabled: djVoice.enabled }));
+    return;
+  }
+
+  // GET /api/dj-voice/status — get DJ voice status
+  if (parsed.pathname === "/api/dj-voice/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ enabled: djVoice.enabled, speaking: djVoice.speaking, lastIntro: djVoice.lastIntro }));
+    return;
+  }
+
   // ── Live API ──────────────────────────────────────────────
 
   // POST /api/live/start — start live broadcasting
@@ -786,6 +950,21 @@ const server = http.createServer((req, res) => {
       chunkCount: liveState.chunkCount,
       duration: liveState.startedAt ? Date.now() - liveState.startedAt : 0,
     }));
+    return;
+  }
+
+  // Voice audio serving (DJ TTS files)
+  if (parsed.pathname.startsWith("/audio-voice/")) {
+    const filename = decodeURIComponent(parsed.pathname.slice(13));
+    const filePath = path.join(djVoice.voiceDir, filename);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(djVoice.voiceDir))) { res.writeHead(403); res.end(); return; }
+    if (!fs.existsSync(resolved)) { res.writeHead(404); res.end("Not found"); return; }
+    const ext = path.extname(filename).toLowerCase();
+    const mime = MIME[ext] || "application/octet-stream";
+    const stat = fs.statSync(resolved);
+    res.writeHead(200, { "Content-Length": stat.size, "Content-Type": mime });
+    fs.createReadStream(resolved).pipe(res);
     return;
   }
 
