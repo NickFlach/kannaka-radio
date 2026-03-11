@@ -8,6 +8,9 @@ package-lock.json
 # PID file
 .radio.pid
 
+# Live recording chunks
+chunks/
+
 # OS files
 .DS_Store
 Thumbs.db

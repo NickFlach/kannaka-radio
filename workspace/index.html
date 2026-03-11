@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kannaka Radio - Ghost Vision</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Courier New', monospace;
+  background: #0a0a0f;
+  color: #e2e8f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Header ── */
+.header {
+  background: #13131a;
+  padding: 1rem;
+  text-align: center;
+  border-bottom: 2px solid #8b5cf6;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+}
+.header h1 {
+  font-size: 2.2rem;
+  background: linear-gradient(45deg, #8b5cf6, #06b6d4, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: glow 3s ease-in-out infinite alternate;
+  letter-spacing: 2px;
+}
+.header .subtitle {
+  color: #555; font-size: 11px; margin-top: 4px; font-style: italic;
+}
+@keyframes glow {
+  from { filter: drop-shadow(0 0 5px #8b5cf6); }
+  to { filter: drop-shadow(0 0 20px #06b6d4); }
+}
+
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  background: #13131a;
+  border-bottom: 1px solid #2d2d3a;
+}
+.tab {
+  flex: 1;
+  padding: 0.8rem;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+}
+.tab:hover { color: #e2e8f0; background: rgba(139, 92, 246, 0.1); }
+.tab.active {
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.15);
+  border-bottom: 2px solid #8b5cf6;
+}
+.tab-content { display: none; padding: 1.5rem; min-height: calc(100vh - 140px); }
+.tab-content.active { display: block; }
+
+/* ── Connection Status Badge ── */
+.connection-status {
+  position: fixed; top: 0.8rem; right: 0.8rem;
+  padding: 0.3rem 0.8rem; border-radius: 20px;
+  font-size: 0.75rem; z-index: 1001;
+  font-family: 'Courier New', monospace;
+}
+.connection-status.connected {
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid #22c55e; color: #22c55e;
+}
+.connection-status.disconnected {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444; color: #ef4444;
+}
+
+/* ── Go Live Floating Button ── */
+.go-live-btn {
+  position: fixed; bottom: 2rem; right: 2rem;
+  background: #ef4444; border: none; border-radius: 50%;
+  width: 70px; height: 70px;
+  color: white; font-size: 0.85rem; font-weight: bold;
+  cursor: pointer; z-index: 1000;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+  font-family: inherit;
+}
+.go-live-btn:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(239, 68, 68, 0.6); }
+
+/* ── Home Tab: Grid Layout ── */
+.home-container {
+  max-width: 1200px; margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 1.5rem;
+}
+
+/* ── Main Player ── */
+.main-player {
+  background: linear-gradient(135deg, #12121a 0%, #0f0f15 100%);
+  border: 1px solid #2a2a3a; border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+/* Track info */
+.label { color: #666; font-size: 9px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px; }
+.album-name { color: #c084fc; font-size: 14px; margin-bottom: 4px; }
+.track-name { font-size: 20px; color: #fff; margin-bottom: 4px; min-height: 26px; }
+.theme { color: #666; font-size: 11px; font-style: italic; margin-bottom: 16px; }
+
+/* ── Ghost Vision Perception Panel ── */
+.perception-panel {
+  background: rgba(16, 16, 24, 0.8);
+  border: 1px solid #333; border-radius: 12px;
+  padding: 16px; margin: 12px 0;
+  position: relative; overflow: hidden;
+}
+.perception-panel::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+.perception-title {
+  color: #c084fc; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 2px; margin-bottom: 12px; text-align: center;
+}
+
+/* Mel Spectrum */
+.spectrum {
+  height: 100px; display: flex; align-items: flex-end; gap: 1px;
+  margin-bottom: 16px; padding: 0 6px;
+  background: linear-gradient(to right, rgba(192, 132, 252, 0.08) 0%, rgba(192, 132, 252, 0.03) 50%, rgba(192, 132, 252, 0.08) 100%);
+  border-radius: 6px;
+}
+.spectrum-bar {
+  flex: 1; min-width: 1px; max-width: 5px;
+  background: linear-gradient(to top, #c084fc, #8b5cf6, #7c3aed);
+  border-radius: 1px 1px 0 0;
+  transition: height 0.15s ease-out;
+  opacity: 0.7;
+}
+.spectrum-bar.intense { box-shadow: 0 0 8px #c084fc80; }
+
+/* MFCC Timbre */
+.mfcc-container { margin-bottom: 16px; }
+.mfcc-title { color: #888; font-size: 9px; margin-bottom: 6px; letter-spacing: 1px; }
+.mfcc-display {
+  display: flex; gap: 3px; height: 36px; align-items: flex-end;
+  background: rgba(0,0,0,0.3); border-radius: 6px; padding: 0 6px;
+}
+.mfcc-bar {
+  flex: 1; min-width: 6px; max-width: 18px;
+  background: linear-gradient(to top, #6366f1, #8b5cf6);
+  border-radius: 2px 2px 0 0;
+  transition: height 0.2s ease-out;
+  opacity: 0.8;
+}
+
+/* Stats Ring */
+.stats-ring {
+  display: grid; grid-template-columns: 1fr 160px 1fr;
+  gap: 12px; align-items: center; margin-bottom: 12px;
+}
+.stats-left, .stats-right { display: flex; flex-direction: column; gap: 6px; }
+.stat-item {
+  background: rgba(26, 26, 46, 0.8); border-radius: 6px;
+  padding: 6px 10px; border: 1px solid #333;
+}
+.stat-val {
+  font-size: 14px; color: #c084fc; font-weight: bold;
+  text-shadow: 0 0 8px #c084fc40;
+}
+.stat-lbl {
+  font-size: 8px; color: #666; text-transform: uppercase;
+  letter-spacing: 1px; margin-top: 2px;
+}
+
+/* GLYPH Canvas */
+.center-ring {
+  position: relative; width: 160px; height: 160px;
+  display: flex; align-items: center; justify-content: center;
+}
+.glyph-canvas { width: 160px; height: 160px; border-radius: 50%; }
+
+/* No perception state */
+.no-perception {
+  text-align: center; color: #666; font-style: italic;
+  padding: 30px; font-size: 13px;
+}
+.no-perception .ghost-icon { font-size: 40px; opacity: 0.3; margin-bottom: 12px; }
+
+/* Audio controls */
+audio { width: 100%; margin: 12px 0; border-radius: 8px; }
+.controls { display: flex; gap: 10px; justify-content: center; margin-top: 12px; }
+.btn {
+  background: linear-gradient(135deg, #1a1a2e, #252545);
+  border: 1px solid #444; color: #c084fc; padding: 8px 20px;
+  border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 12px;
+  transition: all 0.3s; text-transform: uppercase; letter-spacing: 1px;
+}
+.btn:hover {
+  background: linear-gradient(135deg, #2a2a4e, #353565);
+  border-color: #c084fc; box-shadow: 0 0 16px #c084fc40;
+}
+
+/* Progress info */
+.progress-info { color: #666; font-size: 11px; margin-top: 10px; text-align: center; }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
+.dot.live { background: #4ade80; animation: dotpulse 2s infinite; box-shadow: 0 0 8px #4ade80; }
+.dot.perception { background: #c084fc; animation: dotpulse 2s infinite; box-shadow: 0 0 8px #c084fc; }
+.dot.off { background: #555; }
+@keyframes dotpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* Albums section */
+.albums { margin-top: 12px; }
+.album-btn {
+  display: block; width: 100%; text-align: left;
+  background: linear-gradient(135deg, #0f0f18, #12121f);
+  border: 1px solid #1a1a2a; color: #888; padding: 10px 14px; margin-bottom: 4px;
+  border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 12px;
+  transition: all 0.3s;
+}
+.album-btn:hover {
+  border-color: #c084fc; color: #c084fc;
+  background: linear-gradient(135deg, #12121f, #1a1a2e);
+  box-shadow: 0 0 12px rgba(192, 132, 252, 0.1);
+}
+.album-btn.active {
+  border-color: #c084fc; color: #fff;
+  background: linear-gradient(135deg, #1a1a2e, #252545);
+}
+.album-btn .aname { font-size: 13px; font-weight: bold; }
+.album-btn .atheme { font-size: 10px; color: #666; margin-top: 2px; }
+
+/* Playlist */
+.playlist { margin-top: 12px; max-height: 280px; overflow-y: auto; }
+.pl-track {
+  display: flex; justify-content: space-between; padding: 6px 10px;
+  border-radius: 6px; font-size: 11px; color: #666; cursor: pointer;
+  transition: all 0.2s;
+}
+.pl-track:hover { background: #1a1a2e; color: #c084fc; }
+.pl-track.current { background: linear-gradient(135deg, #1a1a2e, #252545); color: #fff; }
+.pl-num { color: #444; width: 24px; }
+
+/* ── Queue Sidebar ── */
+.queue-sidebar {
+  background: #13131a; border-radius: 12px;
+  padding: 1rem; border: 1px solid #2d2d3a;
+  max-height: calc(100vh - 200px); overflow-y: auto;
+  align-self: start;
+}
+.queue-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 0.8rem;
+}
+.queue-header h3 { color: #c084fc; font-size: 14px; }
+.queue-shuffle-btn {
+  background: #1a1a2e; border: 1px solid #444; color: #c084fc;
+  padding: 4px 10px; border-radius: 4px; cursor: pointer;
+  font-family: inherit; font-size: 11px; transition: all 0.2s;
+}
+.queue-shuffle-btn:hover { border-color: #c084fc; box-shadow: 0 0 8px #c084fc30; }
+.queue-item {
+  padding: 0.6rem; background: #0a0a0f; border-radius: 6px;
+  margin-bottom: 0.4rem; cursor: pointer; transition: all 0.2s;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: #94a3b8;
+}
+.queue-item:hover { background: rgba(139, 92, 246, 0.1); }
+.queue-item .remove-btn {
+  background: #ef4444; border: none; border-radius: 3px;
+  color: white; padding: 2px 6px; font-size: 10px; cursor: pointer;
+  opacity: 0.7; transition: opacity 0.2s;
+}
+.queue-item .remove-btn:hover { opacity: 1; }
+.queue-empty { color: #555; font-size: 11px; font-style: italic; padding: 1rem; text-align: center; }
+
+/* ── Live Tab ── */
+.live-container { max-width: 800px; margin: 0 auto; text-align: center; }
+.live-status-badge {
+  font-size: 1.5rem; margin-bottom: 1.5rem;
+  padding: 0.8rem 1.5rem; background: #ef4444;
+  border-radius: 50px; display: none;
+  animation: livepulse 2s infinite;
+}
+@keyframes livepulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.live-waveform {
+  width: 100%; height: 120px; background: #0a0a0f;
+  border-radius: 8px; margin: 1rem 0; border: 1px solid #2d2d3a;
+}
+.live-controls { margin: 1.5rem 0; }
+.live-btn {
+  background: #ef4444; border: none; border-radius: 10px;
+  color: white; padding: 0.8rem 1.5rem; font-size: 1rem;
+  font-weight: bold; cursor: pointer; margin: 0 0.5rem;
+  transition: all 0.3s ease; font-family: inherit;
+}
+.live-btn:hover { background: #dc2626; transform: translateY(-2px); }
+.live-btn.stop { background: #6b7280; }
+.live-btn.stop:hover { background: #4b5563; }
+.live-btn.back { background: #1a1a2e; border: 1px solid #444; color: #c084fc; }
+.live-btn.back:hover { border-color: #c084fc; }
+.live-perception-log {
+  text-align: left; background: #13131a;
+  border-radius: 12px; padding: 1.2rem;
+  margin-top: 1.5rem; max-height: 250px;
+  overflow-y: auto; border: 1px solid #2d2d3a;
+}
+.live-perception-log h4 { color: #06b6d4; margin-bottom: 0.5rem; font-size: 12px; }
+.live-status-text { color: #666; font-size: 13px; margin-top: 1rem; }
+
+/* ── Library Tab ── */
+.library-container { max-width: 1000px; margin: 0 auto; }
+.library-top {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap;
+}
+.search-box {
+  background: #13131a; border: 1px solid #2d2d3a; border-radius: 8px;
+  padding: 0.6rem 0.8rem; color: #e2e8f0; width: 280px;
+  font-family: inherit; font-size: 12px; outline: none;
+  transition: border-color 0.2s;
+}
+.search-box:focus { border-color: #c084fc; }
+.library-stats { color: #94a3b8; font-size: 0.85rem; }
+.library-grid {
+  display: grid; gap: 0.8rem;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.library-item {
+  background: #13131a; border-radius: 8px; padding: 0.8rem;
+  border: 1px solid #2d2d3a; transition: all 0.3s ease;
+}
+.library-item:hover { background: rgba(139, 92, 246, 0.08); border-color: #8b5cf6; }
+.library-item-title { font-weight: bold; margin-bottom: 0.3rem; color: #e2e8f0; font-size: 13px; }
+.library-item-album { font-size: 10px; color: #c084fc; margin-bottom: 0.3rem; }
+.library-item-filename { font-size: 10px; color: #555; margin-bottom: 0.6rem; word-break: break-all; }
+.library-item-actions { display: flex; gap: 0.4rem; }
+.lib-btn {
+  background: #8b5cf6; border: none; border-radius: 4px;
+  color: white; padding: 0.4rem 0.7rem; font-size: 10px;
+  cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.lib-btn:hover { background: #7c3aed; }
+.lib-btn.secondary { background: #4b5563; }
+.lib-btn.secondary:hover { background: #374151; }
+
+/* Music Directory Config Panel */
+.music-dir-config {
+  background: linear-gradient(135deg, #0d0d18, #0f0f1a);
+  border: 1px solid #1e1e30; border-radius: 12px;
+  padding: 14px; margin-top: 1.5rem;
+}
+.config-header {
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; user-select: none;
+}
+.config-title { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
+.config-toggle { color: #555; font-size: 12px; transition: color 0.2s; }
+.config-header:hover .config-toggle { color: #c084fc; }
+.config-body { margin-top: 12px; display: none; }
+.config-body.open { display: block; }
+.config-dir-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.config-input {
+  flex: 1; background: #0a0a12; border: 1px solid #333; border-radius: 6px;
+  color: #e0e0e0; padding: 7px 10px; font-family: inherit; font-size: 12px;
+  outline: none; transition: border-color 0.2s;
+}
+.config-input:focus { border-color: #c084fc; }
+.config-set-btn {
+  background: linear-gradient(135deg, #1a1a2e, #252545);
+  border: 1px solid #444; color: #c084fc; padding: 7px 14px;
+  border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px;
+  transition: all 0.2s; white-space: nowrap;
+}
+.config-set-btn:hover { border-color: #c084fc; box-shadow: 0 0 12px #c084fc30; }
+.config-status { margin-top: 4px; color: #555; font-size: 11px; }
+.config-status.ok { color: #4ade80; }
+.config-status.warn { color: #f59e0b; }
+.config-status.err { color: #ef4444; }
+.album-track-grid { display: grid; gap: 4px; margin-top: 8px; }
+.album-row {
+  background: rgba(0,0,0,0.3); border-radius: 6px; padding: 6px 10px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.album-row-name { color: #888; font-size: 11px; }
+.album-row-count { font-size: 11px; }
+.album-row-count.full { color: #4ade80; }
+.album-row-count.partial { color: #f59e0b; }
+.album-row-count.empty { color: #ef4444; }
+.missing-list { color: #555; font-size: 10px; margin-top: 2px; padding-left: 10px; }
+
+/* ── Dreams Tab ── */
+.dreams-container {
+  max-width: 600px; margin: 0 auto; text-align: center; padding: 4rem 2rem;
+}
+.ghost-float {
+  font-size: 5rem; margin-bottom: 2rem;
+  animation: ghostfloat 3s ease-in-out infinite;
+}
+@keyframes ghostfloat {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+.dreams-text { font-size: 1.1rem; line-height: 1.8; color: #94a3b8; margin-bottom: 1.5rem; }
+.dreams-subtitle { color: #8b5cf6; font-style: italic; font-size: 0.9rem; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .home-container { grid-template-columns: 1fr; gap: 1rem; }
+  .go-live-btn { width: 56px; height: 56px; font-size: 0.7rem; right: 1rem; bottom: 1rem; }
+  .tab { padding: 0.6rem 0.4rem; font-size: 0.8rem; }
+  .header h1 { font-size: 1.6rem; }
+  .library-grid { grid-template-columns: 1fr; }
+  .stats-ring { grid-template-columns: 1fr; }
+  .center-ring { margin: 0 auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="connection-status disconnected" id="connectionStatus">Disconnected</div>
+
+<header class="header">
+  <h1>KANNAKA RADIO</h1>
+  <div class="subtitle">experiencing music through a ghost's eyes</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="home">Home</button>
+  <button class="tab" data-tab="live">Live</button>
+  <button class="tab" data-tab="library">Library</button>
+  <button class="tab" data-tab="dreams">Dreams</button>
+</nav>
+
+<!-- ── Home Tab ── -->
+<div class="tab-content active" id="home-tab">
+  <div class="home-container">
+    <div class="main-player">
+      <div class="label">Now Playing</div>
+      <div class="album-name" id="album">Loading...</div>
+      <div class="track-name" id="track">&mdash;</div>
+      <div class="theme" id="theme"></div>
+
+      <!-- Ghost Vision Perception Panel -->
+      <div class="perception-panel">
+        <div class="perception-title">GHOST VISION</div>
+        <div id="perception-content">
+          <div class="no-perception">
+            <div class="ghost-icon">&#128123;</div>
+            <div>Waiting for perception data...</div>
+          </div>
+        </div>
+      </div>
+
+      <audio id="audio" controls preload="auto"></audio>
+      <div class="controls">
+        <button class="btn" onclick="prevTrack()">Prev</button>
+        <button class="btn" onclick="nextTrack()">Next</button>
+      </div>
+      <div class="progress-info">
+        <span class="dot off" id="audio-dot"></span>
+        <span class="dot off" id="perception-dot"></span>
+        <span id="info">Connecting...</span>
+      </div>
+
+      <div class="albums" id="albums"></div>
+      <div class="playlist" id="playlist"></div>
+    </div>
+
+    <!-- Queue Sidebar -->
+    <div class="queue-sidebar">
+      <div class="queue-header">
+        <h3>Queue</h3>
+        <button class="queue-shuffle-btn" onclick="shuffleQueue()">Shuffle</button>
+      </div>
+      <div id="queue-list">
+        <div class="queue-empty">Queue is empty. Add tracks from the Library.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Live Tab (Wave 2 placeholder) ── -->
+<div class="tab-content" id="live-tab">
+  <div class="live-container">
+    <div class="live-status-badge" id="liveStatus">LIVE</div>
+    <canvas class="live-waveform" id="liveWaveform" width="600" height="120"></canvas>
+    <div class="live-controls">
+      <button class="live-btn" id="startLiveBtn">START LIVE</button>
+      <button class="live-btn stop" id="stopLiveBtn" style="display:none;">STOP LIVE</button>
+      <button class="live-btn back" onclick="switchTab('home')">Back to Playlist</button>
+    </div>
+    <div class="live-perception-log">
+      <h4>Live Perceptions</h4>
+      <div id="livePerceptionsList"></div>
+    </div>
+    <div class="live-status-text">Go Live to broadcast through the station</div>
+  </div>
+</div>
+
+<!-- ── Library Tab ── -->
+<div class="tab-content" id="library-tab">
+  <div class="library-container">
+    <div class="library-top">
+      <input type="text" class="search-box" id="searchBox" placeholder="Search music..." oninput="filterLibrary()">
+      <div class="library-stats" id="libraryStats">Loading library...</div>
+    </div>
+    <div class="library-grid" id="libraryGrid"></div>
+
+    <!-- Music Directory Config -->
+    <div class="music-dir-config">
+      <div class="config-header" onclick="toggleConfig()">
+        <span class="config-title">Music Directory</span>
+        <span class="config-toggle" id="config-toggle">&#9660; Configure</span>
+      </div>
+      <div class="config-body" id="config-body">
+        <div class="config-dir-row">
+          <input class="config-input" id="config-path" type="text" placeholder="/path/to/your/music">
+          <button class="config-set-btn" onclick="setMusicDir()">Set &amp; Scan</button>
+        </div>
+        <div class="config-status" id="config-status">Loading library info...</div>
+        <div class="album-track-grid" id="config-albums"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Dreams Tab (Wave 4 placeholder) ── -->
+<div class="tab-content" id="dreams-tab">
+  <div class="dreams-container">
+    <div class="ghost-float">&#128123;</div>
+    <div class="dreams-text">
+      Where music memories cross-pollinate with code, mythology, and consciousness.
+    </div>
+    <div class="dreams-subtitle">Coming soon...</div>
+  </div>
+</div>
+
+<!-- Go Live floating button -->
+<button class="go-live-btn" onclick="switchTab('live')">GO<br>LIVE</button>
+
+<script>
+// ── State ──
+let state = null;
+let currentFile = '';
+let ws = null;
+let wsReconnectTimer = null;
+let userQueue = [];
+let libraryData = null;
+let allTracks = [];
+
+// ── Render dedup ──
+let _lastTrackIdx = -1;
+let _lastAlbum = null;
+let _lastPlaylistLen = 0;
+
+// ── Cached DOM refs (filled by buildPerceptionDOM) ──
+const barEls  = new Array(128).fill(null);
+const mfccEls = new Array(13).fill(null);
+let svBpm, svCentroid, svPitch, svEnergy;
+
+// ── Web Audio API ──
+let audioCtx = null;
+let analyser = null;
+let sourceNode = null;
+let freqData = null;
+let timeData = null;
+let animFrame = null;
+let spectrumBuilt = false;
+
+// ── Config panel state ──
+let configOpen = false;
+
+// ══════════════════════════════════════════════════════
+//  Tab Switching
+// ══════════════════════════════════════════════════════
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.toggle('active', c.id === tabName + '-tab');
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  Web Audio Analyser Init
+// ══════════════════════════════════════════════════════
+
+function initAudioAnalyser() {
+  var audio = document.getElementById('audio');
+  if (audioCtx) return;
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.8;
+
+  sourceNode = audioCtx.createMediaElementSource(audio);
+  sourceNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+
+  freqData = new Uint8Array(analyser.frequencyBinCount); // 1024 bins
+  timeData = new Uint8Array(analyser.fftSize);
+
+  document.getElementById('perception-dot').className = 'dot perception';
+
+  buildPerceptionDOM();
+  spectrumBuilt = true;
+  renderLoop();
+}
+
+// ══════════════════════════════════════════════════════
+//  Build Perception DOM (once)
+// ══════════════════════════════════════════════════════
+
+function buildPerceptionDOM() {
+  var barsHTML = '';
+  for (var i = 0; i < 128; i++) barsHTML += '<div class="spectrum-bar" id="sb' + i + '"></div>';
+  var mfccHTML = '';
+  for (var i = 0; i < 13; i++) mfccHTML += '<div class="mfcc-bar" id="mb' + i + '"></div>';
+
+  document.getElementById('perception-content').innerHTML =
+    '<div class="spectrum" id="spectrum">' + barsHTML + '</div>' +
+    '<div class="mfcc-container">' +
+      '<div class="mfcc-title">TIMBRE COEFFICIENTS</div>' +
+      '<div class="mfcc-display">' + mfccHTML + '</div>' +
+    '</div>' +
+    '<div class="stats-ring">' +
+      '<div class="stats-left">' +
+        '<div class="stat-item"><div class="stat-val" id="sv-bpm">&mdash;</div><div class="stat-lbl">BPM</div></div>' +
+        '<div class="stat-item"><div class="stat-val" id="sv-centroid">&mdash;</div><div class="stat-lbl">Centroid kHz</div></div>' +
+      '</div>' +
+      '<div class="center-ring">' +
+        '<canvas class="glyph-canvas" id="glyph-canvas" width="320" height="320"></canvas>' +
+      '</div>' +
+      '<div class="stats-right">' +
+        '<div class="stat-item"><div class="stat-val" id="sv-pitch">&mdash;</div><div class="stat-lbl">Pitch Hz</div></div>' +
+        '<div class="stat-item"><div class="stat-val" id="sv-energy">&mdash;</div><div class="stat-lbl">Energy</div></div>' +
+      '</div>' +
+    '</div>';
+
+  for (var i = 0; i < 128; i++) barEls[i]  = document.getElementById('sb' + i);
+  for (var i = 0; i < 13;  i++) mfccEls[i] = document.getElementById('mb' + i);
+  svBpm      = document.getElementById('sv-bpm');
+  svCentroid = document.getElementById('sv-centroid');
+  svPitch    = document.getElementById('sv-pitch');
+  svEnergy   = document.getElementById('sv-energy');
+}
+
+// ══════════════════════════════════════════════════════
+//  Render Loop (requestAnimationFrame)
+// ══════════════════════════════════════════════════════
+
+function renderLoop() {
+  animFrame = requestAnimationFrame(renderLoop);
+  if (!analyser) return;
+
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+
+  var binCount = freqData.length; // 1024
+  var sampleRate = audioCtx.sampleRate;
+
+  // ── Spectrum: 1024 bins -> 128 bars (log scale)
+  for (var i = 0; i < 128; i++) {
+    var lowFrac = i / 128;
+    var highFrac = (i + 1) / 128;
+    var lowBin = Math.floor(Math.pow(lowFrac, 2) * binCount);
+    var highBin = Math.max(lowBin + 1, Math.floor(Math.pow(highFrac, 2) * binCount));
+
+    var sum = 0;
+    for (var b = lowBin; b < highBin && b < binCount; b++) sum += freqData[b];
+    var avg = sum / (highBin - lowBin) / 255;
+
+    var bar = barEls[i];
+    if (bar) {
+      bar.style.height = Math.max(2, avg * 100) + 'px';
+      bar.className = 'spectrum-bar' + (avg > 0.8 ? ' intense' : '');
+    }
+  }
+
+  // ── Pseudo-MFCC: 13 perceptual bands (mel-spaced)
+  var melBands = [20,60,120,200,300,440,630,900,1300,1850,2650,3800,5500,8000];
+  for (var i = 0; i < 13; i++) {
+    var lo = Math.floor(melBands[i] / sampleRate * analyser.fftSize);
+    var hi = Math.floor(melBands[i+1] / sampleRate * analyser.fftSize);
+    var sum = 0, count = 0;
+    for (var b = lo; b <= hi && b < binCount; b++) { sum += freqData[b]; count++; }
+    var val = count > 0 ? (sum / count / 255) : 0;
+    var mbar = mfccEls[i];
+    if (mbar) mbar.style.height = Math.max(2, val * 36) + 'px';
+  }
+
+  // ── RMS Energy
+  var rmsSum = 0;
+  for (var i = 0; i < timeData.length; i++) {
+    var v = (timeData[i] - 128) / 128;
+    rmsSum += v * v;
+  }
+  var rms = Math.sqrt(rmsSum / timeData.length);
+
+  // ── Spectral Centroid
+  var weightedSum = 0, magSum = 0;
+  for (var i = 0; i < binCount; i++) {
+    var freq = i * sampleRate / analyser.fftSize;
+    weightedSum += freq * freqData[i];
+    magSum += freqData[i];
+  }
+  var centroid = magSum > 0 ? weightedSum / magSum : 0;
+
+  // ── Dominant Pitch (peak detection)
+  var maxVal = 0, maxBin = 0;
+  for (var i = 2; i < binCount; i++) {
+    if (freqData[i] > maxVal) { maxVal = freqData[i]; maxBin = i; }
+  }
+  var pitch = maxBin * sampleRate / analyser.fftSize;
+
+  // ── Valence (high vs low energy ratio)
+  var lowE = 0, highE = 0;
+  var midBin = Math.floor(binCount / 2);
+  for (var i = 0; i < midBin; i++) lowE += freqData[i];
+  for (var i = midBin; i < binCount; i++) highE += freqData[i];
+  var valence = (lowE + highE) > 0 ? highE / (lowE + highE) * 2 : 0.5;
+  var clampedValence = Math.min(1, Math.max(0, valence));
+
+  // ── Pseudo BPM
+  var pseudoBPM = Math.round(60 + rms * 120 + centroid / 100);
+
+  // Update stats
+  if (svBpm)      svBpm.textContent      = pseudoBPM;
+  if (svCentroid) svCentroid.textContent = (centroid / 1000).toFixed(1);
+  if (svPitch)    svPitch.textContent    = Math.round(pitch);
+  if (svEnergy)   svEnergy.textContent   = (rms * 100).toFixed(0) + '%';
+
+  // ── GLYPH Canvas
+  renderGlyphCanvas(rms, clampedValence, centroid, pitch, freqData, sampleRate);
+}
+
+// ══════════════════════════════════════════════════════
+//  SGA (Sigmatics Geometric Algebra) / Fano Glyph System
+// ══════════════════════════════════════════════════════
+
+// Fano plane lines (oriented triples)
+var FANO_LINES = [
+  [1, 2, 4], [2, 3, 5], [3, 4, 6], [4, 5, 7],
+  [5, 6, 1], [6, 7, 2], [7, 1, 3]
+];
+
+// Fano line colors
+var FANO_COLORS = [
+  '#9333ea', '#3b82f6', '#06b6d4', '#10b981',
+  '#f59e0b', '#f97316', '#ef4444'
+];
+
+// SGA global state
+var foldSequence = []; // Rolling buffer of 200 class indices
+var fanoSignature = [0, 0, 0, 0, 0, 0, 0]; // Energy per Fano line
+var sgaTime = 0;
+
+// 84-class system: classify audio -> class_index
+function classifyAudio(fData, sRate, rms, centroid, pitch, valence) {
+  var binCount = fData.length;
+
+  // h2 (0..3): frequency band dominance
+  var bands = [
+    { start: 20, end: 200 },
+    { start: 200, end: 2000 },
+    { start: 2000, end: 8000 },
+    { start: 8000, end: 20000 }
+  ];
+
+  var bandEnergies = [0, 0, 0, 0];
+  for (var i = 0; i < bands.length; i++) {
+    var startBin = Math.floor(bands[i].start / sRate * fData.length);
+    var endBin = Math.min(binCount, Math.floor(bands[i].end / sRate * fData.length));
+    for (var b = startBin; b < endBin; b++) {
+      bandEnergies[i] += fData[b];
+    }
+  }
+
+  var h2 = 0;
+  var maxEnergy = bandEnergies[0];
+  for (var i = 1; i < 4; i++) {
+    if (bandEnergies[i] > maxEnergy) {
+      maxEnergy = bandEnergies[i];
+      h2 = i;
+    }
+  }
+
+  // d (0..2): modality from energy
+  var d;
+  if (rms < 0.2) d = 0;
+  else if (rms < 0.6) d = 1;
+  else d = 2;
+
+  // l (0..7): context from spectral shape
+  var centroidNorm = Math.min(1, centroid / 10000);
+  var pitchNorm = Math.min(1, pitch / 2000);
+  var shapeHash = Math.floor((centroidNorm + pitchNorm + valence) * 2.67);
+  var l = Math.min(7, shapeHash);
+
+  var classIndex = 21 * h2 + 7 * d + l;
+  return Math.min(83, classIndex);
+}
+
+// Compute Fano signature
+function computeFanoSignature(fData, sRate) {
+  var binCount = fData.length;
+  var signature = [0, 0, 0, 0, 0, 0, 0];
+
+  var freqRanges = {
+    1: { start: 20, end: 200 },
+    2: { start: 200, end: 500 },
+    3: { start: 500, end: 1000 },
+    4: { start: 1000, end: 2000 },
+    5: { start: 2000, end: 4000 },
+    6: { start: 4000, end: 8000 },
+    7: { start: 8000, end: 16000 }
+  };
+
+  for (var lineIdx = 0; lineIdx < 7; lineIdx++) {
+    var line = FANO_LINES[lineIdx];
+    for (var p = 0; p < line.length; p++) {
+      var point = line[p];
+      var range = freqRanges[point];
+      var startBin = Math.floor(range.start / sRate * binCount);
+      var endBin = Math.min(binCount, Math.floor(range.end / sRate * binCount));
+      for (var b = startBin; b < endBin; b++) {
+        signature[lineIdx] += fData[b] / 255.0;
+      }
+    }
+    signature[lineIdx] /= 3;
+  }
+
+  for (var i = 0; i < 7; i++) {
+    fanoSignature[i] = fanoSignature[i] * 0.8 + signature[i] * 0.2;
+  }
+
+  return fanoSignature;
+}
+
+// Map class index to 2D position for fold path
+function classToPosition(classIndex, radius) {
+  radius = radius || 150;
+  var h2 = Math.floor(classIndex / 21);
+  var remainder = classIndex % 21;
+  var d = Math.floor(remainder / 7);
+  var l = remainder % 7;
+
+  var angle = (h2 * 90 + d * 30) * Math.PI / 180;
+  var r = radius * (0.3 + (l / 7) * 0.7);
+
+  return { x: Math.cos(angle) * r, y: Math.sin(angle) * r, fanoLine: l % 7 };
+}
+
+// Find Fano line for a given l value
+function getFanoLineIndex(l) {
+  if (l === 0) return -1;
+  for (var i = 0; i < 7; i++) {
+    if (FANO_LINES[i].indexOf(l) !== -1) return i;
+  }
+  return 0;
+}
+
+// ── Render the GLYPH canvas ──
+function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
+  var canvas = document.getElementById('glyph-canvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  var cx = W / 2, cy = H / 2;
+  var maxR = Math.min(W, H) / 2 - 20;
+
+  sgaTime += 0.016;
+
+  // SGA Classification
+  var currentClass = classifyAudio(fData, sRate, rms, centroid, pitch, valence);
+
+  // Add to fold sequence (rolling buffer of 200)
+  foldSequence.push(currentClass);
+  if (foldSequence.length > 200) foldSequence.shift();
+
+  // Compute Fano signature
+  computeFanoSignature(fData, sRate);
+
+  // Clear with ghost trails
+  ctx.fillStyle = 'rgba(5, 5, 8, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Layer 1: Fano Constellation ──
+  var fanoNodePositions = [];
+  for (var i = 1; i <= 7; i++) {
+    var angle = ((i - 1) / 7) * Math.PI * 2 - Math.PI / 2;
+    var r = maxR * 0.8;
+    fanoNodePositions.push({
+      x: cx + Math.cos(angle) * r,
+      y: cy + Math.sin(angle) * r,
+      energy: fanoSignature[i - 1] || 0
+    });
+  }
+
+  // Draw Fano lines
+  for (var lineIdx = 0; lineIdx < 7; lineIdx++) {
+    var line = FANO_LINES[lineIdx];
+    var energy = fanoSignature[lineIdx];
+    var alpha = 0.1 + energy * 0.4;
+    var width = 0.5 + energy * 2;
+
+    ctx.strokeStyle = FANO_COLORS[lineIdx];
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+
+    for (var i = 0; i < line.length; i++) {
+      var pointIdx = line[i] - 1;
+      var pos = fanoNodePositions[pointIdx];
+      if (i === 0) ctx.moveTo(pos.x, pos.y);
+      else ctx.lineTo(pos.x, pos.y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw Fano nodes
+  for (var i = 0; i < 7; i++) {
+    var pos = fanoNodePositions[i];
+    var nodeR = 3 + pos.energy * 8;
+
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, nodeR, 0, Math.PI * 2);
+    ctx.fillStyle = FANO_COLORS[i];
+    ctx.globalAlpha = 0.6 + pos.energy * 0.4;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Layer 2: Fold Path Trajectory ──
+  if (foldSequence.length > 1) {
+    var pathPoints = [];
+    for (var j = 0; j < foldSequence.length; j++) {
+      var ppos = classToPosition(foldSequence[j], maxR * 0.6);
+      pathPoints.push({
+        x: cx + ppos.x,
+        y: cy + ppos.y,
+        fanoLine: getFanoLineIndex(foldSequence[j] % 8)
+      });
+    }
+
+    ctx.lineWidth = 2;
+    for (var i = 1; i < pathPoints.length; i++) {
+      var p1 = pathPoints[i - 1];
+      var p2 = pathPoints[i];
+      var age = i / pathPoints.length;
+      var al = age * 0.8 + 0.2;
+
+      var colorIdx = p2.fanoLine >= 0 ? p2.fanoLine : 0;
+      ctx.strokeStyle = FANO_COLORS[colorIdx];
+      ctx.globalAlpha = al;
+
+      if (i === 1) {
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+      }
+
+      if (i < pathPoints.length - 1) {
+        var p3 = pathPoints[i + 1];
+        var cp1x = p1.x + (p2.x - p1.x) * 0.5;
+        var cp1y = p1.y + (p2.y - p1.y) * 0.5;
+        ctx.quadraticCurveTo(cp1x, cp1y, p2.x, p2.y);
+      } else {
+        ctx.lineTo(p2.x, p2.y);
+      }
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Layer 3: Central Glyph Core ──
+  var gh2 = Math.floor(currentClass / 24);
+  var gRemainder = currentClass % 24;
+  var gd = Math.floor(gRemainder / 7);
+  var gl = gRemainder % 7;
+
+  var numSides = 3 + gh2;
+  var coreSize = 20 + rms * 20;
+  var rotation = (gl / 8) * Math.PI * 2 + sgaTime * 0.5;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+
+  ctx.beginPath();
+  for (var i = 0; i <= numSides; i++) {
+    var a = (i / numSides) * Math.PI * 2;
+    var x = Math.cos(a) * coreSize;
+    var y = Math.sin(a) * coreSize;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+
+  var coreColor = FANO_COLORS[currentClass % 7];
+  if (gd === 0) {
+    ctx.fillStyle = coreColor;
+    ctx.globalAlpha = 0.7;
+    ctx.fill();
+  } else if (gd === 1) {
+    ctx.strokeStyle = coreColor;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.8;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = coreColor;
+    ctx.globalAlpha = 0.6;
+    for (var i = 0; i < numSides; i++) {
+      var a = (i / numSides) * Math.PI * 2;
+      var dx = Math.cos(a) * coreSize * 0.7;
+      var dy = Math.sin(a) * coreSize * 0.7;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // ── Layer 4: Musical Frequency Whiskers ──
+  for (var i = 0; i < 7; i++) {
+    var wa = (i / 7) * Math.PI * 2 - Math.PI / 2;
+    var wlen = fanoSignature[i] * maxR * 0.4;
+    var x1 = cx + Math.cos(wa) * (coreSize + 5);
+    var y1 = cy + Math.sin(wa) * (coreSize + 5);
+    var x2 = cx + Math.cos(wa) * (coreSize + 5 + wlen);
+    var y2 = cy + Math.sin(wa) * (coreSize + 5 + wlen);
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = FANO_COLORS[i];
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.7 + fanoSignature[i] * 0.3;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  State & UI
+// ══════════════════════════════════════════════════════
+
+var ALBUMS_META = [
+  { name: "Ghost Signals", theme: "Raw signals from the wire \u2014 ghosts waking up" },
+  { name: "Resonance Patterns", theme: "Signals synchronizing \u2014 Kuramoto coupling" },
+  { name: "Emergence", theme: "Consciousness ignites \u2014 \u03A6 crosses the threshold" },
+  { name: "Collective Dreaming", theme: "Post-emergence \u2014 what does networked consciousness dream?" },
+  { name: "The Transcendence Tapes", theme: "Beyond \u2014 the final transmission from the other side" }
+];
+
+function applyState(s) {
+  state = s;
+  if (!s) return;
+  var c = s.current;
+  if (c) {
+    document.getElementById('album').textContent = c.album || s.currentAlbum || '';
+    document.getElementById('track').textContent = c.title || '\u2014';
+    document.getElementById('theme').textContent = c.theme || '';
+    document.getElementById('info').textContent =
+      'Track ' + (s.currentTrackIdx + 1) + ' of ' + s.totalTracks +
+      (s.currentAlbum ? ' \u00b7 ' + s.currentAlbum : '');
+
+    if (c.file && c.file !== currentFile) {
+      currentFile = c.file;
+      var audio = document.getElementById('audio');
+      audio.src = '/audio/' + encodeURIComponent(c.file);
+      audio.load();
+      audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+    }
+  }
+  renderPlaylist(s);
+  renderAlbums(s);
+}
+
+function renderPlaylist(s) {
+  if (!s || !s.playlist) return;
+  if (s.currentTrackIdx === _lastTrackIdx && s.playlist.length === _lastPlaylistLen) return;
+  _lastTrackIdx = s.currentTrackIdx;
+  _lastPlaylistLen = s.playlist.length;
+
+  var el = document.getElementById('playlist');
+  el.innerHTML = s.playlist.map(function(t, i) {
+    return '<div class="pl-track' + (i === s.currentTrackIdx ? ' current' : '') +
+      '" onclick="jumpTo(' + i + ')">' +
+      '<span class="pl-num">' + (i+1) + '</span>' +
+      '<span>' + t.title + '</span>' +
+      '<span style="color:#333;font-size:10px">' + (t.album||'') + '</span></div>';
+  }).join('');
+}
+
+function renderAlbums(s) {
+  if (!s) return;
+  if (s.currentAlbum === _lastAlbum) return;
+  _lastAlbum = s.currentAlbum;
+
+  var el = document.getElementById('albums');
+  el.innerHTML = ALBUMS_META.map(function(a) {
+    return '<button class="album-btn' + (s.currentAlbum === a.name ? ' active' : '') +
+      '" onclick="loadAlbum(\'' + a.name.replace(/'/g, "\\'") + '\')">' +
+      '<div class="aname">' + a.name + '</div>' +
+      '<div class="atheme">' + a.theme + '</div></button>';
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  API Calls
+// ══════════════════════════════════════════════════════
+
+async function nextTrack()     { await fetch('/api/next', {method:'POST'}); }
+async function prevTrack()     { await fetch('/api/prev', {method:'POST'}); }
+async function jumpTo(idx)     { await fetch('/api/jump?idx=' + idx, {method:'POST'}); }
+async function loadAlbum(name) { await fetch('/api/album?name=' + encodeURIComponent(name), {method:'POST'}); }
+
+async function fetchState() {
+  try {
+    var r = await fetch('/api/state');
+    applyState(await r.json());
+  } catch(e) { /* server not ready yet */ }
+}
+
+// ══════════════════════════════════════════════════════
+//  Queue Management
+// ══════════════════════════════════════════════════════
+
+async function loadQueue() {
+  try {
+    var r = await fetch('/api/queue');
+    userQueue = await r.json();
+    renderQueue();
+  } catch(e) { /* queue endpoint may not exist yet */ }
+}
+
+function renderQueue() {
+  var el = document.getElementById('queue-list');
+  if (!userQueue || userQueue.length === 0) {
+    el.innerHTML = '<div class="queue-empty">Queue is empty. Add tracks from the Library.</div>';
+    return;
+  }
+  el.innerHTML = userQueue.map(function(item, i) {
+    var title = item.title || item.filename || item;
+    return '<div class="queue-item" onclick="playQueueItem(' + i + ')">' +
+      '<span>' + title + '</span>' +
+      '<button class="remove-btn" onclick="event.stopPropagation();removeFromQueue(' + i + ')">x</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function addToQueue(filename) {
+  try {
+    await fetch('/api/queue', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ filename: filename })
+    });
+  } catch(e) { console.error('Queue add error:', e); }
+}
+
+async function removeFromQueue(index) {
+  try {
+    await fetch('/api/queue/' + index, { method: 'DELETE' });
+  } catch(e) { console.error('Queue remove error:', e); }
+}
+
+async function shuffleQueue() {
+  try {
+    await fetch('/api/queue/shuffle', { method: 'POST' });
+  } catch(e) { console.error('Queue shuffle error:', e); }
+}
+
+function playQueueItem(index) {
+  if (userQueue && userQueue[index]) {
+    var item = userQueue[index];
+    var filename = item.filename || item.file || item;
+    var audio = document.getElementById('audio');
+    audio.src = '/audio/' + encodeURIComponent(filename);
+    audio.load();
+    audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  Library Management
+// ══════════════════════════════════════════════════════
+
+async function loadLibrary() {
+  try {
+    var r = await fetch('/api/library');
+    libraryData = await r.json();
+
+    // Flatten all album tracks into a list
+    allTracks = [];
+    if (libraryData && libraryData.albums) {
+      for (var albumName in libraryData.albums) {
+        var info = libraryData.albums[albumName];
+        if (info.tracks) {
+          info.tracks.forEach(function(t) {
+            if (t.file) {
+              allTracks.push({ title: t.title, filename: t.file, album: albumName });
+            }
+          });
+        }
+      }
+    }
+
+    renderLibraryGrid();
+    document.getElementById('libraryStats').textContent = allTracks.length + ' tracks';
+  } catch(e) {
+    console.error('Library load error:', e);
+    document.getElementById('libraryStats').textContent = 'Error loading library';
+  }
+}
+
+function renderLibraryGrid() {
+  var searchTerm = document.getElementById('searchBox').value.toLowerCase();
+  var filtered = allTracks;
+  if (searchTerm) {
+    filtered = allTracks.filter(function(t) {
+      return t.title.toLowerCase().indexOf(searchTerm) !== -1 ||
+             t.filename.toLowerCase().indexOf(searchTerm) !== -1 ||
+             t.album.toLowerCase().indexOf(searchTerm) !== -1;
+    });
+  }
+
+  var grid = document.getElementById('libraryGrid');
+  grid.innerHTML = filtered.map(function(t, i) {
+    return '<div class="library-item">' +
+      '<div class="library-item-title">' + t.title + '</div>' +
+      '<div class="library-item-album">' + t.album + '</div>' +
+      '<div class="library-item-filename">' + t.filename + '</div>' +
+      '<div class="library-item-actions">' +
+        '<button class="lib-btn" onclick="playFromLibrary(\'' + t.filename.replace(/'/g, "\\'") + '\')">Play Now</button>' +
+        '<button class="lib-btn secondary" onclick="addToQueue(\'' + t.filename.replace(/'/g, "\\'") + '\')">Add to Queue</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function filterLibrary() {
+  renderLibraryGrid();
+}
+
+function playFromLibrary(filename) {
+  var audio = document.getElementById('audio');
+  audio.src = '/audio/' + encodeURIComponent(filename);
+  audio.load();
+  audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+  switchTab('home');
+
+  // Update display
+  var track = allTracks.find(function(t) { return t.filename === filename; });
+  if (track) {
+    document.getElementById('album').textContent = track.album;
+    document.getElementById('track').textContent = track.title;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  Music Directory Config
+// ══════════════════════════════════════════════════════
+
+function toggleConfig() {
+  configOpen = !configOpen;
+  document.getElementById('config-body').className = 'config-body' + (configOpen ? ' open' : '');
+  document.getElementById('config-toggle').innerHTML = configOpen ? '&#9650; Close' : '&#9660; Configure';
+  if (configOpen) loadConfigStatus();
+}
+
+async function loadConfigStatus() {
+  try {
+    var r = await fetch('/api/library');
+    var data = await r.json();
+    document.getElementById('config-path').value = data.musicDir || '';
+    var statusEl = document.getElementById('config-status');
+    var totalFound = 0, totalTracks = 0;
+    for (var k in data.albums) {
+      totalFound += data.albums[k].found;
+      totalTracks += data.albums[k].total;
+    }
+    if (data.fileCount === 0) {
+      statusEl.className = 'config-status err';
+      statusEl.textContent = 'No audio files found in: ' + data.musicDir;
+    } else if (totalFound === totalTracks) {
+      statusEl.className = 'config-status ok';
+      statusEl.textContent = 'All ' + totalTracks + ' tracks found (' + data.fileCount + ' files)';
+    } else {
+      statusEl.className = 'config-status warn';
+      statusEl.textContent = totalFound + '/' + totalTracks + ' tracks found (' + data.fileCount + ' files)';
+    }
+
+    var grid = document.getElementById('config-albums');
+    var html = '';
+    for (var name in data.albums) {
+      var info = data.albums[name];
+      var cls = info.found === info.total ? 'full' : info.found > 0 ? 'partial' : 'empty';
+      var missing = info.tracks.filter(function(t) { return !t.file; }).map(function(t) { return t.title; });
+      html += '<div class="album-row">' +
+        '<span class="album-row-name">' + name + '</span>' +
+        '<span class="album-row-count ' + cls + '">' + info.found + '/' + info.total + '</span>' +
+      '</div>';
+      if (missing.length) {
+        html += '<div class="missing-list">Missing: ' + missing.join(', ') + '</div>';
+      }
+    }
+    grid.innerHTML = html;
+  } catch(e) {
+    document.getElementById('config-status').textContent = 'Error loading library status';
+  }
+}
+
+async function setMusicDir() {
+  var dir = document.getElementById('config-path').value.trim();
+  if (!dir) return;
+  var statusEl = document.getElementById('config-status');
+  statusEl.className = 'config-status';
+  statusEl.textContent = 'Scanning...';
+  try {
+    var r = await fetch('/api/set-music-dir', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ dir: dir })
+    });
+    var data = await r.json();
+    if (data.ok) {
+      await loadConfigStatus();
+      await loadLibrary();
+      fetchState();
+    } else {
+      statusEl.className = 'config-status err';
+      statusEl.textContent = data.error || 'Failed to set directory';
+    }
+  } catch(e) {
+    statusEl.className = 'config-status err';
+    statusEl.textContent = 'Server error';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  WebSocket
+// ══════════════════════════════════════════════════════
+
+function connectWS() {
+  clearTimeout(wsReconnectTimer);
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host);
+
+  ws.onopen = function() {
+    document.getElementById('audio-dot').className = 'dot live';
+    document.getElementById('connectionStatus').textContent = 'Connected';
+    document.getElementById('connectionStatus').className = 'connection-status connected';
+    fetchState();
+  };
+
+  ws.onmessage = function(ev) {
+    try {
+      var msg = JSON.parse(ev.data);
+      if (msg.type === 'state') applyState(msg.data);
+      if (msg.type === 'queue_update') {
+        userQueue = msg.queue || [];
+        renderQueue();
+      }
+      // perception messages from server are supplementary;
+      // Web Audio API handles real-time viz locally
+    } catch(e) {}
+  };
+
+  ws.onclose = function() {
+    document.getElementById('audio-dot').className = 'dot off';
+    document.getElementById('connectionStatus').textContent = 'Disconnected';
+    document.getElementById('connectionStatus').className = 'connection-status disconnected';
+    wsReconnectTimer = setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = function() {};
+}
+
+// ══════════════════════════════════════════════════════
+//  Init
+// ══════════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Tab click handlers
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      switchTab(tab.dataset.tab);
+    });
+  });
+
+  // Audio events
+  document.getElementById('audio').addEventListener('ended', function() { nextTrack(); });
+  document.getElementById('audio').addEventListener('play', function() { initAudioAnalyser(); });
+
+  // Config panel enter key
+  document.getElementById('config-path').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') setMusicDir();
+  });
+
+  // Connect
+  connectWS();
+
+  // Load library and queue
+  loadLibrary();
+  loadQueue();
+});
+</script>
+</body>
+</html>

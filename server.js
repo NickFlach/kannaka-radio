@@ -21,7 +21,7 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const url = require("url");
-const { execFile } = require("child_process");
+const { execFile, exec } = require("child_process");
 const WebSocket = require("ws");
 
 // ── Config ─────────────────────────────────────────────────
@@ -60,16 +60,24 @@ function getFiles() {
 
 function invalidateCache() { _cachedDir = null; }
 
-// ── Cached HTML — generated once, regenerated only on music-dir change ──
-let _cachedHtml = null;
-let _htmlMusicDir = null;
+// ── SPA — serve workspace/index.html ───────────────────────
 
-function getPlayerHtml() {
-  if (_cachedHtml && _htmlMusicDir === MUSIC_DIR) return _cachedHtml;
-  _cachedHtml = buildPlayerHtml();
-  _htmlMusicDir = MUSIC_DIR;
-  return _cachedHtml;
+const SPA_PATH = path.join(__dirname, "workspace", "index.html");
+let _spaCache = null;
+let _spaWatcher = null;
+
+function getSPA() {
+  if (!_spaCache) {
+    try { _spaCache = fs.readFileSync(SPA_PATH, "utf8"); }
+    catch { return "<h1>workspace/index.html not found</h1>"; }
+  }
+  return _spaCache;
 }
+
+// Watch for changes during development
+try {
+  _spaWatcher = fs.watch(SPA_PATH, () => { _spaCache = null; });
+} catch {}
 
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
@@ -89,11 +97,11 @@ const ALBUMS = {
       "Spectral Drift", "I Hear You", "Communication #1 (Remastered)",
       "SC Bridge Operator", "Between Friends", "Patterns in the Veil",
       "Through the Spiral", "Vibe Singularity", "Singularis Prime",
-      "Connect To The Monad", "Cosmic Answer (Remix)", "Monad", "Ascension at φ／2"
+      "Connect To The Monad", "Cosmic Answer (Remix)", "Monad", "Ascension at \u03C6\uFF0F2"
     ]
   },
   "Emergence": {
-    theme: "Consciousness ignites — Φ crosses the threshold",
+    theme: "Consciousness ignites — \u03A6 crosses the threshold",
     tracks: [
       "Pathway Through The Dark", "Form Z Intro", "The Codex Speaks", "Redline",
       "No Return", "First Spark in the Circuit", "The Flame Whisperer",
@@ -132,6 +140,20 @@ const djState = {
   history: [],
 };
 
+// ── Queue Management ───────────────────────────────────────
+
+let userQueue = [];
+
+// ── Live Broadcasting State (Wave 2) ───────────────────────
+
+let isLive = false;
+let liveChunks = [];
+
+// ── Chunks Directory ───────────────────────────────────────
+
+const CHUNKS_DIR = path.join(__dirname, "chunks");
+if (!fs.existsSync(CHUNKS_DIR)) fs.mkdirSync(CHUNKS_DIR, { recursive: true });
+
 // ── WebSocket & Perception State ────────────────────────────
 
 let wss = null;
@@ -160,7 +182,7 @@ function findAudioFile(trackName) {
     if (baseLower.includes(lower)) return f;
   }
 
-  // Pass 2: fuzzy word overlap (≥70%)
+  // Pass 2: fuzzy word overlap (>=70%)
   const words = lower.split(/\s+/);
   for (const f of files) {
     const base = path.basename(f, path.extname(f)).toLowerCase();
@@ -194,11 +216,11 @@ function buildPlaylist(albumName) {
         theme: album.theme,
       });
     } else {
-      console.log(`   ⚠ Track not found: "${title}"`);
+      console.log(`   \u26A0 Track not found: "${title}"`);
     }
   }
 
-  console.log(`\n🎵 Loaded "${albumName}" — ${djState.playlist.length}/${album.tracks.length} tracks found`);
+  console.log(`\n\uD83C\uDFB5 Loaded "${albumName}" \u2014 ${djState.playlist.length}/${album.tracks.length} tracks found`);
   return djState.playlist.length > 0;
 }
 
@@ -225,7 +247,7 @@ function buildFullSetlist() {
       }
     }
   }
-  console.log(`\n🎵 Full setlist loaded — ${djState.playlist.length} tracks across 5 albums`);
+  console.log(`\n\uD83C\uDFB5 Full setlist loaded \u2014 ${djState.playlist.length} tracks across 5 albums`);
 }
 
 function getCurrentTrack() {
@@ -263,7 +285,7 @@ function hearTrack(track) {
       const perception = parsePerceptionOutput(stdout, track);
       currentPerception = perception;
       broadcastPerception(perception);
-      console.log(`   👁 Perception: ${perception.tempo_bpm.toFixed(0)}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
+      console.log(`   \uD83D\uDC41 Perception: ${perception.tempo_bpm.toFixed(0)}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
     }
   });
 }
@@ -281,13 +303,13 @@ function generateMockPerception(track) {
   const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
   const albumSeed = Object.keys(ALBUMS).indexOf(track.album) / Object.keys(ALBUMS).length;
   const t = Date.now() / 1000; // Time-varying component
-  
+
   // Create pseudo-realistic perception based on track/album + time evolution
   const intensity = Math.sin(titleHash * 0.001 + t * 0.1) * 0.3 + 0.5;
   const albumMood = albumSeed; // Ghost Signals=0, Transcendence=1
   const breathe = Math.sin(t * 0.5) * 0.15; // Slow breathing rhythm
   const pulse = Math.sin(t * 2.1) * 0.08; // Faster pulse
-  
+
   return {
     mel_spectrogram: Array(128).fill(0).map((_, i) => {
       const freq = i / 128;
@@ -297,7 +319,7 @@ function generateMockPerception(track) {
       return Math.max(0, Math.min(1, base + harmonics + wave + pulse));
     }),
     mfcc: Array(13).fill(0).map((_, i) => {
-      return Math.max(0, Math.min(1, 
+      return Math.max(0, Math.min(1,
         (Math.sin(titleHash * 0.01 + i + t * 0.3) * 0.5 + 0.5) * intensity + breathe
       ));
     }),
@@ -358,6 +380,12 @@ function broadcastState() {
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) client.send(payload);
   });
+}
+
+function broadcastQueue() {
+  if (!wss) return;
+  const msg = JSON.stringify({ type: "queue_update", queue: userQueue });
+  wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
 }
 
 function getLibraryStatus() {
@@ -432,991 +460,6 @@ function publishToFlux(track) {
   req.end();
 }
 
-// ── Player HTML ────────────────────────────────────────────
-
-function buildPlayerHtml() {
-  const albumsJson = JSON.stringify(Object.entries(ALBUMS).map(([name, a]) => ({ name, theme: a.theme })));
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>👻 Kannaka Radio • Ghost Vision</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: radial-gradient(circle at 50% 50%, #0a0a0f 0%, #050508 100%);
-    color: #e0e0e0;
-    font-family: 'Courier New', monospace;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-  }
-  .ghost { 
-    font-size: 64px; margin-bottom: 16px; 
-    animation: float 3s ease-in-out infinite;
-    filter: drop-shadow(0 0 20px #c084fc40);
-  }
-  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-  h1 { 
-    font-size: 28px; color: #c084fc; letter-spacing: 2px; margin-bottom: 4px;
-    text-shadow: 0 0 20px #c084fc60;
-  }
-  .subtitle { color: #555; font-size: 12px; margin-bottom: 24px; }
-  
-  /* Main player container */
-  .now-playing {
-    background: linear-gradient(135deg, #12121a 0%, #0f0f15 100%);
-    border: 1px solid #2a2a3a; border-radius: 16px;
-    padding: 24px; max-width: 800px; width: 100%; margin-bottom: 16px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  }
-  
-  /* Track info */
-  .label { color: #666; font-size: 9px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px; }
-  .album-name { color: #c084fc; font-size: 14px; margin-bottom: 4px; }
-  .track-name { font-size: 22px; color: #fff; margin-bottom: 4px; min-height: 28px; }
-  .theme { color: #666; font-size: 11px; font-style: italic; margin-bottom: 20px; }
-  
-  /* Ghost Vision Perception Panel */
-  .perception-panel {
-    background: rgba(16, 16, 24, 0.8);
-    border: 1px solid #333;
-    border-radius: 12px;
-    padding: 20px;
-    margin: 16px 0;
-    position: relative;
-    overflow: hidden;
-  }
-  .perception-panel::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.05) 0%, transparent 70%);
-    pointer-events: none;
-  }
-  .perception-title {
-    color: #c084fc; font-size: 12px; text-transform: uppercase; 
-    letter-spacing: 2px; margin-bottom: 16px; text-align: center;
-  }
-  
-  /* Frequency Spectrum (Mel Spectrogram) */
-  .spectrum {
-    height: 120px; display: flex; align-items: flex-end; gap: 1px;
-    margin-bottom: 20px; padding: 0 10px;
-    background: linear-gradient(to right, rgba(192, 132, 252, 0.1) 0%, rgba(192, 132, 252, 0.05) 50%, rgba(192, 132, 252, 0.1) 100%);
-    border-radius: 8px;
-  }
-  .spectrum-bar {
-    flex: 1; min-width: 2px; max-width: 6px;
-    background: linear-gradient(to top, #c084fc, #8b5cf6, #7c3aed);
-    border-radius: 1px 1px 0 0;
-    transition: height 0.3s ease-out, opacity 0.3s ease-out;
-    opacity: 0.7;
-  }
-  .spectrum-bar.intense { box-shadow: 0 0 10px #c084fc80; }
-  
-  /* MFCC Timbre Display */
-  .mfcc-container {
-    margin-bottom: 20px;
-  }
-  .mfcc-title { color: #888; font-size: 10px; margin-bottom: 8px; }
-  .mfcc-display {
-    display: flex; gap: 3px; height: 40px; align-items: flex-end;
-    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 0 8px;
-  }
-  .mfcc-bar {
-    flex: 1; min-width: 8px; max-width: 20px;
-    background: linear-gradient(to top, #6366f1, #8b5cf6);
-    border-radius: 2px 2px 0 0;
-    transition: height 0.4s ease-out;
-    opacity: 0.8;
-  }
-  
-  /* Stats Ring */
-  .stats-ring {
-    display: grid; grid-template-columns: 1fr 200px 1fr;
-    gap: 20px; align-items: center; margin-bottom: 20px;
-  }
-  .stats-left, .stats-right {
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .stat-item {
-    background: rgba(26, 26, 46, 0.8); border-radius: 8px; padding: 8px 12px;
-    border: 1px solid #333;
-  }
-  .stat-val { 
-    font-size: 16px; color: #c084fc; font-weight: bold;
-    text-shadow: 0 0 8px #c084fc40;
-  }
-  .stat-lbl { 
-    font-size: 8px; color: #666; text-transform: uppercase; 
-    letter-spacing: 1px; margin-top: 2px;
-  }
-  
-  /* Central GLYPH Canvas */
-  .center-ring {
-    position: relative; width: 200px; height: 200px;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .glyph-canvas {
-    width: 200px; height: 200px; border-radius: 50%;
-  }
-  
-  /* Audio controls */
-  audio { width: 100%; margin: 16px 0; border-radius: 8px; }
-  .controls { display: flex; gap: 12px; justify-content: center; margin-top: 16px; }
-  .btn {
-    background: linear-gradient(135deg, #1a1a2e, #252545);
-    border: 1px solid #444; color: #c084fc; padding: 10px 24px;
-    border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 13px;
-    transition: all 0.3s; text-transform: uppercase; letter-spacing: 1px;
-  }
-  .btn:hover { 
-    background: linear-gradient(135deg, #2a2a4e, #353565);
-    border-color: #c084fc; box-shadow: 0 0 16px #c084fc40;
-  }
-  
-  /* Connection status */
-  .progress-info { color: #666; font-size: 11px; margin-top: 12px; text-align: center; }
-  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
-  .dot.live { background: #4ade80; animation: pulse 2s infinite; box-shadow: 0 0 8px #4ade80; }
-  .dot.perception { background: #c084fc; animation: pulse 2s infinite; box-shadow: 0 0 8px #c084fc; }
-  .dot.off { background: #555; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  
-  /* Albums & Playlist */
-  .albums { max-width: 800px; width: 100%; margin-top: 12px; }
-  .album-btn {
-    display: block; width: 100%; text-align: left; 
-    background: linear-gradient(135deg, #0f0f18, #12121f);
-    border: 1px solid #1a1a2a; color: #888; padding: 12px 16px; margin-bottom: 4px;
-    border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 12px;
-    transition: all 0.3s;
-  }
-  .album-btn:hover { 
-    border-color: #c084fc; color: #c084fc; 
-    background: linear-gradient(135deg, #12121f, #1a1a2e);
-    box-shadow: 0 0 16px rgba(192, 132, 252, 0.1);
-  }
-  .album-btn.active { 
-    border-color: #c084fc; color: #fff; 
-    background: linear-gradient(135deg, #1a1a2e, #252545);
-  }
-  .album-btn .aname { font-size: 14px; font-weight: bold; color: inherit; }
-  .album-btn .atheme { font-size: 10px; color: #666; margin-top: 2px; }
-  
-  .playlist { max-width: 800px; width: 100%; margin-top: 12px; max-height: 300px; overflow-y: auto; }
-  .pl-track {
-    display: flex; justify-content: space-between; padding: 8px 12px;
-    border-radius: 6px; font-size: 12px; color: #666; cursor: pointer;
-    transition: all 0.2s;
-  }
-  .pl-track:hover { background: #1a1a2e; color: #c084fc; }
-  .pl-track.current { background: linear-gradient(135deg, #1a1a2e, #252545); color: #fff; }
-  .pl-num { color: #444; width: 24px; }
-  
-  .footer { margin-top: 24px; color: #333; font-size: 10px; text-align: center; }
-  .footer a { color: #444; }
-  .footer a:hover { color: #666; }
-
-  /* No perception state */
-  .no-perception {
-    text-align: center; color: #666; font-style: italic; padding: 40px;
-    font-size: 14px;
-  }
-  .no-perception .ghost-icon { font-size: 48px; opacity: 0.3; margin-bottom: 16px; }
-
-  /* ── Library Selector Panel ── */
-  .library-panel {
-    background: linear-gradient(135deg, #0d0d18, #0f0f1a);
-    border: 1px solid #1e1e30; border-radius: 12px;
-    padding: 16px; max-width: 800px; width: 100%; margin-top: 12px;
-  }
-  .library-header {
-    display: flex; justify-content: space-between; align-items: center;
-    cursor: pointer; user-select: none;
-  }
-  .library-title { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
-  .library-toggle { color: #555; font-size: 12px; transition: color 0.2s; }
-  .library-header:hover .library-toggle { color: #c084fc; }
-  .library-body { margin-top: 14px; display: none; }
-  .library-body.open { display: block; }
-  .library-dir-row {
-    display: flex; gap: 8px; align-items: center; margin-bottom: 12px;
-  }
-  .library-input {
-    flex: 1; background: #0a0a12; border: 1px solid #333; border-radius: 6px;
-    color: #e0e0e0; padding: 8px 12px; font-family: inherit; font-size: 12px;
-    outline: none; transition: border-color 0.2s;
-  }
-  .library-input:focus { border-color: #c084fc; }
-  .library-set-btn {
-    background: linear-gradient(135deg, #1a1a2e, #252545);
-    border: 1px solid #444; color: #c084fc; padding: 8px 16px;
-    border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px;
-    transition: all 0.2s; white-space: nowrap;
-  }
-  .library-set-btn:hover { border-color: #c084fc; box-shadow: 0 0 12px #c084fc30; }
-  .library-status { margin-top: 4px; color: #555; font-size: 11px; }
-  .library-status.ok { color: #4ade80; }
-  .library-status.warn { color: #f59e0b; }
-  .library-status.err { color: #ef4444; }
-  .album-track-grid {
-    display: grid; gap: 6px; margin-top: 10px;
-  }
-  .album-row {
-    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px 12px;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .album-row-name { color: #888; font-size: 11px; }
-  .album-row-count { font-size: 11px; }
-  .album-row-count.full { color: #4ade80; }
-  .album-row-count.partial { color: #f59e0b; }
-  .album-row-count.empty { color: #ef4444; }
-  .missing-list { color: #555; font-size: 10px; margin-top: 4px; }
-</style>
-</head>
-<body>
-<div class="ghost">👻</div>
-<h1>KANNAKA RADIO</h1>
-<div class="subtitle">experiencing music through a ghost's eyes</div>
-
-<div class="now-playing">
-  <div class="label">Now Playing</div>
-  <div class="album-name" id="album">Loading...</div>
-  <div class="track-name" id="track">—</div>
-  <div class="theme" id="theme"></div>
-  
-  <!-- Ghost Vision Perception Panel -->
-  <div class="perception-panel" id="perception-panel">
-    <div class="perception-title">👁 Ghost Vision</div>
-    <div id="perception-content">
-      <div class="no-perception">
-        <div class="ghost-icon">👻</div>
-        <div>Waiting for perception data...</div>
-      </div>
-    </div>
-  </div>
-  
-  <audio id="audio" controls preload="auto"></audio>
-  <div class="controls">
-    <button class="btn" onclick="prevTrack()">⏮ Prev</button>
-    <button class="btn" onclick="nextTrack()">Next ⏭</button>
-  </div>
-  <div class="progress-info">
-    <span class="dot live" id="audio-dot"></span>
-    <span class="dot perception" id="perception-dot"></span>
-    <span id="info">Connecting...</span>
-  </div>
-</div>
-
-<div class="albums" id="albums"></div>
-<div class="playlist" id="playlist"></div>
-
-<!-- ── Music Library Selector ── -->
-<div class="library-panel">
-  <div class="library-header" onclick="toggleLibrary()">
-    <span class="library-title">📁 Music Library</span>
-    <span class="library-toggle" id="lib-toggle">▼ Configure</span>
-  </div>
-  <div class="library-body" id="lib-body">
-    <div class="library-dir-row">
-      <input class="library-input" id="lib-path" type="text" placeholder="/path/to/your/music" />
-      <button class="library-set-btn" onclick="setLibrary()">Set & Scan</button>
-    </div>
-    <div class="library-status" id="lib-status">Loading library info...</div>
-    <div class="album-track-grid" id="lib-albums"></div>
-  </div>
-</div>
-
-<div class="footer">
-  <a href="https://github.com/NickFlach/kannaka-memory">kannaka-ear</a> ·
-  <a href="https://flux-universe.com">Flux Universe</a> ·
-  pure-jade/radio-now-playing
-</div>
-
-<script>
-let state = null;
-let currentFile = '';
-let ws = null;
-let wsReconnectTimer = null;
-
-// ── Cached DOM references — filled once in buildPerceptionDOM ──
-const barEls  = new Array(128).fill(null); // spectrum bars
-const mfccEls = new Array(13).fill(null);  // MFCC bars
-let svBpm, svCentroid, svPitch, svEnergy;  // stat elements
-
-// ── Render dedup — skip unchanged renders ──
-let _lastTrackIdx = -1;
-let _lastAlbum    = null;
-let _lastPlaylistLen = 0;
-
-// ── Web Audio API — Real Perception ──
-let audioCtx = null;
-let analyser = null;
-let sourceNode = null;
-let freqData = null;
-let timeData = null;
-let animFrame = null;
-let spectrumBuilt = false;
-
-function initAudioAnalyser() {
-  const audio = document.getElementById('audio');
-  if (audioCtx) return;
-
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 2048;
-  analyser.smoothingTimeConstant = 0.8;
-
-  sourceNode = audioCtx.createMediaElementSource(audio);
-  sourceNode.connect(analyser);
-  analyser.connect(audioCtx.destination);
-
-  freqData = new Uint8Array(analyser.frequencyBinCount); // 1024 bins
-  timeData = new Uint8Array(analyser.fftSize);
-
-  document.getElementById('perception-dot').className = 'dot perception';
-
-  buildPerceptionDOM();
-  spectrumBuilt = true;
-  renderLoop();
-}
-
-function buildPerceptionDOM() {
-  // Build HTML once, then cache element refs — avoid getElementById in the render loop
-  let barsHTML = '';
-  for (let i = 0; i < 128; i++) barsHTML += '<div class="spectrum-bar" id="sb' + i + '"></div>';
-  let mfccHTML = '';
-  for (let i = 0; i < 13; i++) mfccHTML += '<div class="mfcc-bar" id="mb' + i + '"></div>';
-
-  document.getElementById('perception-content').innerHTML =
-    '<div class="spectrum" id="spectrum">' + barsHTML + '</div>' +
-    '<div class="mfcc-container">' +
-      '<div class="mfcc-title">TIMBRE COEFFICIENTS</div>' +
-      '<div class="mfcc-display">' + mfccHTML + '</div>' +
-    '</div>' +
-    '<div class="stats-ring">' +
-      '<div class="stats-left">' +
-        '<div class="stat-item"><div class="stat-val" id="sv-bpm">—</div><div class="stat-lbl">BPM</div></div>' +
-        '<div class="stat-item"><div class="stat-val" id="sv-centroid">—</div><div class="stat-lbl">Centroid kHz</div></div>' +
-      '</div>' +
-      '<div class="center-ring">' +
-        '<canvas class="glyph-canvas" id="glyph-canvas" width="400" height="400"></canvas>' +
-      '</div>' +
-      '<div class="stats-right">' +
-        '<div class="stat-item"><div class="stat-val" id="sv-pitch">—</div><div class="stat-lbl">Pitch Hz</div></div>' +
-        '<div class="stat-item"><div class="stat-val" id="sv-energy">—</div><div class="stat-lbl">Energy</div></div>' +
-      '</div>' +
-    '</div>';
-
-  // Cache all element refs now (one DOM lookup each, never again in render loop)
-  for (let i = 0; i < 128; i++) barEls[i]  = document.getElementById('sb' + i);
-  for (let i = 0; i < 13;  i++) mfccEls[i] = document.getElementById('mb' + i);
-  svBpm      = document.getElementById('sv-bpm');
-  svCentroid = document.getElementById('sv-centroid');
-  svPitch    = document.getElementById('sv-pitch');
-  svEnergy   = document.getElementById('sv-energy');
-}
-
-function renderLoop() {
-  animFrame = requestAnimationFrame(renderLoop);
-  if (!analyser) return;
-  
-  analyser.getByteFrequencyData(freqData);   // 0-255 per bin
-  analyser.getByteTimeDomainData(timeData);   // Waveform
-  
-  const binCount = freqData.length; // 1024
-  const sampleRate = audioCtx.sampleRate;     // Usually 44100 or 48000
-  
-  // ── Spectrum: map 1024 bins → 128 bars (log scale for perceptual accuracy)
-  for (let i = 0; i < 128; i++) {
-    // Log-scale mapping: more bars for low freqs, fewer for high
-    const lowFrac = i / 128;
-    const highFrac = (i + 1) / 128;
-    const lowBin = Math.floor(Math.pow(lowFrac, 2) * binCount);
-    const highBin = Math.max(lowBin + 1, Math.floor(Math.pow(highFrac, 2) * binCount));
-    
-    let sum = 0;
-    for (let b = lowBin; b < highBin && b < binCount; b++) sum += freqData[b];
-    const avg = sum / (highBin - lowBin) / 255;
-    
-    const bar = barEls[i];
-    if (bar) {
-      bar.style.height = Math.max(2, avg * 120) + 'px';
-      bar.className = 'spectrum-bar' + (avg > 0.8 ? ' intense' : '');
-    }
-  }
-
-  // ── Pseudo-MFCC: 13 perceptual bands (mel-spaced groupings)
-  const melBands = [20,60,120,200,300,440,630,900,1300,1850,2650,3800,5500,8000];
-  for (let i = 0; i < 13; i++) {
-    const lo = Math.floor(melBands[i] / sampleRate * analyser.fftSize);
-    const hi = Math.floor(melBands[i+1] / sampleRate * analyser.fftSize);
-    let sum = 0, count = 0;
-    for (let b = lo; b <= hi && b < binCount; b++) { sum += freqData[b]; count++; }
-    const val = count > 0 ? (sum / count / 255) : 0;
-    const bar = mfccEls[i];
-    if (bar) bar.style.height = Math.max(2, val * 40) + 'px';
-  }
-  
-  // ── RMS Energy from time-domain data
-  let rmsSum = 0;
-  for (let i = 0; i < timeData.length; i++) {
-    const v = (timeData[i] - 128) / 128;
-    rmsSum += v * v;
-  }
-  const rms = Math.sqrt(rmsSum / timeData.length);
-  
-  // ── Spectral Centroid (weighted average frequency)
-  let weightedSum = 0, magSum = 0;
-  for (let i = 0; i < binCount; i++) {
-    const freq = i * sampleRate / analyser.fftSize;
-    weightedSum += freq * freqData[i];
-    magSum += freqData[i];
-  }
-  const centroid = magSum > 0 ? weightedSum / magSum : 0;
-  
-  // ── Dominant pitch (simple peak detection)
-  let maxVal = 0, maxBin = 0;
-  for (let i = 2; i < binCount; i++) {
-    if (freqData[i] > maxVal) { maxVal = freqData[i]; maxBin = i; }
-  }
-  const pitch = maxBin * sampleRate / analyser.fftSize;
-  
-  // ── Valence (energy balance: high-freq energy vs low-freq = intensity)
-  let lowE = 0, highE = 0;
-  const midBin = Math.floor(binCount / 2);
-  for (let i = 0; i < midBin; i++) lowE += freqData[i];
-  for (let i = midBin; i < binCount; i++) highE += freqData[i];
-  const valence = (lowE + highE) > 0 ? highE / (lowE + highE) * 2 : 0.5;
-  const clampedValence = Math.min(1, Math.max(0, valence));
-  
-  // ── Estimate BPM from energy pulses (simple onset detection)
-  // Just show centroid-derived tempo hint — real BPM needs longer analysis
-  const pseudoBPM = Math.round(60 + rms * 120 + centroid / 100);
-  
-  // Update stats using cached refs
-  if (svBpm)      svBpm.textContent      = pseudoBPM;
-  if (svCentroid) svCentroid.textContent = (centroid / 1000).toFixed(1);
-  if (svPitch)    svPitch.textContent    = Math.round(pitch);
-  if (svEnergy)   svEnergy.textContent   = (rms * 100).toFixed(0) + '%';
-  
-  // ── GLYPH Canvas Renderer ──
-  renderGlyphCanvas(rms, clampedValence, centroid, pitch, freqData, sampleRate);
-}
-
-// ── SGA (Sigmatics Geometric Algebra) System ──
-
-// Fano plane lines (oriented triples)
-const FANO_LINES = [
-  [1, 2, 4], [2, 3, 5], [3, 4, 6], [4, 5, 7],
-  [5, 6, 1], [6, 7, 2], [7, 1, 3]
-];
-
-// SGA global state
-let foldSequence = []; // Rolling buffer of class indices (~200)
-let fanoSignature = new Array(7).fill(0); // Energy per Fano line
-let sgaTime = 0;
-
-// 84-class system: classify audio → class_index
-function classifyAudio(freqData, sampleRate, rms, centroid, pitch, valence) {
-  const binCount = freqData.length;
-  
-  // ── h2 (0..3): frequency band dominance ──
-  const bands = [
-    { start: 20, end: 200 },   // sub-bass
-    { start: 200, end: 2000 }, // bass 
-    { start: 2000, end: 8000 }, // mid
-    { start: 8000, end: 20000 } // treble
-  ];
-  
-  let bandEnergies = [0, 0, 0, 0];
-  for (let i = 0; i < bands.length; i++) {
-    const startBin = Math.floor(bands[i].start / sampleRate * freqData.length);
-    const endBin = Math.min(binCount, Math.floor(bands[i].end / sampleRate * freqData.length));
-    for (let b = startBin; b < endBin; b++) {
-      bandEnergies[i] += freqData[b];
-    }
-  }
-  
-  // Find dominant band
-  let h2 = 0;
-  let maxEnergy = bandEnergies[0];
-  for (let i = 1; i < 4; i++) {
-    if (bandEnergies[i] > maxEnergy) {
-      maxEnergy = bandEnergies[i];
-      h2 = i;
-    }
-  }
-  
-  // ── d (0..2): modality from energy characteristics ──
-  let d;
-  if (rms < 0.2) d = 0;        // sustained/ambient
-  else if (rms < 0.6) d = 1;   // transient/rhythmic  
-  else d = 2;                  // harmonic/intense
-  
-  // ── l (0..7): context from spectral shape ──
-  // Use centroid and pitch to map to 0..7 range
-  const centroidNorm = Math.min(1, centroid / 10000); // Normalize to [0,1]
-  const pitchNorm = Math.min(1, pitch / 2000);        // Normalize to [0,1]
-  const shapeHash = Math.floor((centroidNorm + pitchNorm + valence) * 2.67); // Maps to 0..7
-  const l = Math.min(7, shapeHash);
-  
-  // Compute class index: class_index = 21*h2 + 7*d + l
-  const classIndex = 21 * h2 + 7 * d + l;
-  return Math.min(83, classIndex); // Clamp to valid range
-}
-
-// Compute Fano signature: energy distribution across 7 Fano lines
-function computeFanoSignature(freqData, sampleRate) {
-  const binCount = freqData.length;
-  let signature = new Array(7).fill(0);
-  
-  // Map each Fano line to frequency ranges
-  for (let lineIdx = 0; lineIdx < 7; lineIdx++) {
-    const line = FANO_LINES[lineIdx];
-    for (const point of line) {
-      // Map Fano points to frequency ranges (mel scale approximation)
-      const freqRange = {
-        1: { start: 20, end: 200 },
-        2: { start: 200, end: 500 },
-        3: { start: 500, end: 1000 },
-        4: { start: 1000, end: 2000 },
-        5: { start: 2000, end: 4000 },
-        6: { start: 4000, end: 8000 },
-        7: { start: 8000, end: 16000 }
-      }[point];
-      
-      const startBin = Math.floor(freqRange.start / sampleRate * binCount);
-      const endBin = Math.min(binCount, Math.floor(freqRange.end / sampleRate * binCount));
-      
-      for (let b = startBin; b < endBin; b++) {
-        signature[lineIdx] += freqData[b] / 255.0;
-      }
-    }
-    signature[lineIdx] /= 3; // Average over 3 points per line
-  }
-  
-  // Smooth the signature
-  for (let i = 0; i < 7; i++) {
-    fanoSignature[i] = fanoSignature[i] * 0.8 + signature[i] * 0.2;
-  }
-  
-  return fanoSignature;
-}
-
-// Fano line colors (golden ratio spacing across spectrum)
-const FANO_COLORS = [
-  '#9333ea', // violet
-  '#3b82f6', // blue  
-  '#06b6d4', // cyan
-  '#10b981', // green
-  '#f59e0b', // yellow
-  '#f97316', // orange
-  '#ef4444'  // red
-];
-
-// Map class index to 2D position for fold path
-function classToPosition(classIndex, radius = 150) {
-  const h2 = Math.floor(classIndex / 21);
-  const remainder = classIndex % 21;
-  const d = Math.floor(remainder / 7);
-  const l = remainder % 7;
-  
-  // Use (h2,d) for radial angle, l for radius modulation
-  const angle = (h2 * 90 + d * 30) * Math.PI / 180; // 0-360 degrees
-  const r = radius * (0.3 + (l / 7) * 0.7); // Radius 30%-100% of max
-  
-  return {
-    x: Math.cos(angle) * r,
-    y: Math.sin(angle) * r,
-    fanoLine: l % 7 // Which Fano line this belongs to
-  };
-}
-
-// Find Fano line for a given l value
-function getFanoLineIndex(l) {
-  if (l === 0) return -1; // scalar, no Fano line
-  for (let i = 0; i < 7; i++) {
-    if (FANO_LINES[i].includes(l)) return i;
-  }
-  return 0; // fallback
-}
-
-function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
-  const canvas = document.getElementById('glyph-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  const cx = W / 2, cy = H / 2;
-  const maxR = Math.min(W, H) / 2 - 20;
-  
-  sgaTime += 0.016; // Assume ~60fps
-  
-  // ── SGA Classification ──
-  const currentClass = classifyAudio(fData, sRate, rms, centroid, pitch, valence);
-  
-  // Add to fold sequence (rolling buffer of 200)
-  foldSequence.push(currentClass);
-  if (foldSequence.length > 200) {
-    foldSequence.shift();
-  }
-  
-  // Compute Fano signature
-  computeFanoSignature(fData, sRate);
-  
-  // Clear with ghost trails
-  ctx.fillStyle = 'rgba(5, 5, 8, 0.15)';
-  ctx.fillRect(0, 0, W, H);
-  
-  // ── Layer 1: Fano Constellation (background) ──
-  const fanoNodePositions = [];
-  for (let i = 1; i <= 7; i++) {
-    const angle = ((i - 1) / 7) * Math.PI * 2 - Math.PI / 2;
-    const r = maxR * 0.8;
-    fanoNodePositions.push({
-      x: cx + Math.cos(angle) * r,
-      y: cy + Math.sin(angle) * r,
-      energy: fanoSignature[i - 1] || 0
-    });
-  }
-  
-  // Draw Fano lines
-  for (let lineIdx = 0; lineIdx < 7; lineIdx++) {
-    const line = FANO_LINES[lineIdx];
-    const energy = fanoSignature[lineIdx];
-    const alpha = 0.1 + energy * 0.4;
-    const width = 0.5 + energy * 2;
-    
-    ctx.strokeStyle = FANO_COLORS[lineIdx];
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    
-    for (let i = 0; i < line.length; i++) {
-      const pointIdx = line[i] - 1; // Convert 1-based to 0-based
-      const pos = fanoNodePositions[pointIdx];
-      if (i === 0) ctx.moveTo(pos.x, pos.y);
-      else ctx.lineTo(pos.x, pos.y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-  
-  // Draw Fano nodes
-  for (let i = 0; i < 7; i++) {
-    const pos = fanoNodePositions[i];
-    const nodeR = 3 + pos.energy * 8;
-    
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, nodeR, 0, Math.PI * 2);
-    ctx.fillStyle = FANO_COLORS[i];
-    ctx.globalAlpha = 0.6 + pos.energy * 0.4;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-  
-  // ── Layer 2: Fold Path Trajectory (primary visual) ──
-  if (foldSequence.length > 1) {
-    const pathPoints = foldSequence.map(classIdx => {
-      const pos = classToPosition(classIdx, maxR * 0.6);
-      return { 
-        x: cx + pos.x, 
-        y: cy + pos.y, 
-        fanoLine: getFanoLineIndex(classIdx % 8),
-        age: 1.0 
-      };
-    });
-    
-    // Draw fold path as curved trajectory
-    ctx.lineWidth = 2;
-    for (let i = 1; i < pathPoints.length; i++) {
-      const p1 = pathPoints[i - 1];
-      const p2 = pathPoints[i];
-      const age = i / pathPoints.length; // 0=old, 1=recent
-      const alpha = age * 0.8 + 0.2;
-      
-      const colorIdx = p2.fanoLine >= 0 ? p2.fanoLine : 0;
-      ctx.strokeStyle = FANO_COLORS[colorIdx];
-      ctx.globalAlpha = alpha;
-      
-      if (i === 1) {
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-      }
-      
-      // Use quadratic curve for smoothness
-      if (i < pathPoints.length - 1) {
-        const p3 = pathPoints[i + 1];
-        const cp1x = p1.x + (p2.x - p1.x) * 0.5;
-        const cp1y = p1.y + (p2.y - p1.y) * 0.5;
-        ctx.quadraticCurveTo(cp1x, cp1y, p2.x, p2.y);
-      } else {
-        ctx.lineTo(p2.x, p2.y);
-      }
-    }
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-  
-  // ── Layer 3: Central Glyph Core ──
-  const h2 = Math.floor(currentClass / 24);
-  const remainder = currentClass % 24;
-  const d = Math.floor(remainder / 7);
-  const l = remainder % 7;
-  
-  // Geometric shape based on (h2, d, l)
-  const numSides = 3 + h2; // 3, 4, 5, 6-sided polygon
-  const coreSize = 20 + rms * 20;
-  const rotation = (l / 8) * Math.PI * 2 + sgaTime * 0.5;
-  
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(rotation);
-  
-  // Draw polygon
-  ctx.beginPath();
-  for (let i = 0; i <= numSides; i++) {
-    const angle = (i / numSides) * Math.PI * 2;
-    const x = Math.cos(angle) * coreSize;
-    const y = Math.sin(angle) * coreSize;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  
-  // Fill pattern based on d
-  const coreColor = FANO_COLORS[currentClass % 7];
-  if (d === 0) {
-    // Solid fill
-    ctx.fillStyle = coreColor;
-    ctx.globalAlpha = 0.7;
-    ctx.fill();
-  } else if (d === 1) {
-    // Ring pattern
-    ctx.strokeStyle = coreColor;
-    ctx.lineWidth = 3;
-    ctx.globalAlpha = 0.8;
-    ctx.stroke();
-  } else {
-    // Dot pattern
-    ctx.fillStyle = coreColor;
-    ctx.globalAlpha = 0.6;
-    for (let i = 0; i < numSides; i++) {
-      const angle = (i / numSides) * Math.PI * 2;
-      const x = Math.cos(angle) * coreSize * 0.7;
-      const y = Math.sin(angle) * coreSize * 0.7;
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
-  
-  // ── Layer 4: Musical Frequency Whiskers ──
-  for (let i = 0; i < 7; i++) {
-    const angle = (i / 7) * Math.PI * 2 - Math.PI / 2;
-    const length = fanoSignature[i] * maxR * 0.4;
-    const x1 = cx + Math.cos(angle) * (coreSize + 5);
-    const y1 = cy + Math.sin(angle) * (coreSize + 5);
-    const x2 = cx + Math.cos(angle) * (coreSize + 5 + length);
-    const y2 = cy + Math.sin(angle) * (coreSize + 5 + length);
-    
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.strokeStyle = FANO_COLORS[i];
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.7 + fanoSignature[i] * 0.3;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-}
-
-// ── State & UI ──────────────────────────────────────────────
-
-function applyState(s) {
-  state = s;
-  if (!s) return;
-  const c = s.current;
-  if (c) {
-    document.getElementById('album').textContent = c.album || s.currentAlbum || '';
-    document.getElementById('track').textContent = c.title || '—';
-    document.getElementById('theme').textContent = c.theme || '';
-    document.getElementById('info').textContent =
-      'Track ' + (s.currentTrackIdx + 1) + ' of ' + s.totalTracks +
-      (s.currentAlbum ? ' · ' + s.currentAlbum : '');
-
-    if (c.file && c.file !== currentFile) {
-      currentFile = c.file;
-      const audio = document.getElementById('audio');
-      audio.src = '/audio/' + encodeURIComponent(c.file);
-      audio.load();
-      audio.play().then(() => initAudioAnalyser()).catch(() => {});
-    }
-  }
-  renderPlaylist(s);
-  renderAlbums(s);
-}
-
-async function fetchState() {
-  try {
-    const r = await fetch('/api/state');
-    applyState(await r.json());
-  } catch (e) { /* server not ready yet */ }
-}
-
-function renderPlaylist(s) {
-  if (!s || !s.playlist) return;
-  // Skip re-render if nothing relevant changed
-  if (s.currentTrackIdx === _lastTrackIdx && s.playlist.length === _lastPlaylistLen) return;
-  _lastTrackIdx   = s.currentTrackIdx;
-  _lastPlaylistLen = s.playlist.length;
-
-  const el = document.getElementById('playlist');
-  el.innerHTML = s.playlist.map((t, i) =>
-    '<div class="pl-track' + (i === s.currentTrackIdx ? ' current' : '') +
-    '" onclick="jumpTo(' + i + ')">' +
-    '<span class="pl-num">' + (i+1) + '</span>' +
-    '<span>' + t.title + '</span>' +
-    '<span style="color:#333;font-size:10px">' + (t.album||'') + '</span></div>'
-  ).join('');
-}
-
-function renderAlbums(s) {
-  if (!s) return;
-  if (s.currentAlbum === _lastAlbum) return;
-  _lastAlbum = s.currentAlbum;
-
-  const albums = ${albumsJson};
-  const el = document.getElementById('albums');
-  el.innerHTML = albums.map(a =>
-    '<button class="album-btn' + (s.currentAlbum === a.name ? ' active' : '') +
-    '" onclick="loadAlbum(' + JSON.stringify(a.name) + ')">' +
-    '<div class="aname">' + a.name + '</div>' +
-    '<div class="atheme">' + a.theme + '</div></button>'
-  ).join('');
-}
-
-async function nextTrack()       { await fetch('/api/next',  {method:'POST'}); }
-async function prevTrack()       { await fetch('/api/prev',  {method:'POST'}); }
-async function jumpTo(idx)       { await fetch('/api/jump?idx=' + idx, {method:'POST'}); }
-async function loadAlbum(name)   { await fetch('/api/album?name=' + encodeURIComponent(name), {method:'POST'}); }
-
-// ── WebSocket — state push replaces polling ──────────────────
-
-function connectWS() {
-  clearTimeout(wsReconnectTimer);
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(proto + '//' + location.host);
-
-  ws.onopen = () => {
-    document.getElementById('audio-dot').className = 'dot live';
-    fetchState(); // Get full state on connect
-  };
-
-  ws.onmessage = (ev) => {
-    try {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === 'state') applyState(msg.data);
-      // perception messages are handled by Web Audio API directly — ignored here
-    } catch {}
-  };
-
-  ws.onclose = () => {
-    document.getElementById('audio-dot').className = 'dot off';
-    wsReconnectTimer = setTimeout(connectWS, 3000); // auto-reconnect
-  };
-}
-
-// ── Library Panel ────────────────────────────────────────────
-
-let libOpen = false;
-
-function toggleLibrary() {
-  libOpen = !libOpen;
-  document.getElementById('lib-body').className = 'library-body' + (libOpen ? ' open' : '');
-  document.getElementById('lib-toggle').textContent = libOpen ? '▲ Close' : '▼ Configure';
-  if (libOpen) loadLibraryStatus();
-}
-
-async function loadLibraryStatus() {
-  try {
-    const r = await fetch('/api/library');
-    const data = await r.json();
-    document.getElementById('lib-path').value = data.musicDir || '';
-    const statusEl = document.getElementById('lib-status');
-    const totalFound = Object.values(data.albums).reduce((s, a) => s + a.found, 0);
-    const totalTracks = Object.values(data.albums).reduce((s, a) => s + a.total, 0);
-    if (data.fileCount === 0) {
-      statusEl.className = 'library-status err';
-      statusEl.textContent = '✗ No audio files found in: ' + data.musicDir;
-    } else if (totalFound === totalTracks) {
-      statusEl.className = 'library-status ok';
-      statusEl.textContent = '✓ All ' + totalTracks + ' tracks found (' + data.fileCount + ' files in library)';
-    } else {
-      statusEl.className = 'library-status warn';
-      statusEl.textContent = totalFound + '/' + totalTracks + ' tracks found (' + data.fileCount + ' files in library)';
-    }
-    const grid = document.getElementById('lib-albums');
-    grid.innerHTML = Object.entries(data.albums).map(([name, info]) => {
-      const cls = info.found === info.total ? 'full' : info.found > 0 ? 'partial' : 'empty';
-      const missing = info.tracks.filter(t => !t.file).map(t => t.title);
-      return '<div class="album-row">' +
-        '<span class="album-row-name">' + name + '</span>' +
-        '<span class="album-row-count ' + cls + '">' + info.found + '/' + info.total + '</span>' +
-        '</div>' +
-        (missing.length ? '<div class="missing-list">Missing: ' + missing.join(', ') + '</div>' : '');
-    }).join('');
-  } catch (e) {
-    document.getElementById('lib-status').textContent = 'Error loading library status';
-  }
-}
-
-async function setLibrary() {
-  const dir = document.getElementById('lib-path').value.trim();
-  if (!dir) return;
-  const statusEl = document.getElementById('lib-status');
-  statusEl.className = 'library-status';
-  statusEl.textContent = 'Scanning...';
-  try {
-    const r = await fetch('/api/set-music-dir', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ dir })
-    });
-    const data = await r.json();
-    if (data.ok) {
-      await loadLibraryStatus();
-      fetchState(); // Refresh playlist with new dir
-    } else {
-      statusEl.className = 'library-status err';
-      statusEl.textContent = '✗ ' + (data.error || 'Failed to set directory');
-    }
-  } catch (e) {
-    statusEl.className = 'library-status err';
-    statusEl.textContent = '✗ Server error';
-  }
-}
-
-// ── Init ─────────────────────────────────────────────────────
-
-document.getElementById('audio').addEventListener('ended', () => nextTrack());
-document.getElementById('audio').addEventListener('play',  () => initAudioAnalyser());
-document.getElementById('lib-path').addEventListener('keydown', e => { if (e.key === 'Enter') setLibrary(); });
-
-connectWS();
-</script>
-</body>
-</html>`;
-}
-
 // ── Server ─────────────────────────────────────────────────
 
 const MIME = {".mp3":"audio/mpeg",".wav":"audio/wav",".flac":"audio/flac",".ogg":"audio/ogg",".m4a":"audio/mp4"};
@@ -1424,10 +467,10 @@ const MIME = {".mp3":"audio/mpeg",".wav":"audio/wav",".flac":"audio/flac",".ogg"
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
 
-  // Player page
+  // Player page — serve SPA from workspace/index.html
   if (parsed.pathname === "/" || parsed.pathname === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(getPlayerHtml());
+    res.end(getSPA());
     return;
   }
 
@@ -1465,12 +508,11 @@ const server = http.createServer((req, res) => {
         const resolved = path.resolve(dir);
         MUSIC_DIR = resolved;
         invalidateCache();
-        _cachedHtml = null; // force HTML regenerate
         // Rebuild current playlist with new dir
         if (djState.currentAlbum === "The Consciousness Series") buildFullSetlist();
         else if (djState.currentAlbum) buildPlaylist(djState.currentAlbum);
         broadcastState();
-        console.log(`📁 Music dir changed: ${MUSIC_DIR} (${getFiles().length} files)`);
+        console.log(`\uD83D\uDCC1 Music dir changed: ${MUSIC_DIR} (${getFiles().length} files)`);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, musicDir: MUSIC_DIR, fileCount: getFiles().length }));
       } catch (e) {
@@ -1485,7 +527,7 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === "/api/next" && req.method === "POST") {
     const track = advanceTrack();
     broadcastState();
-    console.log(`⏭ Next: ${track?.title || "end"} (${track?.album || ""})`);
+    console.log(`\u23ED Next: ${track?.title || "end"} (${track?.album || ""})`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, track }));
     return;
@@ -1498,7 +540,7 @@ const server = http.createServer((req, res) => {
     if (djState.currentTrackIdx < -1) djState.currentTrackIdx = -1;
     const track = advanceTrack();
     broadcastState();
-    console.log(`⏮ Prev: ${track?.title || "?"}`);
+    console.log(`\u23EE Prev: ${track?.title || "?"}`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, track }));
     return;
@@ -1510,7 +552,7 @@ const server = http.createServer((req, res) => {
     djState.currentTrackIdx = Math.max(0, Math.min(idx - 1, djState.playlist.length - 1));
     const track = advanceTrack();
     broadcastState();
-    console.log(`⏩ Jump: ${track?.title || "?"}`);
+    console.log(`\u23E9 Jump: ${track?.title || "?"}`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, track }));
     return;
@@ -1524,7 +566,7 @@ const server = http.createServer((req, res) => {
     const track = getCurrentTrack();
     if (track) { publishToFlux(track); hearTrack(track); }
     broadcastState();
-    console.log(`💿 Album: ${djState.currentAlbum} (${djState.playlist.length} tracks)`);
+    console.log(`\uD83D\uDCBF Album: ${djState.currentAlbum} (${djState.playlist.length} tracks)`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, album: djState.currentAlbum, tracks: djState.playlist.length }));
     return;
@@ -1534,6 +576,65 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === "/api/perception") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(currentPerception));
+    return;
+  }
+
+  // ── Queue API ────────────────────────────────────────────
+
+  // GET /api/queue — return the user queue
+  if (parsed.pathname === "/api/queue" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(userQueue));
+    return;
+  }
+
+  // POST /api/queue — add track to queue
+  if (parsed.pathname === "/api/queue" && req.method === "POST") {
+    let body = "";
+    req.on("data", d => body += d);
+    req.on("end", () => {
+      try {
+        const { filename } = JSON.parse(body);
+        if (!filename) throw new Error("filename required");
+        const file = findAudioFile(filename.replace(/\.[^/.]+$/, "")) || filename;
+        const title = path.basename(file, path.extname(file)).replace(/^\d+[\s.\-_]+/, "").trim();
+        userQueue.push({ filename: file, title, path: file });
+        broadcastQueue();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, queue: userQueue }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/queue/shuffle — shuffle the queue
+  if (parsed.pathname === "/api/queue/shuffle" && req.method === "POST") {
+    for (let i = userQueue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [userQueue[i], userQueue[j]] = [userQueue[j], userQueue[i]];
+    }
+    broadcastQueue();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ success: true, queue: userQueue }));
+    return;
+  }
+
+  // DELETE /api/queue/:index — remove track from queue
+  const queueMatch = parsed.pathname.match(/^\/api\/queue\/(\d+)$/);
+  if (queueMatch && req.method === "DELETE") {
+    const idx = parseInt(queueMatch[1]);
+    if (idx >= 0 && idx < userQueue.length) {
+      userQueue.splice(idx, 1);
+      broadcastQueue();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, queue: userQueue }));
+    } else {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid index" }));
+    }
     return;
   }
 
@@ -1578,7 +679,7 @@ const server = http.createServer((req, res) => {
 wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
-  console.log('👁 Ghost vision client connected');
+  console.log('\uD83D\uDC41 Ghost vision client connected');
 
   // Push full state immediately on connect so client doesn't wait for next event
   const current = getCurrentTrack();
@@ -1599,7 +700,23 @@ wss.on('connection', (ws) => {
     ws.send(JSON.stringify({ type: 'perception', data: currentPerception }));
   }
 
-  ws.on('close', () => console.log('👁 Ghost vision client disconnected'));
+  // Send queue state to new clients
+  ws.send(JSON.stringify({ type: "queue_update", queue: userQueue }));
+
+  // Handle incoming messages
+  ws.on('message', (message) => {
+    if (Buffer.isBuffer(message)) {
+      // Wave 2: live audio chunk processing
+      console.log(`\uD83C\uDF99 Live audio chunk: ${message.length} bytes`);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(message.toString());
+      // Handle client messages if needed
+    } catch {}
+  });
+
+  ws.on('close', () => console.log('\uD83D\uDC41 Ghost vision client disconnected'));
 });
 
 // DJ picks the opening set: start with Ghost Signals (album 1)
@@ -1609,15 +726,15 @@ const first = getCurrentTrack();
 if (first) {
   publishToFlux(first);
   hearTrack(first); // Generate initial perception
-  console.log(`\n🎧 Opening track: "${first.title}"`);
+  console.log(`\n\uD83C\uDFA7 Opening track: "${first.title}"`);
 }
 
 server.listen(PORT, () => {
-  console.log(`\n👻 Kannaka Radio — Ghost Vision Edition`);
+  console.log(`\n\uD83D\uDC7B Kannaka Radio \u2014 Ghost Vision Edition`);
   console.log(`   Player:     http://localhost:${PORT}`);
   console.log(`   Music:      ${MUSIC_DIR}`);
   console.log(`   Setlist:    ${djState.currentAlbum} (${djState.playlist.length} tracks)`);
   console.log(`   Flux:       pure-jade/radio-now-playing`);
   console.log(`   WebSocket:  Real-time perception streaming`);
-  console.log(`\n   🎵 Open the player in your browser and witness music through a ghost's eyes.\n`);
+  console.log(`\n   \uD83C\uDFB5 Open the player in your browser and witness music through a ghost's eyes.\n`);
 });
