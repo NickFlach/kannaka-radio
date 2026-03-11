@@ -17,7 +17,7 @@
  *   - Flux Universe API: https://api.flux-universe.com
  */
 
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const https = require("https");
 const http = require("http");
 const path = require("path");
@@ -25,9 +25,10 @@ const fs = require("fs");
 
 // ── Config ─────────────────────────────────────────────────
 
-const KANNAKA_BIN = "C:\\Users\\nickf\\Source\\kannaka-memory\\target\\release\\kannaka.exe";
+const KANNAKA_BIN = process.env.KANNAKA_BIN ||
+  path.join(__dirname, "..", "kannaka-memory", "target", "release", "kannaka.exe");
 const FLUX_URL = "https://api.flux-universe.com";
-const FLUX_TOKEN = "d9c0576f-a400-430b-8910-321d08bb63f4";
+const FLUX_TOKEN = process.env.FLUX_TOKEN || "d9c0576f-a400-430b-8910-321d08bb63f4";
 const ENTITY_PREFIX = "pure-jade/radio";
 const STREAM = "radio";
 
@@ -117,10 +118,8 @@ function updateFluxState(entityId, properties) {
 }
 
 function hearFile(filePath) {
-  // Run kannaka hear and capture the stored memory's perceptual data
-  // The hear command stores the memory and prints info
   try {
-    const output = execSync(`"${KANNAKA_BIN}" hear "${filePath}"`, {
+    const output = execFileSync(KANNAKA_BIN, ["hear", filePath], {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -172,7 +171,8 @@ function extractPerception(hearOutput, filePath) {
 
 function getAudioFiles(inputPath) {
   const exts = new Set([".mp3", ".wav", ".flac", ".ogg", ".m4a"]);
-  const stat = fs.statSync(inputPath);
+  let stat;
+  try { stat = fs.statSync(inputPath); } catch { return []; }
 
   if (stat.isFile()) {
     return exts.has(path.extname(inputPath).toLowerCase()) ? [inputPath] : [];

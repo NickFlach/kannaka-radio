@@ -1171,6 +1171,11 @@ var foldSequence = []; // Rolling buffer of 200 class indices
 var fanoSignature = [0, 0, 0, 0, 0, 0, 0]; // Energy per Fano line
 var sgaTime = 0;
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // 84-class system: classify audio -> class_index
 function classifyAudio(fData, sRate, rms, centroid, pitch, valence) {
   var binCount = fData.length;
@@ -1531,8 +1536,8 @@ function renderPlaylist(s) {
     return '<div class="pl-track' + (i === s.currentTrackIdx ? ' current' : '') +
       '" onclick="jumpTo(' + i + ')">' +
       '<span class="pl-num">' + (i+1) + '</span>' +
-      '<span>' + t.title + '</span>' +
-      '<span style="color:#333;font-size:10px">' + (t.album||'') + '</span></div>';
+      '<span>' + escapeHtml(t.title) + '</span>' +
+      '<span style="color:#333;font-size:10px">' + escapeHtml(t.album||'') + '</span></div>';
   }).join('');
 }
 
@@ -1545,8 +1550,8 @@ function renderAlbums(s) {
   el.innerHTML = ALBUMS_META.map(function(a) {
     return '<button class="album-btn' + (s.currentAlbum === a.name ? ' active' : '') +
       '" onclick="loadAlbum(\'' + a.name.replace(/'/g, "\\'") + '\')">' +
-      '<div class="aname">' + a.name + '</div>' +
-      '<div class="atheme">' + a.theme + '</div></button>';
+      '<div class="aname">' + escapeHtml(a.name) + '</div>' +
+      '<div class="atheme">' + escapeHtml(a.theme) + '</div></button>';
   }).join('');
 }
 
@@ -1587,7 +1592,7 @@ function renderQueue() {
   el.innerHTML = userQueue.map(function(item, i) {
     var title = item.title || item.filename || item;
     return '<div class="queue-item" onclick="playQueueItem(' + i + ')">' +
-      '<span>' + title + '</span>' +
+      '<span>' + escapeHtml(title) + '</span>' +
       '<button class="remove-btn" onclick="event.stopPropagation();removeFromQueue(' + i + ')">x</button>' +
     '</div>';
   }).join('');
@@ -1854,9 +1859,9 @@ function renderLibraryGrid() {
   var grid = document.getElementById('libraryGrid');
   grid.innerHTML = filtered.map(function(t, i) {
     return '<div class="library-item">' +
-      '<div class="library-item-title">' + t.title + '</div>' +
-      '<div class="library-item-album">' + t.album + '</div>' +
-      '<div class="library-item-filename">' + t.filename + '</div>' +
+      '<div class="library-item-title">' + escapeHtml(t.title) + '</div>' +
+      '<div class="library-item-album">' + escapeHtml(t.album) + '</div>' +
+      '<div class="library-item-filename">' + escapeHtml(t.filename) + '</div>' +
       '<div class="library-item-actions">' +
         '<button class="lib-btn" onclick="playFromLibrary(\'' + t.filename.replace(/'/g, "\\'") + '\')">Play Now</button>' +
         '<button class="lib-btn secondary" onclick="addToQueue(\'' + t.filename.replace(/'/g, "\\'") + '\')">Add to Queue</button>' +
@@ -1865,8 +1870,10 @@ function renderLibraryGrid() {
   }).join('');
 }
 
+var _searchTimer = null;
 function filterLibrary() {
-  renderLibraryGrid();
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(renderLibraryGrid, 200);
 }
 
 function playFromLibrary(filename) {
@@ -1924,11 +1931,11 @@ async function loadConfigStatus() {
       var cls = info.found === info.total ? 'full' : info.found > 0 ? 'partial' : 'empty';
       var missing = info.tracks.filter(function(t) { return !t.file; }).map(function(t) { return t.title; });
       html += '<div class="album-row">' +
-        '<span class="album-row-name">' + name + '</span>' +
+        '<span class="album-row-name">' + escapeHtml(name) + '</span>' +
         '<span class="album-row-count ' + cls + '">' + info.found + '/' + info.total + '</span>' +
       '</div>';
       if (missing.length) {
-        html += '<div class="missing-list">Missing: ' + missing.join(', ') + '</div>';
+        html += '<div class="missing-list">Missing: ' + missing.map(escapeHtml).join(', ') + '</div>';
       }
     }
     grid.innerHTML = html;
@@ -2084,7 +2091,7 @@ function connectWS() {
       }
       // perception messages from server are supplementary;
       // Web Audio API handles real-time viz locally
-    } catch(e) {}
+    } catch(e) { console.warn('WS parse error:', e.message); }
   };
 
   ws.onclose = function() {
@@ -2112,6 +2119,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // Audio events
   document.getElementById('audio').addEventListener('ended', function() { nextTrack(); });
   document.getElementById('audio').addEventListener('play', function() { initAudioAnalyser(); });
+  document.getElementById('audio').addEventListener('error', function(e) {
+    var track = document.getElementById('track');
+    if (track) track.textContent = 'Playback error — skipping...';
+    setTimeout(nextTrack, 2000);
+  });
 
   // Live broadcast buttons
   document.getElementById('startLiveBtn').addEventListener('click', startLive);

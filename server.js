@@ -20,8 +20,7 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
-const url = require("url");
-const { execFile, exec } = require("child_process");
+const { execFile } = require("child_process");
 const WebSocket = require("ws");
 
 // ── Config ─────────────────────────────────────────────────
@@ -35,7 +34,7 @@ let MUSIC_DIR = musicIdx >= 0
   ? path.resolve(args[musicIdx + 1])
   : path.join(__dirname, "music");
 
-const FLUX_TOKEN = "d9c0576f-a400-430b-8910-321d08bb63f4";
+const FLUX_TOKEN = process.env.FLUX_TOKEN || "d9c0576f-a400-430b-8910-321d08bb63f4";
 const KANNAKA_BIN = process.env.KANNAKA_BIN ||
   path.join(__dirname, "..", "kannaka-memory", "target", "release", "kannaka.exe");
 
@@ -514,7 +513,7 @@ function convertToWav(inputBuffer, callback) {
 
   fs.writeFile(tempInput, inputBuffer, (err) => {
     if (err) return callback(err);
-    exec(`ffmpeg -i "${tempInput}" -ar 22050 -ac 1 -y "${outputPath}"`, (error) => {
+    execFile("ffmpeg", ["-i", tempInput, "-ar", "22050", "-ac", "1", "-y", outputPath], (error) => {
       try { fs.unlinkSync(tempInput); } catch {}
       if (error) return callback(error);
       console.log(`   Converted chunk: ${path.basename(outputPath)}`);
@@ -661,23 +660,21 @@ function generateTTS(text, callback) {
   const outputPath = path.join(djVoice.voiceDir, `dj_${timestamp}.mp3`);
 
   // Approach 1: Use Edge TTS (available on Windows)
-  const escapedText = text.replace(/"/g, '\\"').replace(/'/g, "\\'");
-  const edgeTtsCmd = `edge-tts --voice "en-US-AriaNeural" --text "${escapedText}" --write-media "${outputPath}"`;
-
-  exec(edgeTtsCmd, { timeout: 15000 }, (err) => {
+  execFile("edge-tts", ["--voice", "en-US-AriaNeural", "--text", text, "--write-media", outputPath], { timeout: 15000 }, (err) => {
     if (!err && fs.existsSync(outputPath)) {
       console.log(`   \uD83D\uDDE3 TTS generated: ${path.basename(outputPath)}`);
       return callback(null, outputPath, text);
     }
 
     // Approach 2: Use PowerShell SAPI (Windows built-in)
-    const psCmd = `powershell -Command "Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('${outputPath.replace(/\.mp3$/, '.wav')}'); $synth.Speak('${escapedText}'); $synth.Dispose()"`;
     const wavPath = outputPath.replace(/\.mp3$/, '.wav');
 
-    exec(psCmd, { timeout: 15000 }, (psErr) => {
+    execFile("powershell", ["-Command",
+      `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('${wavPath}'); $synth.Speak('${text.replace(/'/g, "''")}'); $synth.Dispose()`
+    ], { timeout: 15000 }, (psErr) => {
       if (!psErr && fs.existsSync(wavPath)) {
         // Convert WAV to MP3 for consistency
-        exec(`ffmpeg -i "${wavPath}" -y "${outputPath}"`, { timeout: 10000 }, (ffErr) => {
+        execFile("ffmpeg", ["-i", wavPath, "-y", outputPath], { timeout: 10000 }, (ffErr) => {
           try { fs.unlinkSync(wavPath); } catch {}
           if (!ffErr && fs.existsSync(outputPath)) {
             console.log(`   \uD83D\uDDE3 TTS (SAPI) generated: ${path.basename(outputPath)}`);
@@ -967,8 +964,20 @@ setInterval(() => {
 
 const MIME = {".mp3":"audio/mpeg",".wav":"audio/wav",".flac":"audio/flac",".ogg":"audio/ogg",".m4a":"audio/mp4"};
 
+const MAX_BODY = 1024 * 64; // 64KB
+function readBody(req, res, callback) {
+  let body = "";
+  let size = 0;
+  req.on("data", d => {
+    size += d.length;
+    if (size > MAX_BODY) { req.destroy(); res.writeHead(413); res.end("Payload too large"); return; }
+    body += d;
+  });
+  req.on("end", () => callback(body));
+}
+
 const server = http.createServer((req, res) => {
-  const parsed = url.parse(req.url, true);
+  const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
   // Player page — serve SPA from workspace/index.html
   if (parsed.pathname === "/" || parsed.pathname === "/index.html") {
@@ -1005,9 +1014,7 @@ const server = http.createServer((req, res) => {
 
   // API: set music directory
   if (parsed.pathname === "/api/set-music-dir" && req.method === "POST") {
-    let body = "";
-    req.on("data", d => (body += d));
-    req.on("end", () => {
+    readBody(req, res, (body) => {
       try {
         const { dir } = JSON.parse(body);
         if (!dir || typeof dir !== "string") throw new Error("dir required");
@@ -1054,7 +1061,7 @@ const server = http.createServer((req, res) => {
 
   // API: jump to track
   if (parsed.pathname === "/api/jump" && req.method === "POST") {
-    const idx = parseInt(parsed.query.idx) || 0;
+    const idx = parseInt(parsed.searchParams.get("idx")) || 0;
     djState.currentTrackIdx = Math.max(0, Math.min(idx - 1, djState.playlist.length - 1));
     const track = advanceTrack();
     broadcastState();
@@ -1066,7 +1073,7 @@ const server = http.createServer((req, res) => {
 
   // API: load album
   if (parsed.pathname === "/api/album" && req.method === "POST") {
-    const name = parsed.query.name;
+    const name = parsed.searchParams.get("name");
     if (name === "The Consciousness Series") buildFullSetlist();
     else buildPlaylist(name);
     const track = getCurrentTrack();
@@ -1096,9 +1103,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/queue — add track to queue
   if (parsed.pathname === "/api/queue" && req.method === "POST") {
-    let body = "";
-    req.on("data", d => body += d);
-    req.on("end", () => {
+    readBody(req, res, (body) => {
       try {
         const { filename } = JSON.parse(body);
         if (!filename) throw new Error("filename required");
@@ -1270,9 +1275,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/request — submit a track request (from agents or listeners)
   if (parsed.pathname === "/api/request" && req.method === "POST") {
-    let body = "";
-    req.on("data", d => body += d);
-    req.on("end", () => {
+    readBody(req, res, (body) => {
       try {
         const request = JSON.parse(body);
         const result = handleTrackRequest(request);
@@ -1480,6 +1483,16 @@ if (first) {
   hearTrack(first); // Generate initial perception
   console.log(`\n\uD83C\uDFA7 Opening track: "${first.title}"`);
 }
+
+function shutdown() {
+  console.log("\n\uD83D\uDC7B Kannaka Radio shutting down...");
+  stopPerceptionLoop();
+  if (wss) wss.close();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000);
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 server.listen(PORT, () => {
   console.log(`\n\uD83D\uDC7B Kannaka Radio \u2014 Ghost Vision Edition`);
