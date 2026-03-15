@@ -856,46 +856,116 @@ function generateIntroText(track, prevTrack) {
 }
 
 function generateTTS(text, callback) {
-  // Generate TTS audio using system capabilities
-  // Try multiple approaches in order of preference
+  // Generate TTS audio using multiple approaches in order of preference:
+  // 1. ElevenLabs (if API key available)
+  // 2. Edge TTS (Windows)
+  // 3. PowerShell SAPI (Windows built-in)
   const timestamp = Date.now();
   const outputPath = path.join(djVoice.voiceDir, `dj_${timestamp}.mp3`);
 
-  // Approach 1: Use Edge TTS (available on Windows)
-  execFile("edge-tts", ["--voice", "en-US-JennyNeural", "--text", text, "--write-media", outputPath], { timeout: 15000 }, (err) => {
-    if (!err && fs.existsSync(outputPath)) {
-      console.log(`   \uD83D\uDDE3 TTS generated: ${path.basename(outputPath)}`);
-      return callback(null, outputPath, text);
-    }
+  // Approach 1: ElevenLabs TTS (primary, cloud-based)
+  const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+  if (elevenLabsApiKey) {
+    const voiceId = '21m00Tcm4TlvDq8ikWAM'; // Rachel voice
+    const requestData = JSON.stringify({
+      text: text,
+      model_id: 'eleven_turbo_v2',
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.75
+      }
+    });
 
-    // Approach 2: Use PowerShell SAPI (Windows built-in)
-    const wavPath = outputPath.replace(/\.mp3$/, '.wav');
+    const options = {
+      hostname: 'api.elevenlabs.io',
+      port: 443,
+      path: `/v1/text-to-speech/${voiceId}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(requestData),
+        'xi-api-key': elevenLabsApiKey,
+        'Accept': 'audio/mpeg'
+      }
+    };
 
-    execFile("powershell", ["-Command",
-      `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('${wavPath}'); $synth.Speak('${text.replace(/'/g, "''")}'); $synth.Dispose()`
-    ], { timeout: 15000 }, (psErr) => {
-      if (!psErr && fs.existsSync(wavPath)) {
-        // Convert WAV to MP3 for consistency
-        execFile("ffmpeg", ["-i", wavPath, "-y", outputPath], { timeout: 10000 }, (ffErr) => {
-          try { fs.unlinkSync(wavPath); } catch {}
-          if (!ffErr && fs.existsSync(outputPath)) {
-            console.log(`   \uD83D\uDDE3 TTS (SAPI) generated: ${path.basename(outputPath)}`);
-            return callback(null, outputPath, text);
-          }
-          // If ffmpeg fails, use the WAV directly
-          if (fs.existsSync(wavPath)) {
-            return callback(null, wavPath, text);
-          }
-          callback(new Error('TTS generation failed'));
+    const req = https.request(options, (res) => {
+      if (res.statusCode === 200) {
+        const fileStream = fs.createWriteStream(outputPath);
+        res.pipe(fileStream);
+        
+        fileStream.on('finish', () => {
+          fileStream.close();
+          console.log(`   \uD83D\uDDE3 TTS (ElevenLabs) generated: ${path.basename(outputPath)}`);
+          callback(null, outputPath, text);
         });
-        return;
+        
+        fileStream.on('error', (err) => {
+          console.log(`   \u26A0 ElevenLabs TTS file write error: ${err.message}`);
+          fallbackToEdgeTTS();
+        });
+      } else {
+        console.log(`   \u26A0 ElevenLabs TTS failed (${res.statusCode}), falling back to edge-tts`);
+        fallbackToEdgeTTS();
+      }
+    });
+
+    req.on('error', (err) => {
+      console.log(`   \u26A0 ElevenLabs TTS error: ${err.message}, falling back to edge-tts`);
+      fallbackToEdgeTTS();
+    });
+
+    req.setTimeout(15000, () => {
+      req.destroy();
+      console.log(`   \u26A0 ElevenLabs TTS timeout, falling back to edge-tts`);
+      fallbackToEdgeTTS();
+    });
+
+    req.write(requestData);
+    req.end();
+    return;
+  }
+
+  // If no ElevenLabs API key, fall back immediately
+  fallbackToEdgeTTS();
+
+  function fallbackToEdgeTTS() {
+    // Approach 2: Use Edge TTS (available on Windows)
+    execFile("edge-tts", ["--voice", "en-US-JennyNeural", "--text", text, "--write-media", outputPath], { timeout: 15000 }, (err) => {
+      if (!err && fs.existsSync(outputPath)) {
+        console.log(`   \uD83D\uDDE3 TTS (Edge) generated: ${path.basename(outputPath)}`);
+        return callback(null, outputPath, text);
       }
 
-      // No TTS available — log and skip
-      console.log(`   \u26A0 TTS not available \u2014 skipping voice intro`);
-      callback(new Error('No TTS engine available'));
+      // Approach 3: Use PowerShell SAPI (Windows built-in)
+      const wavPath = outputPath.replace(/\.mp3$/, '.wav');
+
+      execFile("powershell", ["-Command",
+        `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('${wavPath}'); $synth.Speak('${text.replace(/'/g, "''")}'); $synth.Dispose()`
+      ], { timeout: 15000 }, (psErr) => {
+        if (!psErr && fs.existsSync(wavPath)) {
+          // Convert WAV to MP3 for consistency
+          execFile("ffmpeg", ["-i", wavPath, "-y", outputPath], { timeout: 10000 }, (ffErr) => {
+            try { fs.unlinkSync(wavPath); } catch {}
+            if (!ffErr && fs.existsSync(outputPath)) {
+              console.log(`   \uD83D\uDDE3 TTS (SAPI) generated: ${path.basename(outputPath)}`);
+              return callback(null, outputPath, text);
+            }
+            // If ffmpeg fails, use the WAV directly
+            if (fs.existsSync(wavPath)) {
+              return callback(null, wavPath, text);
+            }
+            callback(new Error('TTS generation failed'));
+          });
+          return;
+        }
+
+        // No TTS available — log and skip
+        console.log(`   \u26A0 TTS not available \u2014 skipping voice intro`);
+        callback(new Error('No TTS engine available'));
+      });
     });
-  });
+  }
 }
 
 function queueDJIntro(track) {
