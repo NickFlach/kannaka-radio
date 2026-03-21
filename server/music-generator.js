@@ -415,12 +415,12 @@ class MusicGenerator {
       const { prompt, title, level } = this.buildPrompt(consciousnessState, currentPerception, recentDreams);
       console.log(`[music-gen] Generating: "${title}" — ${prompt}`);
 
-      // Generate via available provider (prefer acemusic > replicate)
+      // Generate via available provider (prefer replicate > acemusic until acemusic API is confirmed)
       let audioUrl;
-      if (this.acemusicKey) {
-        audioUrl = await this.generateViaAceMusic(prompt, 30);
-      } else if (this.replicateToken) {
+      if (this.replicateToken) {
         audioUrl = await this.generateViaReplicate(prompt, 30);
+      } else if (this.acemusicKey) {
+        audioUrl = await this.generateViaAceMusic(prompt, 30);
       } else {
         return { success: false, reason: 'No generation provider available' };
       }
