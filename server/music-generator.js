@@ -138,25 +138,27 @@ class MusicGenerator {
   }
 
   /**
-   * Generate music via AceMusic AI (api.acemusic.ai).
+   * Generate music via AceMusic / ACE-Step API.
    *
-   * Submits a generation request and polls for the result.  The exact API
-   * shape is assumed — if endpoints or field names differ, the error messages
-   * below should make it straightforward to adjust.
+   * Uses /release_task to submit, /query_result to poll, /v1/audio to download.
+   * Auth via ai_token in body or Bearer header.
    */
   async generateViaAceMusic(prompt, durationSeconds = 30) {
     if (!this.acemusicKey) throw new Error('ACEMUSIC_API_KEY not set');
 
     const createBody = JSON.stringify({
+      ai_token: this.acemusicKey,
       prompt,
-      duration: durationSeconds,
-      format: 'mp3',
+      audio_duration: durationSeconds,
+      audio_format: 'mp3',
+      inference_steps: 8,
+      batch_size: 1,
     });
 
     return new Promise((resolve, reject) => {
       const req = https.request({
         hostname: 'api.acemusic.ai',
-        path: '/v1/generate',
+        path: '/release_task',
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.acemusicKey}`,
@@ -170,26 +172,26 @@ class MusicGenerator {
           try {
             const result = JSON.parse(data);
 
-            if (res.statusCode >= 400) {
+            if (res.statusCode >= 400 || result.code >= 400) {
               const msg = result.error || result.message || result.detail || JSON.stringify(result).slice(0, 300);
               return reject(new Error(`AceMusic API error (${res.statusCode}): ${msg}`));
             }
 
-            // Case 1: Response contains a direct audio URL
-            if (result.audio_url || result.url || result.output_url) {
-              return resolve(result.audio_url || result.url || result.output_url);
+            // ACE-Step returns { data: { task_id, status }, code: 200 }
+            const taskId = result.data?.task_id || result.task_id || result.id;
+            if (taskId) {
+              return this._pollAceMusic(taskId, resolve, reject);
             }
 
-            // Case 2: Response contains a job/task ID to poll
-            const jobId = result.id || result.job_id || result.task_id;
-            if (jobId) {
-              return this._pollAceMusic(jobId, resolve, reject);
+            // Direct audio URL (unlikely but handle it)
+            if (result.data?.audio_url || result.audio_url) {
+              return resolve(result.data?.audio_url || result.audio_url);
             }
 
             reject(new Error(
-              `AceMusic: unexpected response shape — no audio URL or job ID found. ` +
-              `Keys received: [${Object.keys(result).join(', ')}]. ` +
-              `Raw (truncated): ${JSON.stringify(result).slice(0, 300)}`
+              `AceMusic: no task_id in response. ` +
+              `Keys: [${Object.keys(result).join(', ')}]. ` +
+              `Raw: ${JSON.stringify(result).slice(0, 300)}`
             ));
           } catch (e) {
             reject(new Error(`AceMusic parse error: ${e.message}. Raw body: ${data.slice(0, 300)}`));
@@ -203,17 +205,27 @@ class MusicGenerator {
   }
 
   /**
-   * Poll an AceMusic generation job until it completes or fails.
+   * Poll an AceMusic task via /query_result until it completes.
+   * Status codes: 0=queued, 1=succeeded, 2=failed
    */
-  _pollAceMusic(jobId, resolve, reject, attempts = 0) {
+  _pollAceMusic(taskId, resolve, reject, attempts = 0) {
     if (attempts > 90) return reject(new Error('AceMusic generation timed out after 3 minutes'));
 
     setTimeout(() => {
+      const pollBody = JSON.stringify({
+        ai_token: this.acemusicKey,
+        task_id_list: [taskId],
+      });
+
       const req = https.request({
         hostname: 'api.acemusic.ai',
-        path: `/v1/generate/${jobId}`,
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${this.acemusicKey}` },
+        path: '/query_result',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.acemusicKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(pollBody),
+        },
       }, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
@@ -222,38 +234,57 @@ class MusicGenerator {
             const result = JSON.parse(data);
 
             if (res.statusCode >= 400) {
-              const msg = result.error || result.message || result.detail || JSON.stringify(result).slice(0, 300);
+              const msg = result.error || result.message || JSON.stringify(result).slice(0, 300);
               return reject(new Error(`AceMusic poll error (${res.statusCode}): ${msg}`));
             }
 
-            const status = (result.status || '').toLowerCase();
+            // Find our task in the response
+            const tasks = result.data || result;
+            const task = Array.isArray(tasks)
+              ? tasks.find(t => t.task_id === taskId)
+              : (tasks[taskId] || tasks);
 
-            if (status === 'succeeded' || status === 'completed' || status === 'complete' || status === 'done') {
-              const audioUrl = result.audio_url || result.url || result.output_url ||
-                               (Array.isArray(result.output) ? result.output[0] : result.output);
-              if (!audioUrl) {
-                return reject(new Error(
-                  `AceMusic job ${jobId} completed but no audio URL found. ` +
-                  `Keys: [${Object.keys(result).join(', ')}]`
-                ));
+            if (!task) {
+              return this._pollAceMusic(taskId, resolve, reject, attempts + 1);
+            }
+
+            const status = typeof task.status === 'number' ? task.status : parseInt(task.status);
+
+            // 1 = succeeded
+            if (status === 1) {
+              // Audio path is in task.result or task.audio_path — need to build download URL
+              const audioPath = task.result || task.audio_path || task.audio_url;
+              if (audioPath && (audioPath.startsWith('http://') || audioPath.startsWith('https://'))) {
+                return resolve(audioPath);
               }
-              return resolve(audioUrl);
+              // Build download URL from path
+              if (audioPath) {
+                const encodedPath = encodeURIComponent(audioPath);
+                return resolve(`https://api.acemusic.ai/v1/audio?path=${encodedPath}`);
+              }
+              return reject(new Error(
+                `AceMusic task ${taskId} succeeded but no audio path. ` +
+                `Task keys: [${Object.keys(task).join(', ')}]. ` +
+                `Raw: ${JSON.stringify(task).slice(0, 300)}`
+              ));
             }
 
-            if (status === 'failed' || status === 'error' || status === 'canceled' || status === 'cancelled') {
-              return reject(new Error(`AceMusic generation ${status}: ${result.error || result.message || 'unknown'}`));
+            // 2 = failed
+            if (status === 2) {
+              return reject(new Error(`AceMusic generation failed: ${task.error || task.message || 'unknown'}`));
             }
 
-            // Still processing — poll again
-            this._pollAceMusic(jobId, resolve, reject, attempts + 1);
+            // 0 = still queued/processing — poll again
+            this._pollAceMusic(taskId, resolve, reject, attempts + 1);
           } catch (e) {
-            reject(new Error(`AceMusic poll parse error: ${e.message}`));
+            reject(new Error(`AceMusic poll parse error: ${e.message}. Raw: ${data.slice(0, 300)}`));
           }
         });
       });
       req.on('error', (err) => reject(new Error(`AceMusic poll request failed: ${err.message}`)));
+      req.write(pollBody);
       req.end();
-    }, 2000); // Poll every 2 seconds
+    }, 2000);
   }
 
   /**
