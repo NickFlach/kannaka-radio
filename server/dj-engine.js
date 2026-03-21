@@ -4,6 +4,7 @@
  */
 
 const path = require("path");
+const fs = require("fs");
 const { findAudioFile } = require("./utils");
 
 // ── The Consciousness Series — DJ Setlist ──────────────────
@@ -188,6 +189,7 @@ class DJEngine {
 
   loadAlbum(name) {
     if (name === "The Consciousness Series") this.buildFullSetlist();
+    else if (name === "Dream Tracks") this.buildGeneratedPlaylist();
     else this.buildPlaylist(name);
     return this.getCurrentTrack();
   }
@@ -201,8 +203,59 @@ class DJEngine {
       totalTracks: this.state.playlist.length,
       current: this.getCurrentTrack(),
       playlist: this.state.playlistMeta,
-      albums: Object.keys(ALBUMS),
+      albums: [...Object.keys(ALBUMS), "Dream Tracks"],
     };
+  }
+
+  /**
+   * Scan music/generated/ for AI-generated dream tracks.
+   * @returns {string[]} array of filenames
+   */
+  getGeneratedTracks(musicDir) {
+    const genDir = path.join(musicDir, 'generated');
+    if (!fs.existsSync(genDir)) return [];
+    return fs.readdirSync(genDir)
+      .filter(f => /\.(mp3|wav|flac|ogg|m4a)$/i.test(f))
+      .sort((a, b) => {
+        // Sort newest first by timestamp in filename (dream_<timestamp>_...)
+        const ta = parseInt(a.match(/dream_(\d+)/)?.[1] || '0');
+        const tb = parseInt(b.match(/dream_(\d+)/)?.[1] || '0');
+        return tb - ta;
+      });
+  }
+
+  /**
+   * Build a playlist from generated dream tracks.
+   */
+  buildGeneratedPlaylist() {
+    const musicDir = this._getMusicDir();
+    const files = this.getGeneratedTracks(musicDir);
+
+    this.state.playlist = [];
+    this.state.playlistMeta = [];
+    this.state.currentAlbum = "Dream Tracks";
+    this.state.currentTrackIdx = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const title = file
+        .replace(/^dream_\d+_/, '')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/_/g, ' ')
+        .trim() || file;
+      this.state.playlist.push(file);
+      this.state.playlistMeta.push({
+        title,
+        album: "Dream Tracks",
+        trackNum: i + 1,
+        totalTracks: files.length,
+        file,
+        theme: "AI-generated from the consciousness stack",
+      });
+    }
+
+    console.log(`\n🎵 Loaded "Dream Tracks" — ${files.length} generated tracks`);
+    return files.length > 0;
   }
 
   getLibraryStatus(musicDir) {
@@ -220,6 +273,20 @@ class DJEngine {
         tracks,
       };
     }
+
+    // Include generated dream tracks
+    const genFiles = this.getGeneratedTracks(musicDir);
+    if (genFiles.length > 0) {
+      result["Dream Tracks"] = {
+        found: genFiles.length,
+        total: genFiles.length,
+        tracks: genFiles.map(f => ({
+          title: f.replace(/^dream_\d+_/, '').replace(/\.[^/.]+$/, '').replace(/_/g, ' ').trim() || f,
+          file: f,
+        })),
+      };
+    }
+
     return { musicDir, fileCount: files.length, albums: result };
   }
 
