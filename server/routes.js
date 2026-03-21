@@ -615,8 +615,17 @@ module.exports = function setupRoutes(deps) {
     if (parsed.pathname.startsWith("/audio/")) {
       const filename = decodeURIComponent(parsed.pathname.slice(7));
       const musicDir = config.getMusicDir();
-      const filePath = path.join(musicDir, filename);
-      const resolved = path.resolve(filePath);
+      let filePath = path.join(musicDir, filename);
+      let resolved = path.resolve(filePath);
+      // Also check music/generated/ for AI-generated dream tracks
+      if (!fs.existsSync(resolved)) {
+        const genPath = path.join(musicDir, 'generated', filename);
+        const genResolved = path.resolve(genPath);
+        if (fs.existsSync(genResolved) && genResolved.startsWith(path.resolve(musicDir))) {
+          filePath = genPath;
+          resolved = genResolved;
+        }
+      }
       if (!resolved.startsWith(path.resolve(musicDir))) { res.writeHead(403); res.end(); return; }
       if (!fs.existsSync(resolved)) { res.writeHead(404); res.end("Not found: " + filename); return; }
 
