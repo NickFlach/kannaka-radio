@@ -150,6 +150,7 @@ const voteManager = new VoteManager();
 const webrtcSignaling = new WebRTCSignaling();
 
 const musicGen = new MusicGenerator({
+  acemusicKey: process.env.ACEMUSIC_API_KEY,
   replicateToken: process.env.REPLICATE_API_TOKEN,
   elevenLabsKey: process.env.ELEVENLABS_API_KEY,
 });

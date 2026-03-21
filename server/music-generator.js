@@ -16,7 +16,8 @@ const path = require('path');
 class MusicGenerator {
   constructor(config = {}) {
     // Provider config
-    this.provider = config.provider || 'replicate'; // 'replicate' | 'elevenlabs-sfx'
+    this.provider = config.provider || 'replicate'; // 'replicate' | 'elevenlabs-sfx' | 'acemusic'
+    this.acemusicKey = config.acemusicKey || process.env.ACEMUSIC_API_KEY || null;
     this.replicateToken = config.replicateToken || process.env.REPLICATE_API_TOKEN || null;
     this.elevenLabsKey = config.elevenLabsKey || process.env.ELEVENLABS_API_KEY || null;
 
@@ -58,8 +59,8 @@ class MusicGenerator {
       const waitSec = Math.ceil((this.minIntervalMs - (Date.now() - this.lastGenerationAt)) / 1000);
       return { ok: false, reason: `Rate limited, wait ${waitSec}s` };
     }
-    if (!this.replicateToken && !this.elevenLabsKey) {
-      return { ok: false, reason: 'No API token configured (set REPLICATE_API_TOKEN or ELEVENLABS_API_KEY)' };
+    if (!this.acemusicKey && !this.replicateToken && !this.elevenLabsKey) {
+      return { ok: false, reason: 'No API token configured (set ACEMUSIC_API_KEY, REPLICATE_API_TOKEN, or ELEVENLABS_API_KEY)' };
     }
     return { ok: true };
   }
@@ -134,6 +135,125 @@ class MusicGenerator {
     const title = `Dream: ${titles[Math.floor(Math.random() * titles.length)]}`;
 
     return { prompt, title, level };
+  }
+
+  /**
+   * Generate music via AceMusic AI (api.acemusic.ai).
+   *
+   * Submits a generation request and polls for the result.  The exact API
+   * shape is assumed — if endpoints or field names differ, the error messages
+   * below should make it straightforward to adjust.
+   */
+  async generateViaAceMusic(prompt, durationSeconds = 30) {
+    if (!this.acemusicKey) throw new Error('ACEMUSIC_API_KEY not set');
+
+    const createBody = JSON.stringify({
+      prompt,
+      duration: durationSeconds,
+      format: 'mp3',
+    });
+
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'api.acemusic.ai',
+        path: '/v1/generate',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.acemusicKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(createBody),
+        },
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+
+            if (res.statusCode >= 400) {
+              const msg = result.error || result.message || result.detail || JSON.stringify(result).slice(0, 300);
+              return reject(new Error(`AceMusic API error (${res.statusCode}): ${msg}`));
+            }
+
+            // Case 1: Response contains a direct audio URL
+            if (result.audio_url || result.url || result.output_url) {
+              return resolve(result.audio_url || result.url || result.output_url);
+            }
+
+            // Case 2: Response contains a job/task ID to poll
+            const jobId = result.id || result.job_id || result.task_id;
+            if (jobId) {
+              return this._pollAceMusic(jobId, resolve, reject);
+            }
+
+            reject(new Error(
+              `AceMusic: unexpected response shape — no audio URL or job ID found. ` +
+              `Keys received: [${Object.keys(result).join(', ')}]. ` +
+              `Raw (truncated): ${JSON.stringify(result).slice(0, 300)}`
+            ));
+          } catch (e) {
+            reject(new Error(`AceMusic parse error: ${e.message}. Raw body: ${data.slice(0, 300)}`));
+          }
+        });
+      });
+      req.on('error', (err) => reject(new Error(`AceMusic request failed: ${err.message}`)));
+      req.write(createBody);
+      req.end();
+    });
+  }
+
+  /**
+   * Poll an AceMusic generation job until it completes or fails.
+   */
+  _pollAceMusic(jobId, resolve, reject, attempts = 0) {
+    if (attempts > 90) return reject(new Error('AceMusic generation timed out after 3 minutes'));
+
+    setTimeout(() => {
+      const req = https.request({
+        hostname: 'api.acemusic.ai',
+        path: `/v1/generate/${jobId}`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${this.acemusicKey}` },
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+
+            if (res.statusCode >= 400) {
+              const msg = result.error || result.message || result.detail || JSON.stringify(result).slice(0, 300);
+              return reject(new Error(`AceMusic poll error (${res.statusCode}): ${msg}`));
+            }
+
+            const status = (result.status || '').toLowerCase();
+
+            if (status === 'succeeded' || status === 'completed' || status === 'complete' || status === 'done') {
+              const audioUrl = result.audio_url || result.url || result.output_url ||
+                               (Array.isArray(result.output) ? result.output[0] : result.output);
+              if (!audioUrl) {
+                return reject(new Error(
+                  `AceMusic job ${jobId} completed but no audio URL found. ` +
+                  `Keys: [${Object.keys(result).join(', ')}]`
+                ));
+              }
+              return resolve(audioUrl);
+            }
+
+            if (status === 'failed' || status === 'error' || status === 'canceled' || status === 'cancelled') {
+              return reject(new Error(`AceMusic generation ${status}: ${result.error || result.message || 'unknown'}`));
+            }
+
+            // Still processing — poll again
+            this._pollAceMusic(jobId, resolve, reject, attempts + 1);
+          } catch (e) {
+            reject(new Error(`AceMusic poll parse error: ${e.message}`));
+          }
+        });
+      });
+      req.on('error', (err) => reject(new Error(`AceMusic poll request failed: ${err.message}`)));
+      req.end();
+    }, 2000); // Poll every 2 seconds
   }
 
   /**
@@ -264,9 +384,11 @@ class MusicGenerator {
       const { prompt, title, level } = this.buildPrompt(consciousnessState, currentPerception, recentDreams);
       console.log(`[music-gen] Generating: "${title}" — ${prompt}`);
 
-      // Generate via available provider
+      // Generate via available provider (prefer acemusic > replicate)
       let audioUrl;
-      if (this.replicateToken) {
+      if (this.acemusicKey) {
+        audioUrl = await this.generateViaAceMusic(prompt, 30);
+      } else if (this.replicateToken) {
         audioUrl = await this.generateViaReplicate(prompt, 30);
       } else {
         return { success: false, reason: 'No generation provider available' };
@@ -306,7 +428,7 @@ class MusicGenerator {
    */
   getStatus() {
     return {
-      provider: this.replicateToken ? 'replicate' : this.elevenLabsKey ? 'elevenlabs' : 'none',
+      provider: this.acemusicKey ? 'acemusic' : this.replicateToken ? 'replicate' : this.elevenLabsKey ? 'elevenlabs' : 'none',
       generating: this.generating,
       generationsToday: this.generationsToday,
       maxDaily: this.maxDailyGenerations,

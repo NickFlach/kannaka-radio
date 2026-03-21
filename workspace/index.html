@@ -3450,6 +3450,18 @@ function handleSync(data) {
 // ══════════════════════════════════════════════════════
 
 var voteTimerInterval = null;
+var myVotedTrack = null;
+
+async function castVoteFor(trackTitle) {
+  try {
+    await fetch('/api/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: myClientId, track: trackTitle })
+    });
+    myVotedTrack = trackTitle;
+  } catch (e) { console.error('Vote failed:', e); }
+}
 
 async function startVoteWindow() {
   try {
@@ -3478,26 +3490,44 @@ function renderVoteUpdate(data) {
 
     // Render tally
     var tally = data.tally || {};
-    var entries = Object.entries(tally).sort(function(a, b) { return b[1] - a[1]; });
-    var maxCount = entries.length > 0 ? entries[0][1] : 1;
 
-    if (entries.length === 0) {
-      if (tallyEl) tallyEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Waiting for votes...</div>';
-    } else {
-      if (tallyEl) tallyEl.innerHTML = entries.map(function(e) {
-        var pct = Math.round((e[1] / maxCount) * 100);
-        return '<div class="vote-tally-row">' +
-          '<span class="vote-tally-track">' + escapeHtml(e[0]) + '</span>' +
-          '<span class="vote-tally-count">' + e[1] + '</span>' +
-          '<div style="width:' + pct + '%;max-width:200px" class="vote-tally-bar"></div>' +
+    // Show voteable tracks from current playlist
+    if (state && state.playlist && state.playlist.length > 0) {
+      var trackButtons = state.playlist.map(function(t) {
+        var voted = myVotedTrack === t.title;
+        var count = tally[t.title] || 0;
+        return '<div class="vote-tally-row" style="cursor:' + (voted ? 'default' : 'pointer') + ';padding:6px 8px;border-radius:6px;margin-bottom:4px;background:rgba(139,92,246,' + (count > 0 ? '0.2' : '0.05') + ')" ' +
+          (voted ? '' : 'onclick="castVoteFor(\'' + escapeHtml(t.title).replace(/'/g, "\\'") + '\')"') + '>' +
+          '<span class="vote-tally-track">' + escapeHtml(t.title) + '</span>' +
+          (count > 0 ? '<span class="vote-tally-count">' + count + '</span>' : '') +
+          (voted ? '<span style="color:#22c55e;font-size:11px;margin-left:8px">Voted!</span>' : '') +
         '</div>';
       }).join('');
+      if (tallyEl) tallyEl.innerHTML = trackButtons;
+    } else {
+      // Fallback: show tally entries only
+      var entries = Object.entries(tally).sort(function(a, b) { return b[1] - a[1]; });
+      var maxCount = entries.length > 0 ? entries[0][1] : 1;
+
+      if (entries.length === 0) {
+        if (tallyEl) tallyEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Waiting for votes...</div>';
+      } else {
+        if (tallyEl) tallyEl.innerHTML = entries.map(function(e) {
+          var pct = Math.round((e[1] / maxCount) * 100);
+          return '<div class="vote-tally-row">' +
+            '<span class="vote-tally-track">' + escapeHtml(e[0]) + '</span>' +
+            '<span class="vote-tally-count">' + e[1] + '</span>' +
+            '<div style="width:' + pct + '%;max-width:200px" class="vote-tally-bar"></div>' +
+          '</div>';
+        }).join('');
+      }
     }
 
     // Start timer countdown
     startVoteTimer(data.remainingMs || 0);
   } else {
     if (btn) btn.disabled = false;
+    myVotedTrack = null;
     clearVoteTimer();
   }
 }
@@ -3595,9 +3625,11 @@ function connectWS() {
           if (npTheme) npTheme.textContent = 'Broadcasting through Kannaka Radio';
         }
         if (msg.active && !isLive) {
+          isLive = true;
           updateLiveUI();
         } else if (!msg.active && isLive) {
-          stopLive();
+          isLive = false;
+          updateLiveUI();
         }
       }
       if (msg.type === 'live_perception') {
