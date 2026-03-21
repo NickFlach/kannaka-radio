@@ -288,27 +288,24 @@ class MusicGenerator {
   }
 
   /**
-   * Generate music via Replicate (MusicGen).
-   * Creates a prediction, then polls until the audio URL is ready.
+   * Generate music via Replicate (MiniMax Music-01).
+   * Full-length songs up to 4 minutes with vocals support.
+   * Falls back to MusicGen for shorter instrumental pieces.
    */
-  async generateViaReplicate(prompt, durationSeconds = 30) {
+  async generateViaReplicate(prompt, durationSeconds = 120) {
     if (!this.replicateToken) throw new Error('REPLICATE_API_TOKEN not set');
 
+    // Use MiniMax Music-01 for full-length songs (model-based endpoint)
     const createBody = JSON.stringify({
-      version: '671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb',
       input: {
         prompt: prompt,
-        duration: durationSeconds,
-        model_version: 'stereo-large',
-        output_format: 'mp3',
-        normalization_strategy: 'peak',
       }
     });
 
     return new Promise((resolve, reject) => {
       const req = https.request({
         hostname: 'api.replicate.com',
-        path: '/v1/predictions',
+        path: '/v1/models/minimax/music-01/predictions',
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.replicateToken}`,
@@ -419,9 +416,9 @@ class MusicGenerator {
       // Generate via available provider (prefer replicate > acemusic until acemusic API is confirmed)
       let audioUrl;
       if (this.replicateToken) {
-        audioUrl = await this.generateViaReplicate(prompt, 30);
+        audioUrl = await this.generateViaReplicate(prompt, 120);
       } else if (this.acemusicKey) {
-        audioUrl = await this.generateViaAceMusic(prompt, 30);
+        audioUrl = await this.generateViaAceMusic(prompt, 120);
       } else {
         return { success: false, reason: 'No generation provider available' };
       }
