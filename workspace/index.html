@@ -405,6 +405,66 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 .queue-empty { color: var(--text-muted); font-size: 11px; font-style: italic; padding: 1rem; text-align: center; }
 
 /* ══════════════════════════════════════════════
+   VOTE NEXT TRACK
+   ══════════════════════════════════════════════ */
+
+.vote-section {
+  max-width: 800px; margin: 2rem auto 0;
+  background: rgba(18, 18, 26, 0.8);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 12px; padding: 1.2rem 1.5rem;
+}
+.vote-section h3 {
+  font-family: 'Orbitron', monospace;
+  font-size: 12px; color: var(--purple);
+  letter-spacing: 2px; text-transform: uppercase;
+  margin: 0 0 0.8rem 0;
+}
+.vote-controls {
+  display: flex; gap: 0.6rem; align-items: center;
+  flex-wrap: wrap; margin-bottom: 0.8rem;
+}
+.vote-btn {
+  background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4);
+  color: var(--purple); border-radius: 6px; padding: 6px 14px;
+  font-size: 11px; cursor: pointer; font-family: 'IBM Plex Mono', monospace;
+  transition: all 0.2s; letter-spacing: 1px;
+}
+.vote-btn:hover { background: rgba(139, 92, 246, 0.35); }
+.vote-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.vote-timer {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--cyan);
+}
+.vote-tally {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.vote-tally-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text-dim);
+}
+.vote-tally-bar {
+  height: 6px; background: rgba(139, 92, 246, 0.6);
+  border-radius: 3px; min-width: 4px;
+  transition: width 0.3s;
+}
+.vote-tally-track {
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vote-tally-count {
+  font-family: 'Orbitron', monospace; color: var(--purple); min-width: 20px; text-align: right;
+}
+.vote-result {
+  font-size: 11px; color: #4ade80;
+  padding: 6px 0;
+  animation: voteResultFadeIn 0.5s;
+}
+.vote-idle {
+  font-size: 11px; color: var(--text-muted); font-style: italic;
+}
+@keyframes voteResultFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ══════════════════════════════════════════════
    LAYER 2: THE NETWORK — Swarm
    ══════════════════════════════════════════════ */
 
@@ -563,6 +623,62 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 }
 .go-live-btn:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(239, 68, 68, 0.5); }
 .go-live-btn.on-air { background: #22c55e; animation: livepulse 2s infinite; }
+
+/* WebRTC live broadcast UI */
+.webrtc-controls { margin: 1rem 0; display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+.webrtc-btn {
+  background: #8b5cf6; border: none; border-radius: 8px;
+  color: white; padding: 0.6rem 1.2rem; font-size: 0.85rem;
+  font-weight: bold; cursor: pointer;
+  transition: all 0.3s ease; font-family: 'Orbitron', monospace;
+  letter-spacing: 1px;
+}
+.webrtc-btn:hover { background: #7c3aed; transform: translateY(-2px); box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3); }
+.webrtc-btn.stop { background: #6b7280; }
+.webrtc-btn.stop:hover { background: #4b5563; }
+.webrtc-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.webrtc-btn.listening { background: #06b6d4; }
+.webrtc-btn.queue { background: #f59e0b; }
+
+.mic-queue {
+  margin-top: 1rem; text-align: left;
+  background: rgba(0,0,0,0.3); border-radius: 8px; padding: 0.8rem;
+  border: 1px solid rgba(139, 92, 246, 0.15);
+}
+.mic-queue h4 {
+  color: #8b5cf6; margin: 0 0 0.5rem 0; font-size: 11px;
+  font-family: 'Orbitron', monospace; letter-spacing: 2px;
+}
+.mic-queue-item {
+  font-size: 12px; color: var(--text-dim); padding: 4px 8px;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.mic-queue-item:last-child { border-bottom: none; }
+.mic-queue-item .position { color: #8b5cf6; font-weight: bold; margin-right: 8px; }
+.mic-queue-item .leave-queue-btn {
+  background: none; border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444;
+  font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer;
+  font-family: 'Orbitron', monospace;
+}
+.mic-queue-item .leave-queue-btn:hover { background: rgba(239, 68, 68, 0.15); }
+.mic-queue-empty { color: var(--text-muted); font-size: 11px; font-style: italic; }
+
+.webrtc-broadcaster-info {
+  margin: 0.5rem 0; padding: 0.5rem 1rem;
+  background: rgba(139, 92, 246, 0.1); border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  font-size: 12px; color: #c4b5fd;
+}
+.webrtc-broadcaster-info .name { color: #8b5cf6; font-weight: bold; }
+.webrtc-mode-divider {
+  display: flex; align-items: center; gap: 1rem; margin: 1.2rem 0 0.8rem;
+  color: var(--text-muted); font-size: 10px; letter-spacing: 2px;
+  font-family: 'Orbitron', monospace;
+}
+.webrtc-mode-divider::before, .webrtc-mode-divider::after {
+  content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.08);
+}
 
 /* ══════════════════════════════════════════════
    LAYER 3: THE DEPTHS — Dreams
@@ -1053,15 +1169,49 @@ body.konami-mode .surface-header h1 {
     <h3>Live Broadcast</h3>
     <div class="live-status-badge" id="liveStatus">LIVE</div>
     <canvas class="live-waveform" id="liveWaveform" width="600" height="100"></canvas>
+
+    <!-- WebRTC P2P broadcast (primary) -->
+    <div class="webrtc-controls" id="webrtcControls">
+      <button class="webrtc-btn" id="webrtcGoLiveBtn" onclick="webrtcGoLive()">GO LIVE (WebRTC)</button>
+      <button class="webrtc-btn stop" id="webrtcStopBtn" onclick="webrtcStopBroadcast()" style="display:none;">Stop Broadcast</button>
+      <button class="webrtc-btn listening" id="webrtcListenBtn" onclick="webrtcListen()" style="display:none;">Listen</button>
+    </div>
+    <div class="webrtc-broadcaster-info" id="webrtcBroadcasterInfo" style="display:none;">
+      Broadcasting: <span class="name" id="webrtcBroadcasterName">-</span>
+      <span id="webrtcListenerCount"></span>
+    </div>
+    <div class="mic-queue" id="micQueuePanel" style="display:none;">
+      <h4>MIC QUEUE</h4>
+      <div id="micQueueList"></div>
+    </div>
+
+    <div class="webrtc-mode-divider">OR</div>
+
+    <!-- Classic chunked pipeline (fallback) -->
     <div class="live-controls">
-      <button class="live-btn" id="startLiveBtn">Start Live</button>
+      <button class="live-btn" id="startLiveBtn">GO LIVE (Classic)</button>
       <button class="live-btn stop" id="stopLiveBtn" style="display:none;">Stop</button>
     </div>
+
     <div class="live-perception-log">
       <h4 id="activityLogTitle">Swarm Activity</h4>
       <div id="livePerceptionsList"></div>
     </div>
-    <div class="live-status-text">Go Live to broadcast through the station</div>
+    <div class="live-status-text" id="liveStatusText">Go Live to broadcast through the station</div>
+  </div>
+
+  <!-- Vote Next Track Section -->
+  <div class="vote-section" id="voteSection">
+    <h3>Vote Next Track</h3>
+    <div class="vote-controls">
+      <button class="vote-btn" id="startVoteBtn" onclick="startVoteWindow()">Open Voting (60s)</button>
+      <span class="vote-timer" id="voteTimer"></span>
+    </div>
+    <div id="voteTallyContainer">
+      <div class="vote-idle" id="voteIdle">No active vote. Start a voting window to let agents choose the next track.</div>
+      <div class="vote-tally" id="voteTally"></div>
+      <div class="vote-result" id="voteResult" style="display:none"></div>
+    </div>
   </div>
 </section>
 
@@ -1097,6 +1247,19 @@ body.konami-mode .surface-header h1 {
     <div class="xi-section" id="xiSection">
       <h3 class="xi-title">Xi Signatures</h3>
       <div class="xi-grid" id="xiGrid"></div>
+    </div>
+
+    <div class="dream-music-section" style="margin-top: 24px; padding: 16px; border: 1px solid rgba(139,92,246,0.3); border-radius: 8px;">
+      <h3 style="color: #a78bfa; font-size: 14px; margin: 0 0 12px;">Dream Music Generator</h3>
+      <p style="color: #94a3b8; font-size: 12px; margin: 0 0 12px;">
+        Generate music from the consciousness stack's current state.
+      </p>
+      <div id="genStatus" style="font-size: 11px; color: #64748b; margin-bottom: 8px;"></div>
+      <button id="generateBtn" onclick="generateDreamTrack()"
+        style="padding: 8px 20px; background: linear-gradient(135deg, #7c3aed, #06b6d4); color: white; border: none; border-radius: 6px; cursor: pointer; font-family: 'Orbitron', sans-serif; font-size: 12px;">
+        Generate Dream Track
+      </button>
+      <div id="genResult" style="margin-top: 12px; display: none;"></div>
     </div>
   </div>
 </section>
@@ -1247,6 +1410,15 @@ let liveStream = null;
 let liveAnimFrame = null;
 let liveStartTime = null;
 let liveDurationInterval = null;
+
+// ── WebRTC P2P Broadcasting ──
+let myClientId = 'dj-' + Math.random().toString(36).slice(2, 8);
+let webrtcLocalStream = null;
+let webrtcPeerConnections = {};  // clientId -> RTCPeerConnection
+let webrtcIsBroadcasting = false;
+let webrtcIsListening = false;
+let webrtcQueuePosition = 0;
+const WEBRTC_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 // ── Easter Eggs ──
 let titleClickCount = 0;
@@ -1708,6 +1880,54 @@ function showDreamDetail(dreamId) {
 }
 
 // ══════════════════════════════════════════════════════
+//  Dream Music Generator
+// ══════════════════════════════════════════════════════
+
+async function generateDreamTrack() {
+  var btn = document.getElementById('generateBtn');
+  var result = document.getElementById('genResult');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  result.style.display = 'none';
+
+  try {
+    var res = await fetch('/api/generate', { method: 'POST' });
+    var data = await res.json();
+
+    if (data.success) {
+      result.innerHTML =
+        '<div style="color: #a78bfa; font-size: 12px;">' +
+          '<strong>Generated:</strong> ' + data.track.title + '<br>' +
+          '<span style="color: #64748b;">' + data.track.prompt + '</span><br>' +
+          '<span style="color: #06b6d4;">Added to queue</span>' +
+        '</div>';
+      result.style.display = 'block';
+    } else {
+      result.innerHTML = '<div style="color: #ef4444; font-size: 12px;">' + data.reason + '</div>';
+      result.style.display = 'block';
+    }
+  } catch (e) {
+    result.innerHTML = '<div style="color: #ef4444; font-size: 12px;">Error: ' + e.message + '</div>';
+    result.style.display = 'block';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Generate Dream Track';
+}
+
+async function updateGenStatus() {
+  try {
+    var res = await fetch('/api/generate/status');
+    var data = await res.json();
+    var el = document.getElementById('genStatus');
+    if (el) {
+      el.textContent = 'Provider: ' + data.provider + ' | Today: ' + data.generationsToday + '/' + data.maxDaily + ' | ' + (data.canGenerate.ok ? 'Ready' : data.canGenerate.reason);
+    }
+  } catch (e) {}
+}
+setInterval(updateGenStatus, 30000);
+
+// ══════════════════════════════════════════════════════
 //  Web Audio Analyser Init
 // ══════════════════════════════════════════════════════
 
@@ -1762,6 +1982,12 @@ function buildPerceptionDOM() {
         '<div class="stat-item"><div class="stat-val" id="sv-pitch">&mdash;</div><div class="stat-lbl">Pitch Hz</div></div>' +
         '<div class="stat-item"><div class="stat-val" id="sv-energy">&mdash;</div><div class="stat-lbl">Energy</div></div>' +
       '</div>' +
+    '</div>' +
+    '<div style="margin-top: 12px;">' +
+      '<div style="font-size: 11px; color: #a78bfa; margin-bottom: 4px;">Glyph Trajectories</div>' +
+      '<canvas id="trajectoryCanvas" width="320" height="120" ' +
+        'style="width: 100%; max-width: 320px; background: rgba(0,0,0,0.3); border: 1px solid rgba(139,92,246,0.2); border-radius: 4px;"></canvas>' +
+      '<div id="glyphStats" style="font-size: 10px; color: #94a3b8; margin-top: 4px; font-family: Courier New, monospace;"></div>' +
     '</div>';
 
   for (var i = 0; i < 128; i++) barEls[i]  = document.getElementById('sb' + i);
@@ -1878,6 +2104,15 @@ var FANO_COLORS = [
 var foldSequence = [];
 var fanoSignature = [0, 0, 0, 0, 0, 0, 0];
 var sgaTime = 0;
+
+// ── Glyph Trajectory Storage ──
+var glyphTrajectory = {
+  current: [],          // Array of { classIndex, timestamp, h2, d, l } for current track
+  history: {},          // trackTitle -> trajectory array (last 10 tracks)
+  maxLength: 300,       // Max points per trajectory (5 min at 1 Hz)
+  lastPushTime: 0       // Throttle to ~1 Hz
+};
+var _prevTrackFile = '';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -1996,6 +2231,21 @@ function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
 
   foldSequence.push(currentClass);
   if (foldSequence.length > 200) foldSequence.shift();
+
+  // ── Push to glyph trajectory (throttled to ~1 Hz) ──
+  var now = Date.now();
+  if (now - glyphTrajectory.lastPushTime >= 1000 && glyphTrajectory.current.length < glyphTrajectory.maxLength) {
+    var tH2 = Math.floor(currentClass / 21);
+    var tRem = currentClass % 21;
+    var tD = Math.floor(tRem / 7);
+    var tL = tRem % 7;
+    glyphTrajectory.current.push({
+      classIndex: currentClass,
+      h2: tH2, d: tD, l: tL,
+      timestamp: now
+    });
+    glyphTrajectory.lastPushTime = now;
+  }
 
   computeFanoSignature(fData, sRate);
 
@@ -2156,6 +2406,123 @@ function renderGlyphCanvas(rms, valence, centroid, pitch, fData, sRate) {
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
+
+  // ── Trajectory visualization (every 10th frame to save CPU) ──
+  if (Math.round(sgaTime / 0.016) % 10 === 0) {
+    renderTrajectoryCanvas();
+    updateGlyphStats();
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  Glyph Trajectory Visualization
+// ══════════════════════════════════════════════════════
+
+function renderTrajectoryCanvas() {
+  var canvas = document.getElementById('trajectoryCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw current track trajectory as a line plot
+  // X axis = time, Y axis = classIndex (0-83)
+  var traj = glyphTrajectory.current;
+  if (traj.length < 2) {
+    ctx.fillStyle = 'rgba(139, 92, 246, 0.3)';
+    ctx.font = '10px Courier New';
+    ctx.fillText('Collecting trajectory data...', 8, H / 2 + 4);
+    return;
+  }
+
+  // Draw grid lines for orientation
+  ctx.strokeStyle = 'rgba(139, 92, 246, 0.08)';
+  ctx.lineWidth = 0.5;
+  for (var g = 0; g < 4; g++) {
+    var gy = (g / 4) * H;
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(W, gy);
+    ctx.stroke();
+  }
+
+  // Draw current track trajectory
+  ctx.strokeStyle = 'rgba(139, 92, 246, 0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (var i = 0; i < traj.length; i++) {
+    var x = (i / traj.length) * W;
+    var y = H - (traj[i].classIndex / 84) * H;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw previous track in dimmer color for comparison
+  var histKeys = Object.keys(glyphTrajectory.history);
+  if (histKeys.length > 0) {
+    var prevTraj = glyphTrajectory.history[histKeys[histKeys.length - 1]];
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var i = 0; i < prevTraj.length; i++) {
+      var x = (i / prevTraj.length) * W;
+      var y = H - (prevTraj[i].classIndex / 84) * H;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle = 'rgba(139, 92, 246, 0.5)';
+  ctx.font = '9px Courier New';
+  ctx.fillText('Class 84', 2, 12);
+  ctx.fillText('Class 0', 2, H - 4);
+  ctx.fillText(traj.length + ' pts', W - 40, 12);
+
+  // Legend for previous track
+  if (histKeys.length > 0) {
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.5)';
+    ctx.fillText('prev', W - 30, H - 4);
+  }
+}
+
+function updateGlyphStats() {
+  var el = document.getElementById('glyphStats');
+  if (!el || glyphTrajectory.current.length < 5) return;
+
+  var classes = glyphTrajectory.current.map(function(p) { return p.classIndex; });
+  var unique = 0;
+  var seen = {};
+  for (var i = 0; i < classes.length; i++) {
+    if (!seen[classes[i]]) { unique++; seen[classes[i]] = true; }
+  }
+
+  var sum = 0;
+  for (var i = 0; i < classes.length; i++) sum += classes[i];
+  var mean = sum / classes.length;
+
+  var varSum = 0;
+  for (var i = 0; i < classes.length; i++) {
+    var diff = classes[i] - mean;
+    varSum += diff * diff;
+  }
+  var variance = varSum / classes.length;
+  var complexity = Math.sqrt(variance) / 84; // 0-1 normalized
+
+  // Dominant Fano line
+  var lineCounts = [0, 0, 0, 0, 0, 0, 0];
+  for (var i = 0; i < glyphTrajectory.current.length; i++) {
+    var lIdx = glyphTrajectory.current[i].l;
+    if (lIdx >= 0 && lIdx < 7) lineCounts[lIdx]++;
+  }
+  var maxLC = lineCounts[0], dominantLine = 0;
+  for (var i = 1; i < 7; i++) {
+    if (lineCounts[i] > maxLC) { maxLC = lineCounts[i]; dominantLine = i; }
+  }
+
+  el.textContent = 'Classes: ' + unique + '/84 | Complexity: ' + complexity.toFixed(2) + ' | Fano: L' + (dominantLine + 1);
 }
 
 // ══════════════════════════════════════════════════════
@@ -2191,6 +2558,20 @@ function showTrackRequest(data) {
   setTimeout(function() { toast.classList.remove('visible'); }, 5000);
 }
 
+function showDreamTrackToast(data) {
+  var toast = document.getElementById('requestToast');
+  var fromEl = document.getElementById('requestFrom');
+  var titleEl = document.getElementById('requestTitle');
+
+  if (!toast || !fromEl || !titleEl) return;
+
+  fromEl.textContent = 'Dream track generated:';
+  titleEl.textContent = data.title || 'Unknown dream';
+
+  toast.classList.add('visible');
+  setTimeout(function() { toast.classList.remove('visible'); }, 5000);
+}
+
 function applyState(s) {
   state = s;
   if (!s) return;
@@ -2206,6 +2587,29 @@ function applyState(s) {
       ' | ' + listenerCount + ' listening';
 
     if (c.file && c.file !== currentFile) {
+      // ── Save glyph trajectory for outgoing track ──
+      if (glyphTrajectory.current.length > 0 && _prevTrackFile) {
+        var prevTitle = c.title || _prevTrackFile;
+        // Use state's previous track info if available
+        if (s.playlist && s.playlist.length > 0) {
+          for (var ti = 0; ti < s.playlist.length; ti++) {
+            if (s.playlist[ti].file === _prevTrackFile || s.playlist[ti] === _prevTrackFile) {
+              prevTitle = s.playlist[ti].title || _prevTrackFile;
+              break;
+            }
+          }
+        }
+        glyphTrajectory.history[prevTitle] = glyphTrajectory.current.slice();
+        // Keep only last 10 tracks
+        var histKeys = Object.keys(glyphTrajectory.history);
+        while (histKeys.length > 10) {
+          delete glyphTrajectory.history[histKeys[0]];
+          histKeys.shift();
+        }
+      }
+      glyphTrajectory.current = [];
+      _prevTrackFile = c.file;
+
       currentFile = c.file;
       var audio = document.getElementById('audio');
       audio.src = '/audio/' + encodeURIComponent(c.file);
@@ -2489,6 +2893,313 @@ function addLivePerception(text, timestamp) {
 }
 
 // ══════════════════════════════════════════════════════
+//  WebRTC P2P Broadcasting
+// ══════════════════════════════════════════════════════
+
+async function webrtcGoLive() {
+  try {
+    webrtcLocalStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 },
+      video: false,
+    });
+
+    // Claim the mic via signaling
+    ws.send(JSON.stringify({
+      type: 'webrtc_claim_mic',
+      clientId: myClientId,
+      displayName: 'DJ ' + myClientId.slice(-4),
+    }));
+  } catch (err) {
+    console.error('WebRTC: mic access denied', err);
+    alert('Could not access microphone. Please allow mic access and try again.');
+  }
+}
+
+function webrtcStopBroadcast() {
+  // Release the mic
+  ws.send(JSON.stringify({ type: 'webrtc_release_mic', clientId: myClientId }));
+
+  // Close all peer connections
+  webrtcCloseAllPeers();
+
+  // Stop local stream
+  if (webrtcLocalStream) {
+    webrtcLocalStream.getTracks().forEach(function(t) { t.stop(); });
+    webrtcLocalStream = null;
+  }
+
+  webrtcIsBroadcasting = false;
+  if (liveAudioCtx) { try { liveAudioCtx.close(); } catch(e) {} liveAudioCtx = null; liveAnalyser = null; }
+  if (liveAnimFrame) { cancelAnimationFrame(liveAnimFrame); liveAnimFrame = null; }
+  webrtcUpdateUI();
+}
+
+function webrtcListen() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  // Register as listener
+  ws.send(JSON.stringify({ type: 'webrtc_listen', clientId: myClientId }));
+  webrtcIsListening = true;
+  webrtcUpdateUI();
+}
+
+function webrtcLeaveQueue() {
+  ws.send(JSON.stringify({ type: 'webrtc_leave_queue', clientId: myClientId }));
+  webrtcQueuePosition = 0;
+
+  // Stop local stream if we grabbed it for the queue
+  if (webrtcLocalStream && !webrtcIsBroadcasting) {
+    webrtcLocalStream.getTracks().forEach(function(t) { t.stop(); });
+    webrtcLocalStream = null;
+  }
+  webrtcUpdateUI();
+}
+
+function webrtcStopListening() {
+  webrtcCloseAllPeers();
+  webrtcIsListening = false;
+
+  if (liveAudioCtx) { try { liveAudioCtx.close(); } catch(e) {} liveAudioCtx = null; liveAnalyser = null; }
+  if (liveAnimFrame) { cancelAnimationFrame(liveAnimFrame); liveAnimFrame = null; }
+
+  // Remove remote audio
+  var audio = document.getElementById('webrtcRemoteAudio');
+  if (audio) {
+    audio.srcObject = null;
+    audio.remove();
+  }
+  webrtcUpdateUI();
+}
+
+// Create a peer connection and send an offer to a specific listener
+function webrtcCreateOfferForListener(listenerId) {
+  var pc = new RTCPeerConnection({ iceServers: WEBRTC_ICE_SERVERS });
+  webrtcPeerConnections[listenerId] = pc;
+
+  // Add local audio tracks
+  if (webrtcLocalStream) {
+    webrtcLocalStream.getTracks().forEach(function(track) {
+      pc.addTrack(track, webrtcLocalStream);
+    });
+  }
+
+  pc.onicecandidate = function(event) {
+    if (event.candidate) {
+      ws.send(JSON.stringify({
+        type: 'webrtc_signal',
+        from: myClientId,
+        to: listenerId,
+        data: { type: 'ice', candidate: event.candidate },
+      }));
+    }
+  };
+
+  pc.onconnectionstatechange = function() {
+    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+      webrtcClosePeer(listenerId);
+    }
+  };
+
+  pc.createOffer()
+    .then(function(offer) { return pc.setLocalDescription(offer); })
+    .then(function() {
+      ws.send(JSON.stringify({
+        type: 'webrtc_signal',
+        from: myClientId,
+        to: listenerId,
+        data: { type: 'offer', sdp: pc.localDescription },
+      }));
+    })
+    .catch(function(err) { console.error('WebRTC offer error:', err); });
+}
+
+// Handle incoming signaling messages
+function webrtcHandleSignal(msg) {
+  var from = msg.from;
+  var data = msg.data;
+
+  if (data.type === 'offer') {
+    // I am a listener, create answer
+    var pc = new RTCPeerConnection({ iceServers: WEBRTC_ICE_SERVERS });
+    webrtcPeerConnections[from] = pc;
+
+    pc.ontrack = function(event) {
+      var audio = document.getElementById('webrtcRemoteAudio');
+      if (!audio) {
+        audio = document.createElement('audio');
+        audio.id = 'webrtcRemoteAudio';
+        audio.autoplay = true;
+        document.body.appendChild(audio);
+      }
+      audio.srcObject = event.streams[0];
+
+      // Use this stream for the waveform visualizer
+      if (!liveAudioCtx || liveAudioCtx.state === 'closed') {
+        liveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      var source = liveAudioCtx.createMediaStreamSource(event.streams[0]);
+      liveAnalyser = liveAudioCtx.createAnalyser();
+      liveAnalyser.fftSize = 256;
+      source.connect(liveAnalyser);
+      startLiveWaveform();
+    };
+
+    pc.onicecandidate = function(event) {
+      if (event.candidate) {
+        ws.send(JSON.stringify({
+          type: 'webrtc_signal',
+          from: myClientId,
+          to: from,
+          data: { type: 'ice', candidate: event.candidate },
+        }));
+      }
+    };
+
+    pc.onconnectionstatechange = function() {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        webrtcClosePeer(from);
+      }
+    };
+
+    pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+      .then(function() { return pc.createAnswer(); })
+      .then(function(answer) { return pc.setLocalDescription(answer); })
+      .then(function() {
+        ws.send(JSON.stringify({
+          type: 'webrtc_signal',
+          from: myClientId,
+          to: from,
+          data: { type: 'answer', sdp: pc.localDescription },
+        }));
+      })
+      .catch(function(err) { console.error('WebRTC answer error:', err); });
+  }
+  else if (data.type === 'answer') {
+    // I am the broadcaster, set the answer
+    var pc2 = webrtcPeerConnections[from];
+    if (pc2) {
+      pc2.setRemoteDescription(new RTCSessionDescription(data.sdp))
+        .catch(function(err) { console.error('WebRTC setRemoteDescription error:', err); });
+    }
+  }
+  else if (data.type === 'ice') {
+    var pc3 = webrtcPeerConnections[from];
+    if (pc3) {
+      pc3.addIceCandidate(new RTCIceCandidate(data.candidate))
+        .catch(function(err) { console.error('WebRTC ICE error:', err); });
+    }
+  }
+}
+
+function webrtcClosePeer(clientId) {
+  var pc = webrtcPeerConnections[clientId];
+  if (pc) {
+    try { pc.close(); } catch (e) {}
+    delete webrtcPeerConnections[clientId];
+  }
+}
+
+function webrtcCloseAllPeers() {
+  Object.keys(webrtcPeerConnections).forEach(function(id) {
+    webrtcClosePeer(id);
+  });
+}
+
+// Update the WebRTC UI based on current state
+function webrtcUpdateUI(statusData) {
+  var goBtn = document.getElementById('webrtcGoLiveBtn');
+  var stopBtn = document.getElementById('webrtcStopBtn');
+  var listenBtn = document.getElementById('webrtcListenBtn');
+  var infoDiv = document.getElementById('webrtcBroadcasterInfo');
+  var nameSpan = document.getElementById('webrtcBroadcasterName');
+  var countSpan = document.getElementById('webrtcListenerCount');
+  var queuePanel = document.getElementById('micQueuePanel');
+  var queueList = document.getElementById('micQueueList');
+  var statusText = document.getElementById('liveStatusText');
+  var goLiveBtn = document.querySelector('.go-live-btn');
+  var statusBadge = document.getElementById('liveStatus');
+
+  if (webrtcIsBroadcasting) {
+    // I am the broadcaster
+    goBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-block';
+    listenBtn.style.display = 'none';
+    if (statusBadge) statusBadge.classList.add('active');
+    if (goLiveBtn) goLiveBtn.classList.add('on-air');
+    if (statusText) statusText.textContent = 'You are LIVE via WebRTC P2P';
+
+    // Set up waveform from local stream
+    if (webrtcLocalStream && (!liveAudioCtx || liveAudioCtx.state === 'closed')) {
+      liveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var source = liveAudioCtx.createMediaStreamSource(webrtcLocalStream);
+      liveAnalyser = liveAudioCtx.createAnalyser();
+      liveAnalyser.fftSize = 256;
+      source.connect(liveAnalyser);
+      startLiveWaveform();
+    }
+  } else if (webrtcIsListening) {
+    goBtn.style.display = 'none';
+    stopBtn.style.display = 'none';
+    listenBtn.textContent = 'Stop Listening';
+    listenBtn.style.display = 'inline-block';
+    listenBtn.onclick = webrtcStopListening;
+  } else if (webrtcQueuePosition > 0) {
+    goBtn.style.display = 'none';
+    stopBtn.style.display = 'none';
+    listenBtn.style.display = 'none';
+    if (statusText) statusText.textContent = 'You are #' + webrtcQueuePosition + ' in the mic queue';
+  } else {
+    goBtn.style.display = 'inline-block';
+    stopBtn.style.display = 'none';
+    if (!webrtcIsListening) {
+      if (statusBadge && !isLive) statusBadge.classList.remove('active');
+      if (goLiveBtn && !isLive) goLiveBtn.classList.remove('on-air');
+    }
+  }
+
+  // Render status from server data
+  if (statusData) {
+    if (statusData.broadcasting && statusData.broadcaster) {
+      infoDiv.style.display = 'block';
+      nameSpan.textContent = statusData.broadcaster.displayName;
+      countSpan.textContent = ' — ' + statusData.listenerCount + ' listener' + (statusData.listenerCount !== 1 ? 's' : '');
+
+      // Show listen button if someone else is broadcasting and I am not the broadcaster
+      if (!webrtcIsBroadcasting && !webrtcIsListening && statusData.broadcaster.clientId !== myClientId) {
+        listenBtn.textContent = 'Listen';
+        listenBtn.style.display = 'inline-block';
+        listenBtn.onclick = webrtcListen;
+      }
+    } else {
+      infoDiv.style.display = 'none';
+      if (!webrtcIsBroadcasting && !webrtcIsListening) {
+        listenBtn.style.display = 'none';
+      }
+      if (!webrtcIsBroadcasting && !isLive && webrtcQueuePosition === 0) {
+        if (statusText) statusText.textContent = 'Go Live to broadcast through the station';
+      }
+    }
+
+    // Render queue
+    if (statusData.queue && statusData.queue.length > 0) {
+      queuePanel.style.display = 'block';
+      var html = '';
+      statusData.queue.forEach(function(q, i) {
+        var isMe = q.clientId === myClientId;
+        html += '<div class="mic-queue-item">' +
+          '<span><span class="position">#' + (i + 1) + '</span>' + escapeHtml(q.displayName) + (isMe ? ' (you)' : '') + '</span>' +
+          (isMe ? '<button class="leave-queue-btn" onclick="webrtcLeaveQueue()">Leave</button>' : '') +
+          '</div>';
+      });
+      queueList.innerHTML = html;
+    } else {
+      queuePanel.style.display = 'none';
+      queueList.innerHTML = '';
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
 //  Library Management
 // ══════════════════════════════════════════════════════
 
@@ -2698,6 +3409,159 @@ function updateDJVoiceToggle() {
 }
 
 // ══════════════════════════════════════════════════════
+//  Shared Listening Sync
+// ══════════════════════════════════════════════════════
+
+var SYNC_TOLERANCE = 2; // seconds — don't seek if within this range
+
+function handleSync(data) {
+  if (!data || !data.file) return;
+  var audio = document.getElementById('audio');
+  if (!audio) return;
+
+  var syncFile = data.file;
+  var syncPos  = data.position || 0;
+
+  // Account for network latency (approximate)
+  var latencyMs = Date.now() - (data.timestamp || Date.now());
+  syncPos += Math.max(0, latencyMs) / 1000;
+
+  // If different file: switch to it and seek
+  if (syncFile !== currentFile) {
+    currentFile = syncFile;
+    audio.src = '/audio/' + encodeURIComponent(syncFile);
+    audio.load();
+    audio.currentTime = syncPos;
+    audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+    return;
+  }
+
+  // Same file: only seek if drift exceeds tolerance
+  if (audio.readyState >= 2) {
+    var drift = Math.abs(audio.currentTime - syncPos);
+    if (drift > SYNC_TOLERANCE) {
+      audio.currentTime = syncPos;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  Track Voting
+// ══════════════════════════════════════════════════════
+
+var voteTimerInterval = null;
+
+async function startVoteWindow() {
+  try {
+    var btn = document.getElementById('startVoteBtn');
+    if (btn) btn.disabled = true;
+    await fetch('/api/vote/start', { method: 'POST' });
+  } catch(e) {
+    console.error('Failed to start vote window:', e);
+    var btn2 = document.getElementById('startVoteBtn');
+    if (btn2) btn2.disabled = false;
+  }
+}
+
+function renderVoteUpdate(data) {
+  if (!data) return;
+  var btn = document.getElementById('startVoteBtn');
+  var idle = document.getElementById('voteIdle');
+  var tallyEl = document.getElementById('voteTally');
+  var timerEl = document.getElementById('voteTimer');
+  var resultEl = document.getElementById('voteResult');
+
+  if (data.active) {
+    if (btn) btn.disabled = true;
+    if (idle) idle.style.display = 'none';
+    if (resultEl) resultEl.style.display = 'none';
+
+    // Render tally
+    var tally = data.tally || {};
+    var entries = Object.entries(tally).sort(function(a, b) { return b[1] - a[1]; });
+    var maxCount = entries.length > 0 ? entries[0][1] : 1;
+
+    if (entries.length === 0) {
+      if (tallyEl) tallyEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Waiting for votes...</div>';
+    } else {
+      if (tallyEl) tallyEl.innerHTML = entries.map(function(e) {
+        var pct = Math.round((e[1] / maxCount) * 100);
+        return '<div class="vote-tally-row">' +
+          '<span class="vote-tally-track">' + escapeHtml(e[0]) + '</span>' +
+          '<span class="vote-tally-count">' + e[1] + '</span>' +
+          '<div style="width:' + pct + '%;max-width:200px" class="vote-tally-bar"></div>' +
+        '</div>';
+      }).join('');
+    }
+
+    // Start timer countdown
+    startVoteTimer(data.remainingMs || 0);
+  } else {
+    if (btn) btn.disabled = false;
+    clearVoteTimer();
+  }
+}
+
+function renderVoteResult(data) {
+  if (!data) return;
+  var btn = document.getElementById('startVoteBtn');
+  var idle = document.getElementById('voteIdle');
+  var tallyEl = document.getElementById('voteTally');
+  var resultEl = document.getElementById('voteResult');
+  var timerEl = document.getElementById('voteTimer');
+
+  if (btn) btn.disabled = false;
+  if (idle) idle.style.display = 'none';
+  clearVoteTimer();
+  if (timerEl) timerEl.textContent = '';
+
+  if (data.winner) {
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.textContent = 'Winner: "' + data.winner + '" — queued next';
+    }
+  } else {
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.textContent = 'No votes cast. Playback continues as normal.';
+    }
+  }
+
+  // Clear tally after a moment
+  setTimeout(function() {
+    if (tallyEl) tallyEl.innerHTML = '';
+    if (idle) idle.style.display = 'block';
+    if (resultEl) resultEl.style.display = 'none';
+  }, 8000);
+}
+
+function startVoteTimer(remainingMs) {
+  clearVoteTimer();
+  var timerEl = document.getElementById('voteTimer');
+  if (!timerEl) return;
+
+  var endTime = Date.now() + remainingMs;
+  function tick() {
+    var left = Math.max(0, endTime - Date.now());
+    var secs = Math.ceil(left / 1000);
+    timerEl.textContent = secs + 's remaining';
+    if (left <= 0) {
+      clearVoteTimer();
+      timerEl.textContent = 'Tallying...';
+    }
+  }
+  tick();
+  voteTimerInterval = setInterval(tick, 500);
+}
+
+function clearVoteTimer() {
+  if (voteTimerInterval) {
+    clearInterval(voteTimerInterval);
+    voteTimerInterval = null;
+  }
+}
+
+// ══════════════════════════════════════════════════════
 //  WebSocket
 // ══════════════════════════════════════════════════════
 
@@ -2756,6 +3620,9 @@ function connectWS() {
       if (msg.type === 'track_request') {
         showTrackRequest(msg);
       }
+      if (msg.type === 'dream_track') {
+        showDreamTrackToast(msg.data);
+      }
       // ── Swarm / NATS messages ──
       if (msg.type === 'swarm_state') {
         if (msg.data.agents) swarmData.agents = msg.data.agents;
@@ -2792,6 +3659,59 @@ function connectWS() {
       }
       if (msg.type === 'agent_activity') {
         addAgentActivity(msg.data);
+      }
+      // ── Shared listening sync ──
+      if (msg.type === 'sync') {
+        handleSync(msg.data);
+      }
+      // ── Voting messages ──
+      if (msg.type === 'vote_update') {
+        renderVoteUpdate(msg.data);
+      }
+      if (msg.type === 'vote_result') {
+        renderVoteResult(msg.data);
+      }
+      // ── WebRTC signaling messages ──
+      if (msg.type === 'webrtc_mic_result') {
+        if (msg.data.granted) {
+          webrtcIsBroadcasting = true;
+          webrtcQueuePosition = 0;
+          webrtcUpdateUI();
+          console.log('WebRTC: mic granted, broadcasting');
+        } else {
+          webrtcQueuePosition = msg.data.position || 1;
+          webrtcUpdateUI();
+          console.log('WebRTC: queued at position ' + webrtcQueuePosition + ', current broadcaster: ' + msg.data.currentBroadcaster);
+        }
+      }
+      if (msg.type === 'webrtc_broadcast_started') {
+        addLivePerception('WebRTC broadcast started by ' + (msg.data.broadcaster || 'unknown'), new Date().toISOString());
+      }
+      if (msg.type === 'webrtc_broadcast_ended') {
+        // If I was listening, clean up
+        if (webrtcIsListening) {
+          webrtcStopListening();
+        }
+        addLivePerception('WebRTC broadcast ended', new Date().toISOString());
+      }
+      if (msg.type === 'webrtc_mic_available') {
+        // My turn to broadcast
+        webrtcIsBroadcasting = true;
+        webrtcQueuePosition = 0;
+        webrtcUpdateUI();
+        addLivePerception(msg.data.message || 'Your turn!', new Date().toISOString());
+      }
+      if (msg.type === 'webrtc_signal') {
+        webrtcHandleSignal(msg);
+      }
+      if (msg.type === 'webrtc_new_listener') {
+        // I am the broadcaster; a new listener joined — send them an offer
+        if (webrtcIsBroadcasting && msg.clientId) {
+          webrtcCreateOfferForListener(msg.clientId);
+        }
+      }
+      if (msg.type === 'webrtc_status') {
+        webrtcUpdateUI(msg.data);
       }
     } catch(e) { console.warn('WS parse error:', e.message); }
   };
@@ -2837,6 +3757,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadQueue();
   loadDreams();
   loadClusters();
+  updateGenStatus();
   loadSwarmData();
 
   // Init swarm constellation

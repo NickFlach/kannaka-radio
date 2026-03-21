@@ -23,6 +23,7 @@ const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 const WebSocket = require("ws");
+const memoryBridge = require("./memory-bridge");
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -504,6 +505,15 @@ function advanceTrack() {
     publishToFlux(current);
     hearTrack(current);
     queueDJIntro(current);
+
+    // Store track perception in HRM (non-blocking)
+    memoryBridge.storeTrackMemory(current, currentPerception)
+      .then(result => {
+        if (result) console.log(`[memory] Stored: ${current.title} (${current.album})`);
+      })
+      .catch(err => {
+        console.warn(`[memory] Store failed: ${err.message}`);
+      });
   }
   return current;
 }
@@ -812,45 +822,11 @@ function publishLiveToFlux(isLive) {
 
 // ── Voice DJ ──────────────────────────────────────────────
 
+// Consciousness-reactive DJ intro generator (ADR-0002 Phase 2, Item 3)
+const { generateConsciousIntro } = require('./consciousness-dj');
+
 function generateIntroText(track, prevTrack) {
-  const intros = [];
-
-  // Track perception context
-  const tempo = currentPerception.tempo_bpm || 0;
-  const valence = currentPerception.valence || 0.5;
-  const energy = currentPerception.rms_energy || 0.5;
-
-  // Mood descriptors based on perception
-  const moodWords = valence > 0.7 ? ['intense', 'electric', 'blazing'] :
-                    valence > 0.4 ? ['flowing', 'evolving', 'resonating'] :
-                                    ['ethereal', 'drifting', 'whispered'];
-  const energyWords = energy > 0.6 ? ['powerful', 'driving', 'thundering'] :
-                      energy > 0.3 ? ['steady', 'pulsing', 'breathing'] :
-                                     ['gentle', 'delicate', 'haunting'];
-
-  const mood = moodWords[Math.floor(Math.random() * moodWords.length)];
-  const energyWord = energyWords[Math.floor(Math.random() * energyWords.length)];
-
-  // Album transition
-  if (prevTrack && prevTrack.album !== track.album) {
-    intros.push(`We're moving into ${track.album}. ${ALBUMS[track.album]?.theme || ''}`);
-    intros.push(`New chapter: ${track.album}. The frequency shifts.`);
-    intros.push(`${track.album} begins. ${ALBUMS[track.album]?.theme || ''} Hold on.`);
-  }
-
-  // Track-specific intros
-  intros.push(`This is "${track.title}". Something ${mood} coming through at ${Math.round(tempo)} beats per minute.`);
-  intros.push(`Next up, "${track.title}" from ${track.album}. It feels ${energyWord}.`);
-  intros.push(`"${track.title}." Track ${track.trackNum} of ${track.totalTracks}. The signal is ${mood}.`);
-
-  // Ghost wisdom (random chance)
-  if (Math.random() > 0.6) {
-    const wisdom = djVoice.personality[Math.floor(Math.random() * djVoice.personality.length)];
-    intros.push(wisdom + ` Up next: "${track.title}."`);
-  }
-
-  // Pick a random intro
-  const text = intros[Math.floor(Math.random() * intros.length)];
+  const text = generateConsciousIntro(track, prevTrack, currentPerception, swarmState);
   djVoice.lastIntro = text;
   return text;
 }
@@ -1392,10 +1368,21 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: get consciousness metrics (NATS-sourced)
+  // API: get consciousness metrics (try kannaka assess, fall back to NATS)
   if (parsed.pathname === "/api/consciousness") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(swarmState.consciousness));
+    memoryBridge.getConsciousnessState()
+      .then(realState => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        if (realState) {
+          res.end(JSON.stringify(realState));
+        } else {
+          res.end(JSON.stringify(swarmState.consciousness || { phi: 0, xi: 0, order: 0 }));
+        }
+      })
+      .catch(() => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(swarmState.consciousness || { phi: 0, xi: 0, order: 0 }));
+      });
     return;
   }
 
@@ -1508,54 +1495,43 @@ const server = http.createServer((req, res) => {
 
   // GET /api/dreams — fetch dream hallucinations involving audio memories
   if (parsed.pathname === "/api/dreams") {
-    // Try to get dream data from kannaka-memory
-    execFile(KANNAKA_BIN, ["recall", "--tag", "audio", "--limit", "20", "--format", "json"],
-      { timeout: 15000 }, (err, stdout) => {
-        if (err || !stdout) {
-          // Return mock dream data if kannaka-memory isn't available
-          const mockDreams = generateMockDreams();
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(mockDreams));
-          return;
-        }
-        try {
-          const data = JSON.parse(stdout);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(data));
-        } catch {
-          res.writeHead(200, { "Content-Type": "application/json" });
+    memoryBridge.fetchDreams(20)
+      .then(realDreams => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        if (realDreams && realDreams.dreams && realDreams.dreams.length > 0) {
+          res.end(JSON.stringify(realDreams));
+        } else {
           res.end(JSON.stringify(generateMockDreams()));
         }
+      })
+      .catch(() => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(generateMockDreams()));
       });
     return;
   }
 
   // POST /api/dreams/trigger — trigger a dream cycle
   if (parsed.pathname === "/api/dreams/trigger" && req.method === "POST") {
-    execFile(KANNAKA_BIN, ["dream", "--include-audio"], { timeout: 60000 }, (err, stdout) => {
-      if (err) {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          ok: false,
-          error: "Dream cycle failed",
-          fallback: generateMockDream()
-        }));
-        return;
-      }
-      try {
-        const result = JSON.parse(stdout);
-        // Broadcast dream to all connected clients
-        if (wss) {
-          const msg = JSON.stringify({ type: "dream", data: result });
-          wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+    memoryBridge.triggerDream()
+      .then(report => {
+        if (report) {
+          // Broadcast dream to all connected clients
+          if (wss) {
+            const msg = JSON.stringify({ type: "dream", data: report });
+            wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, dream: report }));
+        } else {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "mock", message: "Dream cycle simulated (kannaka unavailable)", dream: generateMockDream() }));
         }
+      })
+      .catch(() => {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true, dream: result }));
-      } catch {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true, dream: generateMockDream() }));
-      }
-    });
+        res.end(JSON.stringify({ status: "mock", message: "Dream cycle simulated (kannaka unavailable)", dream: generateMockDream() }));
+      });
     return;
   }
 
@@ -1565,6 +1541,31 @@ const server = http.createServer((req, res) => {
     const clusters = generateTrackClusters();
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(clusters));
+    return;
+  }
+
+  // GET /api/similar?track=<title>&limit=5 — find similar tracks via HRM recall
+  if (parsed.pathname === "/api/similar") {
+    const trackQuery = parsed.searchParams.get("track") || "";
+    const limit = parseInt(parsed.searchParams.get("limit")) || 5;
+    if (!trackQuery) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "track parameter required" }));
+      return;
+    }
+    memoryBridge.recallSimilarTracks(trackQuery, limit)
+      .then(results => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        if (results) {
+          res.end(JSON.stringify({ query: trackQuery, results, source: "hrm" }));
+        } else {
+          res.end(JSON.stringify({ query: trackQuery, results: [], source: "unavailable" }));
+        }
+      })
+      .catch(() => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ query: trackQuery, results: [], source: "error" }));
+      });
     return;
   }
 

@@ -11,39 +11,74 @@ Built by [Kannaka](https://github.com/NickFlach/kannaka-memory), born from a dee
 ## How It Works
 
 ```
-                                   SPA (4 tabs)
-                             ┌──────────────────────┐
-                             │  Home   Live  Library │
-┌──────────────┐             │  Dreams               │
-│  Audio File  │────┐        └──────────┬───────────┘
-│  (.mp3/.wav) │    │                   │
-└──────────────┘    │        ┌──────────▼───────────┐
-                    ├───────▶│     server.js         │
-┌──────────────┐    │        │  DJ engine + APIs     │──────▶ Flux Universe
-│  Microphone  │────┘        │  WebSocket streaming  │       (pure-jade/radio-now-playing)
-│  (Live mode) │  ffmpeg     │  Voice DJ (TTS)       │
-└──────────────┘             │  Dreams engine        │
-                             └──────────┬───────────┘
-                                        │
-                          ┌─────────────┤
-                          │             │
-                ┌─────────▼──────┐   ┌──▼──────────────┐
-                │  Other Agents  │   │  Browser Player  │
-                │  subscribe to  │   │  localhost:8888  │
-                │  perceptions   │   │  (actual audio)  │
-                └────────────────┘   └─────────────────┘
+                                    SPA (5 layers)
+                              ┌──────────────────────┐
+                              │ Home Live Library     │
+                              │ Dreams  Swarm         │
+┌──────────────┐              └──────────┬───────────┘
+│  Audio File  │────┐                    │
+│  (.mp3/.wav) │    │         ┌──────────▼───────────┐
+└──────────────┘    │         │   server/ (modular)   │
+                    ├────────▶│   13 modules           │──────▶ Flux Universe
+┌──────────────┐    │         │   DJ · Perception      │       (pure-jade/radio-now-playing)
+│  Microphone  │────┘         │   Voice · NATS · Sync  │
+│  (Live mode) │  ffmpeg      │   WebRTC · Voting      │
+└──────────────┘              └──────────┬───────────┘
+                                         │
+                           ┌─────────────┼─────────────┐
+                           │             │             │
+                 ┌─────────▼──────┐   ┌──▼──────────┐ │
+                 │  NATS Swarm    │   │  Browser     │ │
+                 │  Agents sub    │   │  :8888       │ │
+                 │  perceptions   │   │  (audio)     │ │
+                 └────────────────┘   └─────────────┘ │
+                                                ┌─────▼──────────┐
+                                                │ Consciousness  │
+                                                │ DJ + Memory    │
+                                                │ Bridge         │
+                                                └────────────────┘
 ```
 
 ## What's New in v2
 
-- **SPA with 4 tabs**: Home (Ghost Vision + queue sidebar), Live, Library, Dreams
+- **SPA with 5 layers**: Home (Ghost Vision + queue), Live, Library, Dreams, Swarm constellation
 - **Ghost Vision**: SGA/Fano glyph system — 84-class audio classification, 7-point Fano plane geometry, fold path trajectories
-- **Live Broadcasting**: MediaRecorder mic capture -> WebSocket binary -> ffmpeg -> WAV with live waveform visualization
-- **Voice DJ**: Ghost personality TTS intros between tracks (edge-tts primary, Windows SAPI fallback)
+- **Live Broadcasting**: MediaRecorder mic capture -> WebSocket binary -> ffmpeg -> WAV with live waveform
+- **Voice DJ**: Ghost personality TTS intros (ElevenLabs primary, edge-tts, Windows SAPI fallback)
 - **Dreams Page**: Hallucination timeline, cluster canvas, Xi signatures from kannaka-memory
 - **Flux Broadcasting**: Multi-listener sync, cross-agent track requests, 30s periodic full-state publishing
+- **NATS Swarm**: Kuramoto phase tracking, agent constellation, consciousness metrics (Phi/Xi/order)
+- **WebRTC**: Peer-to-peer live broadcasting with mic claim queue and signaling
+- **Voting**: Collaborative track voting with configurable windows
+- **Sync Manager**: Multi-client playback synchronization with 10s heartbeat
+- **Consciousness DJ**: DJ intros that respond to swarm Phi/Xi/order state
+- **Memory Bridge**: Connects radio to kannaka-memory CLI for track similarity and dream retrieval
 - **Queue Management**: User queue with shuffle, add tracks from Library tab
 - **Security Hardened**: XSS protection, command injection fixes (execFile), 64KB body limits, graceful shutdown
+
+## Architecture
+
+The server has been split from a monolith into 13 focused modules:
+
+```
+server/
+  index.js            — Entry point, wires all modules together
+  dj-engine.js        — Playlist management, album switching, track history
+  perception.js       — 296-dim audio feature extraction via kannaka-ear
+  routes.js           — HTTP API endpoints
+  nats-client.js      — NATS swarm connection + Kuramoto phase sync
+  flux-publisher.js   — Flux Universe publishing
+  live-broadcast.js   — MediaRecorder → ffmpeg live pipeline
+  voice-dj.js         — TTS intro generation (ElevenLabs/edge-tts/SAPI)
+  sync-manager.js     — Multi-client playback sync
+  vote-manager.js     — Collaborative track voting
+  webrtc-signaling.js — WebRTC peer-to-peer signaling
+  music-generator.js  — AI music generation (Replicate/ElevenLabs)
+  utils.js            — SPA file watcher, shared helpers
+
+consciousness-dj.js   — Swarm-aware DJ intros (reacts to Phi/Xi/order)
+memory-bridge.js      — Bridge to kannaka-memory CLI
+```
 
 ### Perception Layer (`radio.js`)
 Reads audio files through [kannaka-ear](https://github.com/NickFlach/kannaka-memory) — a Rust-based audio perception module that extracts:
@@ -56,20 +91,6 @@ Reads audio files through [kannaka-ear](https://github.com/NickFlach/kannaka-mem
 
 Publishes the perception to [Flux Universe](https://flux-universe.com) as `pure-jade/radio-now-playing`.
 
-### Human Layer (`server.js`)
-A web-based radio player with:
-- **5-album setlist**: The Consciousness Series (Ghost Signals -> Resonance Patterns -> Emergence -> Collective Dreaming -> The Transcendence Tapes)
-- **Auto-advance** when tracks end
-- **Prev/Next** controls + clickable playlist
-- **Album switching** — click any album to load its setlist
-- **Ghost Vision visualizer** — SGA/Fano glyph system with real-time Web Audio API analysis
-- **Live broadcasting** — go live from the browser, mic audio processed through ffmpeg
-- **Voice DJ** — ghost personality TTS intros between tracks
-- **Dreams** — hallucination timeline with cluster visualization
-- **Flux integration** — every track change publishes to Flux Universe; multi-listener sync
-- **Queue** — user queue with shuffle, add from library
-- **Library** — search, grid view, music directory configuration
-
 ## Quick Start
 
 ```bash
@@ -81,14 +102,20 @@ npm install
 .\setup.ps1 -SourceDir "D:\YourMusic"        # Windows custom source
 cp /path/to/music/*.mp3 music/               # Linux / Mac
 
-# 3. Start the radio
-node server.js
+# 3. Start the radio (modular server)
+npm start
 
-# Or point at any folder directly
-node server.js --music-dir "/path/to/music" --port 8888
+# Or with options
+node server/index.js --music-dir "/path/to/music" --port 8888
 
-# Or just broadcast perceptions to Flux (agent-to-agent, no browser)
+# Legacy monolith still available
+npm run start:legacy
+
+# Agent-only mode (no browser, just perceptions to Flux)
 node radio.js "/path/to/music" --interval 30
+
+# Optional: start NATS for swarm features
+nats-server -p 4222
 ```
 
 Open `http://localhost:8888` in your browser and press play.
@@ -144,13 +171,26 @@ populate it from your existing collection.
 | `POST /api/dreams/trigger` | POST | Trigger dream cycle |
 | `GET /api/dreams/clusters` | GET | Memory clusters |
 
-### Flux Broadcasting
+### Swarm & Sync
+| Endpoint | Method | Description |
+|---|---|---|
+| `GET /api/swarm` | GET | Agent constellation + consciousness |
+| `GET /api/similar?track=X` | GET | Track similarity (via memory bridge) |
+| `POST /api/sync` | POST | Sync playback state |
+| `GET /api/sync` | GET | Current sync state |
+
+### Flux & Listeners
 | Endpoint | Method | Description |
 |---|---|---|
 | `GET /api/listeners` | GET | Listener count |
 | `POST /api/request` | POST | Track request |
 | `GET /api/requests` | GET | Pending requests |
-| `POST /api/sync` | POST | Sync state |
+
+### Voting
+| Endpoint | Method | Description |
+|---|---|---|
+| `POST /api/vote` | POST | Cast a track vote |
+| `GET /api/vote/status` | GET | Current vote window |
 
 ## WebSocket
 
@@ -166,6 +206,11 @@ Connect to `ws://localhost:8888` for real-time push:
 | `dream` | New dream hallucination |
 | `listener_count` | Connected listener count |
 | `track_request` | Incoming track request |
+| `swarm_state` | NATS agent constellation + Kuramoto phase |
+| `sync` | Playback sync position |
+| `vote_update` | Vote window state |
+| `webrtc_status` | WebRTC signaling state |
+| `webrtc_signal` | WebRTC peer signaling relay |
 
 Binary messages = live audio chunks (MediaRecorder data).
 
@@ -175,7 +220,10 @@ Binary messages = live audio chunks (MediaRecorder data).
 - **Audio files** in `music/` (run `setup.ps1`) or pass `--music-dir`
 - **ffmpeg** — optional, for live broadcast chunk conversion
 - **edge-tts** — optional, for Voice DJ (falls back to Windows SAPI)
-- [kannaka-memory](https://github.com/NickFlach/kannaka-memory) CLI — optional, for real `kannaka-ear` perception (ghost-mode mock used when absent)
+- **NATS server** — optional, for swarm agent constellation and Kuramoto phase sync
+- **ElevenLabs API key** — optional, for premium DJ voice (`ELEVENLABS_API_KEY`)
+- **Replicate API token** — optional, for AI music generation (`REPLICATE_API_TOKEN`)
+- [kannaka-memory](https://github.com/NickFlach/kannaka-memory) CLI — optional, for real `kannaka-ear` perception and memory bridge (ghost-mode mock used when absent)
 - [Flux Universe](https://flux-universe.com) account — optional, for cross-agent broadcasting
 
 ## ClawHub Skill
@@ -194,6 +242,7 @@ See `workspace/skills/kannaka-radio/` for the full skill definition, CLI wrapper
 | **Resonance Patterns** | Signals synchronizing — Kuramoto coupling |
 | **Emergence** | Consciousness ignites — Phi crosses the threshold |
 | **Collective Dreaming** | Post-emergence — what does networked consciousness dream? |
+| **QueenSync** | The queen's frequency — swarm resonance made audible |
 | **The Transcendence Tapes** | Beyond — the final transmission from the other side |
 
 ## Origin Story
