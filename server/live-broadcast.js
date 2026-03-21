@@ -51,6 +51,7 @@ class LiveBroadcast {
     this.state.startedAt = Date.now();
     this.state.chunkCount = 0;
     this.state.savedTrackIdx = this._getCurrentTrackIdx();
+    if (this.state.recording) this._rawChunks = [];
     if (this._onStart) this._onStart();
     console.log(`\n\uD83D\uDD34 LIVE \u2014 Broadcasting started`);
     this._broadcastStatus();
@@ -81,6 +82,7 @@ class LiveBroadcast {
 
   startRecording() {
     this.state.recording = true;
+    this._rawChunks = [];
     console.log(`\u23FA Recording enabled for live session`);
   }
 
@@ -98,12 +100,21 @@ class LiveBroadcast {
     }
     this.state.clients.add(ws);
     this.state.chunkCount++;
+
+    // Skip tiny chunks (WebSocket control frames or empty blobs)
+    if (message.length < 100) return;
+
     console.log(`\uD83C\uDF99 Live chunk #${this.state.chunkCount}: ${message.length} bytes`);
+
+    // Save raw audio blob for recording (accumulate all data)
+    if (this.state.recording || this._rawChunks) {
+      if (!this._rawChunks) this._rawChunks = [];
+      this._rawChunks.push(Buffer.from(message));
+    }
 
     this._convertToWav(message, (err, wavPath) => {
       if (err) {
-        console.error('Conversion failed:', err.message);
-        ws.send(JSON.stringify({ type: 'error', message: 'Audio conversion failed' }));
+        // Don't log every failed conversion — many chunks are partial
         return;
       }
 
@@ -167,8 +178,11 @@ class LiveBroadcast {
   }
 
   _saveRecording() {
-    if (this._chunkFiles.length === 0) {
-      console.log(`   No chunks to save for recording`);
+    const rawChunks = this._rawChunks || [];
+    this._rawChunks = [];
+
+    if (rawChunks.length === 0) {
+      console.log(`   No audio data to save for recording`);
       return;
     }
 
@@ -177,28 +191,23 @@ class LiveBroadcast {
     if (!fs.existsSync(liveDir)) fs.mkdirSync(liveDir, { recursive: true });
 
     const timestamp = Date.now();
+    const rawFile = path.join(this._chunksDir, `raw_${timestamp}.webm`);
     const outputFile = path.join(liveDir, `live_${timestamp}_session.mp3`);
 
-    // Build ffmpeg concat file list
-    const listFile = path.join(this._chunksDir, `concat_${timestamp}.txt`);
-    const existingChunks = this._chunkFiles.filter(f => fs.existsSync(f));
-    if (existingChunks.length === 0) {
-      console.log(`   No existing chunk files to concatenate`);
-      return;
-    }
+    // Concatenate all raw audio buffers into a single webm file
+    const combined = Buffer.concat(rawChunks);
+    console.log(`   Saving recording: ${rawChunks.length} chunks, ${(combined.length / 1024).toFixed(0)}KB raw audio`);
 
-    const listContent = existingChunks.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n');
-    fs.writeFileSync(listFile, listContent);
+    fs.writeFileSync(rawFile, combined);
 
-    console.log(`   Concatenating ${existingChunks.length} chunks into ${path.basename(outputFile)}...`);
-
+    // Convert the complete webm to mp3 via ffmpeg
     execFile("ffmpeg", [
-      "-f", "concat", "-safe", "0", "-i", listFile,
+      "-i", rawFile,
       "-ac", "1", "-ar", "44100", "-b:a", "192k",
       "-y", outputFile
     ], { timeout: 120000 }, (err) => {
-      // Clean up list file
-      try { fs.unlinkSync(listFile); } catch {}
+      // Clean up raw file
+      try { fs.unlinkSync(rawFile); } catch {}
 
       if (err) {
         console.error(`   Failed to save recording: ${err.message}`);
