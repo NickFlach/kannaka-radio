@@ -460,7 +460,7 @@ class MusicGenerator {
    */
   getStatus() {
     return {
-      provider: this.acemusicKey ? 'acemusic' : this.replicateToken ? 'replicate' : this.elevenLabsKey ? 'elevenlabs' : 'none',
+      provider: this.replicateToken ? 'replicate' : this.acemusicKey ? 'acemusic' : this.elevenLabsKey ? 'elevenlabs' : 'none',
       generating: this.generating,
       generationsToday: this.generationsToday,
       maxDaily: this.maxDailyGenerations,
