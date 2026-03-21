@@ -171,7 +171,9 @@ class MusicGenerator {
           try {
             const result = JSON.parse(data);
             if (result.error) return reject(new Error(result.error));
-            this._pollReplicate(result.urls?.get || result.id, resolve, reject);
+            const pollTarget = result.urls?.get || result.id;
+            if (!pollTarget) return reject(new Error(`No prediction URL or ID in response: ${JSON.stringify(result).slice(0, 200)}`));
+            this._pollReplicate(pollTarget, resolve, reject);
           } catch (e) {
             reject(new Error(`Parse error: ${e.message}`));
           }
@@ -188,8 +190,9 @@ class MusicGenerator {
    */
   _pollReplicate(urlOrId, resolve, reject, attempts = 0) {
     if (attempts > 60) return reject(new Error('Generation timed out'));
+    if (!urlOrId) return reject(new Error('No prediction URL or ID to poll'));
 
-    const pollPath = urlOrId.startsWith('http')
+    const pollPath = typeof urlOrId === 'string' && urlOrId.startsWith('http')
       ? new URL(urlOrId).pathname
       : `/v1/predictions/${urlOrId}`;
 
