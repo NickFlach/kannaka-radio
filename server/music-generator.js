@@ -144,7 +144,6 @@ class MusicGenerator {
     if (!this.replicateToken) throw new Error('REPLICATE_API_TOKEN not set');
 
     const createBody = JSON.stringify({
-      version: 'b05b1dff1d8c6dc63d14b0cdb42135c41cc41c1cec6ab3a1023f1b3e467d81c7', // musicgen-large
       input: {
         prompt: prompt,
         duration: durationSeconds,
@@ -157,7 +156,7 @@ class MusicGenerator {
     return new Promise((resolve, reject) => {
       const req = https.request({
         hostname: 'api.replicate.com',
-        path: '/v1/predictions',
+        path: '/v1/models/meta/musicgen/predictions',
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.replicateToken}`,
