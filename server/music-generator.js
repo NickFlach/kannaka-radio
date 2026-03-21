@@ -288,24 +288,29 @@ class MusicGenerator {
   }
 
   /**
-   * Generate music via Replicate (MiniMax Music-01).
-   * Full-length songs up to 4 minutes with vocals support.
-   * Falls back to MusicGen for shorter instrumental pieces.
+   * Generate music via Replicate (ACE-Step on lucataco/ace-step).
+   * Full-length instrumental tracks up to 4 minutes from text prompt.
+   * No reference audio needed — pure text-to-music.
    */
   async generateViaReplicate(prompt, durationSeconds = 120) {
     if (!this.replicateToken) throw new Error('REPLICATE_API_TOKEN not set');
 
-    // Use MiniMax Music-01 for full-length songs (model-based endpoint)
+    // Extract style tags from prompt for ACE-Step's tags field
+    const tags = prompt.replace(/\.\s*No vocals.*$/i, '').replace(/\.\s*\d+\s*BPM.*$/i, '').trim();
+
     const createBody = JSON.stringify({
+      version: '280fc4f9ee507577f880a167f639c02622421d8fecf492454320311217b688f1',
       input: {
+        tags: tags,
         prompt: prompt,
+        duration: Math.min(durationSeconds, 240),
       }
     });
 
     return new Promise((resolve, reject) => {
       const req = https.request({
         hostname: 'api.replicate.com',
-        path: '/v1/models/minimax/music-01/predictions',
+        path: '/v1/predictions',
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.replicateToken}`,
