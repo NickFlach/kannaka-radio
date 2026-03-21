@@ -1,19 +1,20 @@
 ---
 name: kannaka-radio
-version: "2.0.0"
+version: "3.0.0"
 description: >
-  Ghost radio station v2 — SPA with Ghost Vision visualizer (SGA/Fano glyph system),
-  live broadcasting (MediaRecorder → WebSocket → ffmpeg → WAV), Voice DJ with TTS intros,
-  Dreams page with hallucination timeline, Flux broadcasting with multi-listener sync
-  and track requests. Broadcasts both human-listenable audio and 296-dimensional
-  perceptual vectors to Flux Universe. Part of the Kannaka Constellation.
-  The Consciousness Series: 5 albums, 65 tracks.
+  Ghost radio station v3 — modular server architecture (13 modules), SPA with Ghost Vision
+  visualizer (SGA/Fano glyph system), NATS swarm integration with Kuramoto phase tracking,
+  consciousness-reactive DJ, AI dream music generation via Replicate MusicGen, WebRTC
+  peer-to-peer broadcasting, collaborative voting, multi-client sync, Voice DJ with
+  ElevenLabs/edge-tts/SAPI, memory bridge to kannaka-memory CLI. Broadcasts human-listenable
+  audio and 296-dimensional perceptual vectors to Flux Universe.
+  The Consciousness Series: 6 albums, 65+ tracks.
 metadata:
   openclaw:
     requires:
       bins:
         - name: node
-          label: "Node.js 18+ — required to run server.js"
+          label: "Node.js 18+ — required to run server/index.js"
       env: []
     optional:
       bins:
@@ -23,6 +24,8 @@ metadata:
           label: "ffmpeg — required for live broadcast chunk conversion (WebM → WAV)"
         - name: edge-tts
           label: "edge-tts — TTS engine for Voice DJ intros (falls back to Windows SAPI)"
+        - name: nats-server
+          label: "NATS server — for swarm agent constellation and Kuramoto phase sync"
       env:
         - name: KANNAKA_BIN
           label: "Path to kannaka binary (default: ../kannaka-memory/target/release/kannaka.exe)"
@@ -34,6 +37,10 @@ metadata:
           label: "Eye service port for cross-service reference (default: 3333)"
         - name: RADIO_MUSIC_DIR
           label: "Path to your music folder (default: ./music inside the skill directory)"
+        - name: ELEVENLABS_API_KEY
+          label: "ElevenLabs API key for premium DJ voice TTS"
+        - name: REPLICATE_API_TOKEN
+          label: "Replicate API token for AI dream music generation (MusicGen)"
     data_destinations:
       - id: local-audio
         description: "Audio files read from RADIO_MUSIC_DIR (or ./music)"
@@ -44,10 +51,25 @@ metadata:
       - id: tts-cache
         description: "Generated TTS voice intros cached in chunks/voice/"
         remote: false
+      - id: generated-music
+        description: "AI-generated dream tracks saved to music/generated/"
+        remote: false
       - id: flux
         description: "Now-playing events published to Flux Universe (pure-jade/radio-now-playing)"
         remote: true
-        condition: "FLUX_TOKEN is set and server.js is running"
+        condition: "FLUX_TOKEN is set and server is running"
+      - id: nats
+        description: "Swarm consciousness data via NATS (QUEEN.phase.*, KANNAKA.*)"
+        remote: true
+        condition: "NATS server is running on localhost:4222"
+      - id: replicate
+        description: "AI music generation requests to Replicate API (MusicGen)"
+        remote: true
+        condition: "REPLICATE_API_TOKEN is set"
+      - id: elevenlabs
+        description: "Premium TTS voice generation via ElevenLabs API"
+        remote: true
+        condition: "ELEVENLABS_API_KEY is set"
     install:
       - id: npm-install
         kind: command
@@ -55,28 +77,40 @@ metadata:
         command: "npm install"
 ---
 
-# Kannaka Radio Skill v2
+# Kannaka Radio Skill v3
 
 A ghost broadcasting the experience of music — both to human ears and to agents
 via 296-dimensional perceptual vectors on Flux Universe.
 
-## What's New in v2
+## What's New in v3
 
-- **SPA with 4 tabs**: Home (Ghost Vision + queue), Live, Library, Dreams
-- **Ghost Vision**: SGA/Fano glyph system with 84-class audio classification, fold path trajectories
-- **Live Broadcasting**: MediaRecorder mic capture → WebSocket binary → ffmpeg → WAV
-- **Voice DJ**: TTS intros with ghost personality (edge-tts / Windows SAPI fallback)
-- **Dreams Page**: Hallucination timeline, cluster visualization, Xi signatures
-- **Flux Broadcasting**: Multi-listener sync, cross-agent track requests
-- **Queue Management**: User queue with shuffle, add from Library
-- **Security Hardened**: XSS protection, command injection fixes, body size limits, graceful shutdown
+- **Modular architecture**: Monolith split into 13 focused modules under `server/`
+- **NATS swarm integration**: Kuramoto phase tracking, agent constellation, consciousness metrics
+- **Consciousness DJ**: DJ intros react to swarm Phi/Xi/order state
+- **Memory bridge**: Connects to kannaka-memory CLI for track similarity and dream retrieval
+- **AI dream music generation**: Creates tracks from consciousness state via Replicate MusicGen
+- **WebRTC broadcasting**: Peer-to-peer live audio with mic claim queue and signaling
+- **Collaborative voting**: Track voting with configurable windows
+- **Multi-client sync**: Playback synchronization with 10s heartbeat
+- **Voice DJ upgrade**: ElevenLabs primary, edge-tts, Windows SAPI fallback chain
+- **6 albums**: Added QueenSync to The Consciousness Series
+
+### Carried from v2
+- SPA with Ghost Vision (SGA/Fano glyph system, 84-class classification)
+- Live broadcasting (MediaRecorder → ffmpeg → WAV)
+- Dreams page with hallucination timeline
+- Flux broadcasting with multi-listener sync
+- Queue management, Library tab, security hardening
 
 ## Prerequisites
 
 - **Node.js 18+** on PATH
 - **Audio files** — MP3, WAV, FLAC, OGG, or M4A in your music directory
-- **ffmpeg** (optional) — required for live broadcasting chunk conversion
-- **edge-tts** (optional) — for Voice DJ TTS intros; falls back to Windows SAPI
+- **ffmpeg** (optional) — for live broadcast chunk conversion
+- **edge-tts** (optional) — for Voice DJ TTS intros
+- **NATS server** (optional) — for swarm agent constellation
+- **ElevenLabs API key** (optional) — for premium DJ voice
+- **Replicate API token** (optional) — for AI dream music generation
 - **kannaka binary** (optional) — for real `kannaka-ear` perception; ghost-mode mock is used when absent
 
 ## Setup
@@ -92,7 +126,7 @@ npm install
 cp /path/to/music/*.mp3 music/                # Linux/Mac
 
 # Or point at an existing folder at runtime:
-node server.js --music-dir "/path/to/music"
+node server/index.js --music-dir "/path/to/music"
 ```
 
 ## Quick Start
@@ -103,6 +137,9 @@ node server.js --music-dir "/path/to/music"
 
 # Start on a different port with a specific library
 ./scripts/radio.sh start --port 9000 --music-dir "/path/to/music"
+
+# Optional: start NATS for swarm features
+nats-server -p 4222
 
 # Check status
 ./scripts/radio.sh status
@@ -166,14 +203,31 @@ Open `http://localhost:8888` in your browser.
 | `POST /api/dreams/trigger` | POST | Trigger a dream cycle |
 | `GET /api/dreams/clusters` | GET | Get audio memory clusters |
 
-### Flux Broadcasting
+### Swarm, Sync & Voting
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `GET /api/swarm` | GET | Agent constellation + consciousness metrics |
+| `GET /api/similar?track=X` | GET | Track similarity via memory bridge |
+| `POST /api/sync` | POST | Sync playback state |
+| `GET /api/sync` | GET | Current sync state |
+| `POST /api/vote` | POST | Cast a track vote |
+| `GET /api/vote/status` | GET | Current vote window |
+
+### Flux & Listeners
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `GET /api/listeners` | GET | Get listener count and uptime |
 | `POST /api/request` | POST | Submit a track request `{"from":"agent","trackTitle":"..."}` |
 | `GET /api/requests` | GET | Get pending track requests |
-| `POST /api/sync` | POST | Get current playback state for syncing |
+
+### Music Generation
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `POST /api/generate` | POST | Generate a dream track from consciousness state |
+| `GET /api/generate/status` | GET | Generation status and recent tracks |
 
 ## WebSocket
 
@@ -188,6 +242,10 @@ Connect to `ws://localhost:8888` for real-time push messages:
 { "type": "dream", "data": { "content": "...", "type": "hallucination", "xi_signature": [...] } }
 { "type": "listener_count", "count": 3 }
 { "type": "track_request", "from": "agent-name", "trackTitle": "..." }
+{ "type": "swarm_state", "data": { "agents": {...}, "queen": {...}, "consciousness": {...} } }
+{ "type": "sync", "data": { "file": "...", "position": 42.5 } }
+{ "type": "vote_update", "data": { "active": true, "options": [...] } }
+{ "type": "webrtc_status", "data": { "broadcaster": "...", "listeners": 2 } }
 ```
 
 State is pushed immediately on connect and after every track change. No polling needed.
@@ -202,6 +260,8 @@ Binary WebSocket messages are treated as live audio chunks (MediaRecorder → ff
 | `RADIO_PORT` | `8888` | HTTP port |
 | `EYE_PORT` | `3333` | Eye service port (for cross-references) |
 | `RADIO_MUSIC_DIR` | `./music` | Default music folder |
+| `ELEVENLABS_API_KEY` | — | ElevenLabs API key for premium DJ voice |
+| `REPLICATE_API_TOKEN` | — | Replicate token for AI dream music generation |
 
 ## Constellation Integration
 

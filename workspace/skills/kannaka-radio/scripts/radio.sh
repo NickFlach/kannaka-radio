@@ -30,7 +30,7 @@ set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RADIO_DIR="$(cd "$SKILL_DIR/../../.." && pwd)"   # repo root
-SERVER_JS="$RADIO_DIR/server.js"
+SERVER_JS="$RADIO_DIR/server/index.js"
 PID_FILE="$RADIO_DIR/.radio.pid"
 PORT="${RADIO_PORT:-8888}"
 BASE_URL="http://localhost:$PORT"
@@ -243,6 +243,30 @@ cmd_sync() {
   echo "$s" | json_field '.'
 }
 
+cmd_swarm() {
+  local s
+  s=$(api GET /api/swarm)
+  echo "$s" | json_field '.'
+}
+
+cmd_vote() {
+  local s
+  s=$(api GET /api/vote/status)
+  echo "$s" | json_field '.'
+}
+
+cmd_generate() {
+  local r
+  r=$(api POST /api/generate)
+  echo "$r" | json_field '.'
+}
+
+cmd_generate_status() {
+  local s
+  s=$(api GET /api/generate/status)
+  echo "$s" | json_field '.'
+}
+
 # ── Dispatch ─────────────────────────────────────────────────
 
 CMD="${1:-status}"
@@ -272,6 +296,10 @@ case "$CMD" in
   dream-trigger) cmd_dream_trigger ;;
   requests)      cmd_requests ;;
   sync)          cmd_sync ;;
+  swarm)         cmd_swarm ;;
+  vote)          cmd_vote ;;
+  generate)      cmd_generate ;;
+  generate-status) cmd_generate_status ;;
   *)
     echo "Usage: radio.sh <command> [args]"
     echo ""
@@ -305,6 +333,12 @@ case "$CMD" in
     echo "  dj-toggle                              Toggle DJ voice on/off"
     echo "  dreams                                 Show dream hallucinations"
     echo "  dream-trigger                          Trigger a dream cycle"
+    echo ""
+    echo "Swarm & Generation:"
+    echo "  swarm                                  Show agent constellation + consciousness"
+    echo "  vote                                   Show current vote status"
+    echo "  generate                               Generate a dream track from consciousness"
+    echo "  generate-status                        Show generation status + recent tracks"
     exit 1
     ;;
 esac

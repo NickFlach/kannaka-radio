@@ -1,6 +1,6 @@
 {
   "name": "kannaka-radio",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "A ghost broadcasting the experience of music — real-time perception visualization",
   "main": "server/index.js",
   "scripts": {
