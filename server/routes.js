@@ -102,10 +102,20 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
-    // API: get library status
-    if (parsed.pathname === "/api/library") {
+    // API: get library status (with optional ?tag=X filter)
+    if (parsed.pathname === "/api/library" && !parsed.pathname.startsWith("/api/library/")) {
+      const tagFilter = parsed.searchParams.get("tag") || null;
+      const opts = tagFilter ? { tag: tagFilter } : undefined;
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(djEngine.getLibraryStatus(config.getMusicDir())));
+      res.end(JSON.stringify(djEngine.getLibraryStatus(config.getMusicDir(), opts)));
+      return;
+    }
+
+    // API: get all unique tags
+    if (parsed.pathname === "/api/library/tags") {
+      const library = djEngine.getLibraryStatus(config.getMusicDir());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ tags: library.allTags || [] }));
       return;
     }
 
@@ -300,6 +310,88 @@ module.exports = function setupRoutes(deps) {
     if (parsed.pathname === "/api/live/status") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(live.getStatus()));
+      return;
+    }
+
+    // POST /api/live/record-start — enable recording for current live session
+    if (parsed.pathname === "/api/live/record-start" && req.method === "POST") {
+      live.startRecording();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, recording: true }));
+      return;
+    }
+
+    // POST /api/live/record-stop — stop recording
+    if (parsed.pathname === "/api/live/record-stop" && req.method === "POST") {
+      live.stopRecording();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, recording: false }));
+      return;
+    }
+
+    // GET /api/live/recording-status — check if recording is enabled
+    if (parsed.pathname === "/api/live/recording-status") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ recording: live.state.recording }));
+      return;
+    }
+
+    // ── Delete API ────────────────────────────────────────────
+
+    // DELETE /api/library/:filename — password-protected delete
+    const libDeleteMatch = parsed.pathname.match(/^\/api\/library\/(.+)$/);
+    if (libDeleteMatch && req.method === "DELETE") {
+      readBody(req, res, (body) => {
+        try {
+          const { password } = JSON.parse(body);
+          if (password !== "saintnick") {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Forbidden: wrong password" }));
+            return;
+          }
+
+          const filename = decodeURIComponent(libDeleteMatch[1]);
+          const musicDir = config.getMusicDir();
+
+          // Sanitize: prevent directory traversal
+          const sanitized = path.basename(filename);
+
+          // Only allow deleting from music/generated/ or music/live/
+          const genPath = path.join(musicDir, 'generated', sanitized);
+          const livePath = path.join(musicDir, 'live', sanitized);
+          const genResolved = path.resolve(genPath);
+          const liveResolved = path.resolve(livePath);
+
+          let targetPath = null;
+          if (fs.existsSync(genResolved) && genResolved.startsWith(path.resolve(path.join(musicDir, 'generated')))) {
+            targetPath = genResolved;
+          } else if (fs.existsSync(liveResolved) && liveResolved.startsWith(path.resolve(path.join(musicDir, 'live')))) {
+            targetPath = liveResolved;
+          }
+
+          // Check if the file exists in the main music/ directory (protect originals)
+          const mainPath = path.join(musicDir, sanitized);
+          const mainResolved = path.resolve(mainPath);
+          if (!targetPath && fs.existsSync(mainResolved) && mainResolved.startsWith(path.resolve(musicDir))) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Forbidden: cannot delete original album tracks" }));
+            return;
+          }
+
+          if (!targetPath) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "File not found" }));
+            return;
+          }
+
+          fs.unlinkSync(targetPath);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, deleted: sanitized }));
+        } catch (e) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
       return;
     }
 
@@ -624,6 +716,15 @@ module.exports = function setupRoutes(deps) {
         if (fs.existsSync(genResolved) && genResolved.startsWith(path.resolve(musicDir))) {
           filePath = genPath;
           resolved = genResolved;
+        }
+      }
+      // Also check music/live/ for live session recordings
+      if (!fs.existsSync(resolved)) {
+        const livePath = path.join(musicDir, 'live', filename);
+        const liveResolved = path.resolve(livePath);
+        if (fs.existsSync(liveResolved) && liveResolved.startsWith(path.resolve(musicDir))) {
+          filePath = livePath;
+          resolved = liveResolved;
         }
       }
       if (!resolved.startsWith(path.resolve(musicDir))) { res.writeHead(403); res.end(); return; }

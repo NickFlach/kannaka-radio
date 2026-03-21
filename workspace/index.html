@@ -903,6 +903,32 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 .album-row-count.empty { color: #ef4444; }
 .missing-list { color: var(--text-muted); font-size: 10px; margin-top: 2px; padding-left: 10px; }
 
+/* Tag filter pills */
+.tag-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1rem; }
+.tag-pill {
+  background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 20px; padding: 4px 12px; font-size: 11px; color: var(--text-dim);
+  cursor: pointer; font-family: inherit; transition: all 0.2s;
+}
+.tag-pill:hover { border-color: var(--purple); color: var(--purple-light); }
+.tag-pill.active { background: var(--purple); color: #fff; border-color: var(--purple); }
+
+/* Recording indicator */
+.record-toggle-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.record-toggle-row label { font-size: 12px; color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.record-toggle-row input[type="checkbox"] { accent-color: var(--purple); cursor: pointer; }
+.record-warning { font-size: 10px; color: var(--text-muted); font-style: italic; margin-left: 4px; }
+.rec-indicator {
+  display: none; align-items: center; gap: 6px; font-size: 12px;
+  color: #ef4444; font-weight: bold; margin-top: 6px;
+}
+.rec-indicator.active { display: flex; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: dotpulse 1s infinite; }
+
+/* Library delete button */
+.lib-btn.delete { background: #7f1d1d; }
+.lib-btn.delete:hover { background: #991b1b; }
+
 /* ══════════════════════════════════════════════
    LAYER 5: THE GATE — Join + Links
    ══════════════════════════════════════════════ */
@@ -1185,6 +1211,12 @@ body.konami-mode .surface-header h1 {
       <div id="micQueueList"></div>
     </div>
 
+    <div class="record-toggle-row">
+      <label><input type="checkbox" id="recordSessionToggle"> Record Session</label>
+      <span class="record-warning">Recording will be saved to the station library</span>
+    </div>
+    <div class="rec-indicator" id="recIndicator"><span class="rec-dot"></span> REC</div>
+
     <div class="webrtc-mode-divider">OR</div>
 
     <!-- Classic chunked pipeline (fallback) -->
@@ -1276,6 +1308,7 @@ body.konami-mode .surface-header h1 {
   </div>
 
   <div class="library-container">
+    <div class="tag-filter-bar" id="tagFilterBar"></div>
     <div class="library-top">
       <input type="text" class="search-box" id="searchBox" placeholder="Search the archive..." oninput="filterLibrary()">
       <div class="library-stats" id="libraryStats">Loading library...</div>
@@ -1400,6 +1433,13 @@ let configOpen = false;
 // ── DJ Voice ──
 let djVoiceEnabled = true;
 let djVoiceQueue = [];
+
+// ── Tag filtering ──
+var activeTagFilter = null;
+var libraryTags = [];
+
+// ── Live Recording ──
+var liveRecording = false;
 
 // ── Live Broadcasting ──
 let isLive = false;
@@ -2765,6 +2805,13 @@ async function startLive() {
     liveStartTime = Date.now();
     liveChunkCount = 0;
 
+    // Start recording if toggle is checked
+    var recordToggle = document.getElementById('recordSessionToggle');
+    if (recordToggle && recordToggle.checked) {
+      fetch('/api/live/record-start', { method: 'POST' });
+      liveRecording = true;
+    }
+
     updateLiveUI();
     startLiveWaveform();
     startLiveDurationCounter();
@@ -2804,6 +2851,12 @@ function stopLive() {
 
   fetch('/api/live/stop', { method: 'POST' });
 
+  // Stop recording if active
+  if (liveRecording) {
+    fetch('/api/live/record-stop', { method: 'POST' });
+    liveRecording = false;
+  }
+
   updateLiveUI();
   console.log('Live broadcasting stopped');
 }
@@ -2814,6 +2867,7 @@ function updateLiveUI() {
   var statusBadge = document.getElementById('liveStatus');
   var goLiveBtn = document.querySelector('.go-live-btn');
   var statusText = document.querySelector('.live-status-text');
+  var recIndicator = document.getElementById('recIndicator');
 
   if (isLive) {
     startBtn.style.display = 'none';
@@ -2827,6 +2881,15 @@ function updateLiveUI() {
     statusBadge.classList.remove('active');
     if (goLiveBtn) goLiveBtn.classList.remove('on-air');
     if (statusText) statusText.textContent = 'Go Live to broadcast through the station';
+  }
+
+  // Recording indicator
+  if (recIndicator) {
+    if (liveRecording) {
+      recIndicator.classList.add('active');
+    } else {
+      recIndicator.classList.remove('active');
+    }
   }
 }
 
@@ -2910,6 +2973,14 @@ async function webrtcGoLive() {
       clientId: myClientId,
       displayName: 'DJ ' + myClientId.slice(-4),
     }));
+
+    // Start recording if toggle is checked
+    var recordToggle = document.getElementById('recordSessionToggle');
+    if (recordToggle && recordToggle.checked) {
+      fetch('/api/live/record-start', { method: 'POST' });
+      liveRecording = true;
+      updateLiveUI();
+    }
   } catch (err) {
     console.error('WebRTC: mic access denied', err);
     alert('Could not access microphone. Please allow mic access and try again.');
@@ -2927,6 +2998,12 @@ function webrtcStopBroadcast() {
   if (webrtcLocalStream) {
     webrtcLocalStream.getTracks().forEach(function(t) { t.stop(); });
     webrtcLocalStream = null;
+  }
+
+  // Stop recording if active
+  if (liveRecording) {
+    fetch('/api/live/record-stop', { method: 'POST' });
+    liveRecording = false;
   }
 
   webrtcIsBroadcasting = false;
@@ -3204,9 +3281,11 @@ function webrtcUpdateUI(statusData) {
 //  Library Management
 // ══════════════════════════════════════════════════════
 
-async function loadLibrary() {
+async function loadLibrary(tag) {
   try {
-    var r = await fetch('/api/library');
+    var url = '/api/library';
+    if (tag) url += '?tag=' + encodeURIComponent(tag);
+    var r = await fetch(url);
     libraryData = await r.json();
 
     allTracks = [];
@@ -3231,6 +3310,32 @@ async function loadLibrary() {
   }
 }
 
+async function loadLibraryTags() {
+  try {
+    var r = await fetch('/api/library/tags');
+    libraryTags = await r.json();
+    renderTagFilterBar();
+  } catch(e) {
+    console.error('Tag load error:', e);
+  }
+}
+
+function renderTagFilterBar() {
+  var bar = document.getElementById('tagFilterBar');
+  if (!bar) return;
+  var html = '<button class="tag-pill' + (!activeTagFilter ? ' active' : '') + '" onclick="filterByTag(null)">All</button>';
+  libraryTags.forEach(function(tag) {
+    html += '<button class="tag-pill' + (activeTagFilter === tag ? ' active' : '') + '" onclick="filterByTag(\'' + escapeHtml(tag).replace(/'/g, "\\'") + '\')">' + escapeHtml(tag) + '</button>';
+  });
+  bar.innerHTML = html;
+}
+
+function filterByTag(tag) {
+  activeTagFilter = tag;
+  renderTagFilterBar();
+  loadLibrary(tag);
+}
+
 function renderLibraryGrid() {
   var searchTerm = document.getElementById('searchBox').value.toLowerCase();
   var filtered = allTracks;
@@ -3244,13 +3349,18 @@ function renderLibraryGrid() {
 
   var grid = document.getElementById('libraryGrid');
   grid.innerHTML = filtered.map(function(t, i) {
-    return '<div class="library-item">' +
+    var isDeletable = (t.album === 'Dream Tracks' || t.album === 'Live');
+    var deleteBtn = isDeletable
+      ? '<button class="lib-btn delete" onclick="deleteLibraryTrack(\'' + t.filename.replace(/'/g, "\\'") + '\')">&#10005;</button>'
+      : '';
+    return '<div class="library-item" id="lib-item-' + i + '">' +
       '<div class="library-item-title">' + escapeHtml(t.title) + '</div>' +
       '<div class="library-item-album">' + escapeHtml(t.album) + '</div>' +
       '<div class="library-item-filename">' + escapeHtml(t.filename) + '</div>' +
       '<div class="library-item-actions">' +
         '<button class="lib-btn" onclick="playFromLibrary(\'' + t.filename.replace(/'/g, "\\'") + '\')">Play Now</button>' +
         '<button class="lib-btn secondary" onclick="addToQueue(\'' + t.filename.replace(/'/g, "\\'") + '\')">Add to Queue</button>' +
+        deleteBtn +
       '</div>' +
     '</div>';
   }).join('');
@@ -3273,6 +3383,34 @@ function playFromLibrary(filename) {
   if (track) {
     document.getElementById('album').textContent = track.album;
     document.getElementById('track').textContent = track.title;
+  }
+}
+
+async function deleteLibraryTrack(filename) {
+  var password = window.prompt('Enter admin password to delete:');
+  if (!password) return;
+  try {
+    var r = await fetch('/api/library/' + encodeURIComponent(filename), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: password })
+    });
+    if (r.status === 403) {
+      alert('Wrong password');
+      return;
+    }
+    if (!r.ok) {
+      alert('Delete failed: ' + r.statusText);
+      return;
+    }
+    // Remove from local data and re-render
+    allTracks = allTracks.filter(function(t) { return t.filename !== filename; });
+    renderLibraryGrid();
+    document.getElementById('libraryStats').textContent = allTracks.length + ' tracks';
+    loadLibrary(activeTagFilter);
+  } catch(e) {
+    console.error('Delete error:', e);
+    alert('Delete failed');
   }
 }
 
@@ -3777,6 +3915,21 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('startLiveBtn').addEventListener('click', startLive);
   document.getElementById('stopLiveBtn').addEventListener('click', stopLive);
 
+  // Record session toggle — stop/start recording mid-broadcast
+  document.getElementById('recordSessionToggle').addEventListener('change', function() {
+    if (isLive || webrtcIsBroadcasting) {
+      if (this.checked && !liveRecording) {
+        fetch('/api/live/record-start', { method: 'POST' });
+        liveRecording = true;
+        updateLiveUI();
+      } else if (!this.checked && liveRecording) {
+        fetch('/api/live/record-stop', { method: 'POST' });
+        liveRecording = false;
+        updateLiveUI();
+      }
+    }
+  });
+
   // Config panel enter key
   document.getElementById('config-path').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') setMusicDir();
@@ -3787,6 +3940,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Load library, queue, dreams, swarm
   loadLibrary();
+  loadLibraryTags();
   loadQueue();
   loadDreams();
   loadClusters();

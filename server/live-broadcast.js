@@ -26,12 +26,15 @@ class LiveBroadcast {
     this._onStop = opts.onStop;
     this._onStart = opts.onStart;
 
+    this._musicDir = opts.musicDir || null;
+
     this.state = {
       active: false,
       startedAt: null,
       chunkCount: 0,
       savedTrackIdx: -1,
       clients: new Set(),
+      recording: false,
     };
 
     this._chunkFiles = [];
@@ -61,6 +64,12 @@ class LiveBroadcast {
     this.state.clients.clear();
     console.log(`\n\u23F9 LIVE ended \u2014 ${this.state.chunkCount} chunks, ${(duration / 1000).toFixed(0)}s`);
 
+    // If recording was active, save the session
+    if (this.state.recording) {
+      this._saveRecording();
+      this.state.recording = false;
+    }
+
     // Resume playlist from saved position
     if (this.state.savedTrackIdx >= 0) {
       this._setTrackIdx(this.state.savedTrackIdx);
@@ -68,6 +77,18 @@ class LiveBroadcast {
 
     if (this._onStop) this._onStop();
     this._broadcastStatus();
+  }
+
+  startRecording() {
+    this.state.recording = true;
+    console.log(`\u23FA Recording enabled for live session`);
+  }
+
+  stopRecording() {
+    if (!this.state.recording) return;
+    this.state.recording = false;
+    this._saveRecording();
+    console.log(`\u23F9 Recording stopped`);
   }
 
   handleChunk(ws, message) {
@@ -115,6 +136,7 @@ class LiveBroadcast {
       startedAt: this.state.startedAt,
       chunkCount: this.state.chunkCount,
       duration: this.state.startedAt ? Date.now() - this.state.startedAt : 0,
+      recording: this.state.recording,
     };
   }
 
@@ -142,6 +164,48 @@ class LiveBroadcast {
       });
       this._chunkFiles = this._chunkFiles.slice(-10);
     }
+  }
+
+  _saveRecording() {
+    if (this._chunkFiles.length === 0) {
+      console.log(`   No chunks to save for recording`);
+      return;
+    }
+
+    // Determine output directory
+    const liveDir = this._musicDir ? path.join(this._musicDir, 'live') : path.join(this._chunksDir, '..', 'music', 'live');
+    if (!fs.existsSync(liveDir)) fs.mkdirSync(liveDir, { recursive: true });
+
+    const timestamp = Date.now();
+    const outputFile = path.join(liveDir, `live_${timestamp}_session.mp3`);
+
+    // Build ffmpeg concat file list
+    const listFile = path.join(this._chunksDir, `concat_${timestamp}.txt`);
+    const existingChunks = this._chunkFiles.filter(f => fs.existsSync(f));
+    if (existingChunks.length === 0) {
+      console.log(`   No existing chunk files to concatenate`);
+      return;
+    }
+
+    const listContent = existingChunks.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n');
+    fs.writeFileSync(listFile, listContent);
+
+    console.log(`   Concatenating ${existingChunks.length} chunks into ${path.basename(outputFile)}...`);
+
+    execFile("ffmpeg", [
+      "-f", "concat", "-safe", "0", "-i", listFile,
+      "-ac", "1", "-ar", "44100", "-b:a", "192k",
+      "-y", outputFile
+    ], { timeout: 120000 }, (err) => {
+      // Clean up list file
+      try { fs.unlinkSync(listFile); } catch {}
+
+      if (err) {
+        console.error(`   Failed to save recording: ${err.message}`);
+        return;
+      }
+      console.log(`   Live recording saved: ${path.basename(outputFile)}`);
+    });
   }
 
   _convertToWav(inputBuffer, callback) {

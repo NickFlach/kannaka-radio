@@ -117,6 +117,7 @@ const flux = new FluxPublisher({
 const live = new LiveBroadcast({
   chunksDir: CHUNKS_DIR,
   kannakabin: KANNAKA_BIN,
+  musicDir: MUSIC_DIR,
   broadcast,
   getCurrentTrackIdx: () => djEngine.state.currentTrackIdx,
   setTrackIdx: (idx) => { djEngine.state.currentTrackIdx = idx; },

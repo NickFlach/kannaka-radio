@@ -142,70 +142,7 @@ class VoiceDJ {
     const timestamp = Date.now();
     const outputPath = path.join(this._voiceDir, `dj_${timestamp}.mp3`);
 
-    // Approach 1: ElevenLabs TTS (primary, cloud-based)
-    const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
-    if (elevenLabsApiKey) {
-      const voiceId = '21m00Tcm4TlvDq8ikWAM'; // Rachel voice
-      const requestData = JSON.stringify({
-        text: text,
-        model_id: 'eleven_turbo_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
-      });
-
-      const options = {
-        hostname: 'api.elevenlabs.io',
-        port: 443,
-        path: `/v1/text-to-speech/${voiceId}`,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(requestData),
-          'xi-api-key': elevenLabsApiKey,
-          'Accept': 'audio/mpeg'
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        if (res.statusCode === 200) {
-          const fileStream = fs.createWriteStream(outputPath);
-          res.pipe(fileStream);
-
-          fileStream.on('finish', () => {
-            fileStream.close();
-            console.log(`   \uD83D\uDDE3 TTS (ElevenLabs) generated: ${path.basename(outputPath)}`);
-            callback(null, outputPath, text);
-          });
-
-          fileStream.on('error', (err) => {
-            console.log(`   \u26A0 ElevenLabs TTS file write error: ${err.message}`);
-            fallbackToEdgeTTS();
-          });
-        } else {
-          console.log(`   \u26A0 ElevenLabs TTS failed (${res.statusCode}), falling back to edge-tts`);
-          fallbackToEdgeTTS();
-        }
-      });
-
-      req.on('error', (err) => {
-        console.log(`   \u26A0 ElevenLabs TTS error: ${err.message}, falling back to edge-tts`);
-        fallbackToEdgeTTS();
-      });
-
-      req.setTimeout(15000, () => {
-        req.destroy();
-        console.log(`   \u26A0 ElevenLabs TTS timeout, falling back to edge-tts`);
-        fallbackToEdgeTTS();
-      });
-
-      req.write(requestData);
-      req.end();
-      return;
-    }
-
-    // If no ElevenLabs API key, fall back immediately
+    // Use edge-tts directly (ElevenLabs support removed — re-add when key is valid)
     fallbackToEdgeTTS();
 
     function fallbackToEdgeTTS() {

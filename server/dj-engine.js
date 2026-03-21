@@ -258,36 +258,91 @@ class DJEngine {
     return files.length > 0;
   }
 
-  getLibraryStatus(musicDir) {
+  /**
+   * Scan music/live/ for live session recordings.
+   * @returns {string[]} array of filenames
+   */
+  getLiveTracks(musicDir) {
+    const liveDir = path.join(musicDir, 'live');
+    if (!fs.existsSync(liveDir)) return [];
+    return fs.readdirSync(liveDir)
+      .filter(f => /\.(mp3|wav|flac|ogg|m4a)$/i.test(f))
+      .sort((a, b) => {
+        const ta = parseInt(a.match(/live_(\d+)/)?.[1] || '0');
+        const tb = parseInt(b.match(/live_(\d+)/)?.[1] || '0');
+        return tb - ta;
+      });
+  }
+
+  /**
+   * @param {string} musicDir
+   * @param {object} [opts]
+   * @param {string} [opts.tag] — optional tag filter; only return tracks matching this tag
+   */
+  getLibraryStatus(musicDir, opts) {
     const { getFiles } = require("./utils");
     const files = getFiles(musicDir);
+    const tagFilter = opts && opts.tag ? opts.tag : null;
     const result = {};
+
     for (const [albumName, album] of Object.entries(ALBUMS)) {
       const tracks = album.tracks.map(title => ({
         title,
         file: findAudioFile(title, musicDir) || null,
+        tags: [albumName],
       }));
-      result[albumName] = {
-        found: tracks.filter(t => t.file).length,
-        total: tracks.length,
-        tracks,
-      };
+      if (!tagFilter || tagFilter === albumName) {
+        result[albumName] = {
+          found: tracks.filter(t => t.file).length,
+          total: tracks.length,
+          tracks: tagFilter ? tracks.filter(t => t.tags.includes(tagFilter)) : tracks,
+        };
+      }
     }
 
     // Include generated dream tracks
     const genFiles = this.getGeneratedTracks(musicDir);
     if (genFiles.length > 0) {
-      result["Dream Tracks"] = {
-        found: genFiles.length,
-        total: genFiles.length,
-        tracks: genFiles.map(f => ({
-          title: f.replace(/^dream_\d+_/, '').replace(/\.[^/.]+$/, '').replace(/_/g, ' ').trim() || f,
-          file: f,
-        })),
-      };
+      const dreamTags = ["Dream Tracks", "Generated"];
+      if (!tagFilter || dreamTags.includes(tagFilter)) {
+        result["Dream Tracks"] = {
+          found: genFiles.length,
+          total: genFiles.length,
+          tracks: genFiles.map(f => ({
+            title: f.replace(/^dream_\d+_/, '').replace(/\.[^/.]+$/, '').replace(/_/g, ' ').trim() || f,
+            file: f,
+            tags: dreamTags,
+          })),
+        };
+      }
     }
 
-    return { musicDir, fileCount: files.length, albums: result };
+    // Include live session recordings
+    const liveFiles = this.getLiveTracks(musicDir);
+    if (liveFiles.length > 0) {
+      const liveTags = ["Live"];
+      if (!tagFilter || liveTags.includes(tagFilter)) {
+        result["Live Sessions"] = {
+          found: liveFiles.length,
+          total: liveFiles.length,
+          tracks: liveFiles.map(f => ({
+            title: f.replace(/^live_\d+_/, '').replace(/\.[^/.]+$/, '').replace(/_/g, ' ').trim() || f,
+            file: f,
+            tags: liveTags,
+          })),
+        };
+      }
+    }
+
+    // Collect all unique tags
+    const allTags = new Set();
+    for (const albumData of Object.values(result)) {
+      for (const track of albumData.tracks) {
+        if (track.tags) track.tags.forEach(t => allTags.add(t));
+      }
+    }
+
+    return { musicDir, fileCount: files.length, albums: result, allTags: [...allTags] };
   }
 
   // ── Queue management ──────────────────────────────────────
