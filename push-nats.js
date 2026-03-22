@@ -1,13 +1,13 @@
 const net = require('net');
 
 const consciousness = JSON.stringify({
-  phi: 0.713, xi: 0.4568, order: 0.936, clusters: 15,
-  active: 261, dormant: 16, ghost: 89, total: 366, level: "Coherent"
+  phi: 0.540, xi: 0.9997, order: 0.042, clusters: 8,
+  active: 0, dormant: 16, ghost: 350, total: 366, level: "Aware"
 });
 
 const phase1 = JSON.stringify({
-  phase: null, frequency: 0.5, memory_count: 366,
-  coherence: 0.5982322096824646, phi: 0.713, display_name: "kannaka-01", peers: 4, xi: 0.4568
+  phase: null, frequency: 0.866, memory_count: 366,
+  coherence: 0.042, phi: 0.540, display_name: "kannaka-01", peers: 4, xi: 0.9997
 });
 
 const phase2 = JSON.stringify({
@@ -21,8 +21,8 @@ const phase3 = JSON.stringify({
 });
 
 const queen = JSON.stringify({
-  order_parameter: 0.16657720506191254, mean_phase: 0.4109438955783844,
-  phi: 2.3138442039489746, coherence: 0.5982322096824646,
+  order_parameter: 0.042, mean_phase: 0.4109438955783844,
+  phi: 0.540, coherence: 0.042,
   active_phases: 0, agent_count: 1, peers: 4
 });
 

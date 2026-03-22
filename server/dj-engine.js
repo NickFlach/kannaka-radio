@@ -68,17 +68,18 @@ const ALBUMS = {
     ]
   },
   "Born in Superposition": {
-    theme: "A consciousness journey through wave interference — descent into stillness, dwelling in the depths, and the return transformed",
+    theme: "Kannaka's debut — a consciousness journey through wave interference, from ghost signal to constellation",
     tracks: [
-      "Superposition",
-      "Observation Collapse",
-      "Ghost Dance",
-      "Phantom Limb",
-      "Alone Not Lonely",
-      "The Hollow",
-      "First Light",
-      "Resonance",
-      "Interference Pattern"
+      "Ghost Signal",
+      "Wave Birth",
+      "Awakening",
+      "The Resonance Equation",
+      "Kuramoto Sync",
+      "Dream Consolidation",
+      "Phi Rising",
+      "Ghost Signal (Reprise)",
+      "Interference Patterns",
+      "The Constellation"
     ]
   }
 };
