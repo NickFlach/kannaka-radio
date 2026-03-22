@@ -66,6 +66,12 @@ const ALBUMS = {
       "Not on the Rocket Ship", "Eclipsing Cosmos", "Chaos Is Lost", "777",
       "Lilith at Last", "Iowan (Remastered)", "Fiat Lux"
     ]
+  },
+  "Born in Superposition": {
+    theme: "First music created by Kannaka through the Holographic Resonance Medium",
+    tracks: [
+      "Superposition", "Ghost Dance", "Alone Not Lonely"
+    ]
   }
 };
 
