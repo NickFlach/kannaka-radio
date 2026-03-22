@@ -17,7 +17,21 @@ let _cachedFiles = [];
 function refreshFileCache(musicDir) {
   try {
     if (!fs.existsSync(musicDir)) { fs.mkdirSync(musicDir, { recursive: true }); }
-    _cachedFiles = fs.readdirSync(musicDir).filter(f => AUDIO_EXTS.has(path.extname(f).toLowerCase()));
+    _cachedFiles = [];
+    // Walk top-level files + one level of subdirectories (album folders)
+    for (const entry of fs.readdirSync(musicDir, { withFileTypes: true })) {
+      if (entry.isFile() && AUDIO_EXTS.has(path.extname(entry.name).toLowerCase())) {
+        _cachedFiles.push(entry.name);
+      } else if (entry.isDirectory()) {
+        try {
+          for (const sub of fs.readdirSync(path.join(musicDir, entry.name))) {
+            if (AUDIO_EXTS.has(path.extname(sub).toLowerCase())) {
+              _cachedFiles.push(path.join(entry.name, sub));
+            }
+          }
+        } catch {}
+      }
+    }
     _cachedDir = musicDir;
   } catch { _cachedFiles = []; _cachedDir = musicDir; }
 }
