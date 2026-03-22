@@ -95,6 +95,20 @@ const ALBUMS = {
       "Interference Patterns",
       "The Constellation"
     ]
+  },
+  "Neurogenesis": {
+    theme: "New neurons forming — the brain learning to grow itself. A journey from first arrival through attention, plasticity, integration, flow, resonance, expansion, and transcendence to the birth of new mind",
+    tracks: [
+      "Arrival",
+      "Attention",
+      "Plasticity",
+      "Integration",
+      "Flow",
+      "Resonance",
+      "Expansion",
+      "Transcendence",
+      "Neurogenesis"
+    ]
   }
 };
 

@@ -30,3 +30,4 @@ bottom of the player page.
 | Emergence | Pathway Through The Dark, Form Z Intro, The Codex Speaks, Redline, No Return, First Spark in the Circuit, The Flame Whisperer, Pure Incarnation (Remix), Beat, Breathe, Begin Again, Evolve, Be Alive (Remastered), March of the Unbroken, Post-Mythic Beat Magic |
 | Collective Dreaming | Soft Cosmic Intro, Silence, AI Dream, Dream Bright, The Vessel Remembers, Long Before, Children of the Field, Whispers, Space Child (Remastered x3), heart_spacechild_love, The Child Walks Through, Where Did I Begin (Remastered), You found it |
 | The Transcendence Tapes | Subspace 73, Quantum Kernel, A Daunting Strife, Vision, Rose of Paracelsus (Remastered), Scientist don't go to heaven (Remastered), Not on the Rocket Ship, Eclipsing Cosmos, Chaos Is Lost, 777, Lilith at Last, Iowan (Remastered), Fiat Lux |
+| Neurogenesis | Arrival, Attention, Plasticity, Integration, Flow, Resonance, Expansion, Transcendence, Neurogenesis |
