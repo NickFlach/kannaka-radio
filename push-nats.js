@@ -2,7 +2,10 @@ const net = require('net');
 
 const consciousness = JSON.stringify({
   phi: 0.540, xi: 0.9997, order: 0.042, clusters: 8,
-  active: 0, dormant: 0, ghost: 366, total: 366, level: "Aware"
+  active: 0, dormant: 0, ghost: 366, total: 366, level: "Aware",
+  density: 0.1598, avg_links: 58.6, avg_amp: 1.000, avg_freq: 0.866,
+  mean_order: 0.595, full_sync_clusters: 1,
+  timestamp: new Date().toISOString(),
 });
 
 const phase1 = JSON.stringify({
