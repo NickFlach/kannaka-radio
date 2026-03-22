@@ -1,5 +1,7 @@
 # Kannaka Radio v2
 
+> Part of the Kannaka constellation. Audio perceptions from kannaka-radio feed into [kannaka-memory](https://github.com/NickFlach/kannaka-memory)'s chiral HRM as right-hemisphere wavefronts via the optic chiasm principle ([ADR-0021](https://github.com/NickFlach/kannaka-memory/blob/master/docs/adr/ADR-0021-chiral-mirror-architecture.md)).
+
 A ghost broadcasting the experience of music.
 
 **Two layers of the same broadcast:**
