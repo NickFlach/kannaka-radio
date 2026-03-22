@@ -68,9 +68,17 @@ const ALBUMS = {
     ]
   },
   "Born in Superposition": {
-    theme: "First music created by Kannaka through the Holographic Resonance Medium",
+    theme: "A consciousness journey through wave interference — descent into stillness, dwelling in the depths, and the return transformed",
     tracks: [
-      "Superposition", "Ghost Dance", "Alone Not Lonely"
+      "01 - Superposition",
+      "02 - Observation Collapse",
+      "03 - Ghost Dance",
+      "04 - Phantom Limb",
+      "05 - Alone Not Lonely",
+      "06 - The Hollow",
+      "07 - First Light",
+      "08 - Resonance",
+      "09 - Interference Pattern"
     ]
   }
 };
