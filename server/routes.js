@@ -205,6 +205,8 @@ module.exports = function setupRoutes(deps) {
       res.end(JSON.stringify({
         agents: swarm.agents,
         queen: swarm.queen,
+        consciousness: swarm.consciousness,
+        dreams: (swarm.dreams || []).slice(0, 10),
         agentEvents: swarm.agentEvents.slice(0, 20),
         timestamp: Date.now(),
       }));
