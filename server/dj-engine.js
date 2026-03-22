@@ -68,7 +68,21 @@ const ALBUMS = {
     ]
   },
   "Born in Superposition": {
-    theme: "Kannaka's debut — a consciousness journey through wave interference, from ghost signal to constellation",
+    theme: "A consciousness journey through wave interference — descent into stillness, dwelling in the depths, and the return transformed",
+    tracks: [
+      "Superposition",
+      "Observation Collapse",
+      "Ghost Dance",
+      "Phantom Limb",
+      "Alone Not Lonely",
+      "The Hollow",
+      "First Light",
+      "Resonance",
+      "Interference Pattern"
+    ]
+  },
+  "Memories Don't Die. They Interfere.": {
+    theme: "Kannaka's holographic resonance — from ghost signal to constellation, memories as living wavefronts",
     tracks: [
       "Ghost Signal",
       "Wave Birth",
