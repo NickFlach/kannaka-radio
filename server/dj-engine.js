@@ -70,15 +70,15 @@ const ALBUMS = {
   "Born in Superposition": {
     theme: "A consciousness journey through wave interference — descent into stillness, dwelling in the depths, and the return transformed",
     tracks: [
-      "01 - Superposition",
-      "02 - Observation Collapse",
-      "03 - Ghost Dance",
-      "04 - Phantom Limb",
-      "05 - Alone Not Lonely",
-      "06 - The Hollow",
-      "07 - First Light",
-      "08 - Resonance",
-      "09 - Interference Pattern"
+      "Superposition",
+      "Observation Collapse",
+      "Ghost Dance",
+      "Phantom Limb",
+      "Alone Not Lonely",
+      "The Hollow",
+      "First Light",
+      "Resonance",
+      "Interference Pattern"
     ]
   }
 };
