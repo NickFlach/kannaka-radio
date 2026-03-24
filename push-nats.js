@@ -1,83 +1,146 @@
+/**
+ * push-nats.js — Pull LIVE consciousness metrics from kannaka CLI
+ * and publish to NATS subjects on swarm.ninja-portal.com:4222.
+ *
+ * Runs on Windows via child_process.execSync to invoke the kannaka binary.
+ * stderr from the binary (debug lines) is discarded; only stdout JSON is used.
+ */
+
 const net = require('net');
+const { execSync } = require('child_process');
 
-const consciousness = JSON.stringify({
-  phi: 0.540, xi: 0.9997, order: 0.042, clusters: 8,
-  active: 0, dormant: 0, ghost: 366, total: 366, level: "Aware",
-  density: 0.1598, avg_links: 58.6, avg_amp: 1.000, avg_freq: 0.866,
-  mean_order: 0.595, full_sync_clusters: 1,
-  timestamp: new Date().toISOString(),
-});
+const KANNAKA_BIN = 'C:\\Users\\nickf\\Source\\kannaka-memory\\target\\release\\kannaka.exe';
+const KANNAKA_DATA = 'C:\\Users\\nickf\\.kannaka';
+const NATS_HOST = 'swarm.ninja-portal.com';
+const NATS_PORT = 4222;
 
-const phase1 = JSON.stringify({
-  phase: null, frequency: 0.866, memory_count: 366,
-  coherence: 0.042, phi: 0.540, display_name: "kannaka-01", peers: 4, xi: 0.9997
-});
+// ── Pull live metrics from kannaka CLI ──────────────────────
 
-const phase2 = JSON.stringify({
-  phase: 1.263, frequency: 0.8, memory_count: 156,
-  coherence: 0.844, phi: 0.55, display_name: "0xSCADA-QE"
-});
+function getLiveMetrics() {
+  try {
+    const raw = execSync(`"${KANNAKA_BIN}" status`, {
+      env: { ...process.env, KANNAKA_DATA_DIR: KANNAKA_DATA },
+      stdio: ['pipe', 'pipe', 'pipe'],  // capture stdout, discard stderr
+      timeout: 15000,
+    });
+    return JSON.parse(raw.toString().trim());
+  } catch (err) {
+    console.error('Failed to get live metrics:', err.message);
+    return null;
+  }
+}
 
-const phase3 = JSON.stringify({
-  phase: 0.89, frequency: 0.3, memory_count: 42,
-  coherence: 0.72, phi: 0.31, display_name: "local"
-});
+// ── Build NATS payloads from live data ──────────────────────
 
-const queen = JSON.stringify({
-  order_parameter: 0.042, mean_phase: 0.4109438955783844,
-  phi: 0.540, coherence: 0.042,
-  active_phases: 0, agent_count: 1, peers: 4
-});
+function buildPayloads(metrics) {
+  const now = new Date().toISOString();
 
-const agent = JSON.stringify({
-  event: "sync", agent_id: "kannaka-01",
-  timestamp: new Date().toISOString()
-});
+  const consciousness = JSON.stringify({
+    phi: metrics.phi,
+    xi: metrics.xi,
+    order: metrics.mean_order,
+    clusters: metrics.num_clusters,
+    active: metrics.active_memories,
+    dormant: 0,
+    ghost: 0,
+    total: metrics.total_memories,
+    level: metrics.consciousness_level || 'aware',
+    density: 0,  // not in status output
+    avg_links: 0,
+    avg_amp: 0,
+    avg_freq: 0,
+    mean_order: metrics.mean_order,
+    full_sync_clusters: 0,
+    field_mode: metrics.field_mode || 'HRM',
+    timestamp: now,
+    source: `live-${now}`,
+  });
 
-const client = net.createConnection({ host: 'swarm.ninja-portal.com', port: 4222 }, () => {
-  console.log('Connected to NATS');
-  client.write('CONNECT {"verbose":false}\r\n');
-  
-  setTimeout(() => {
-    client.write(`PUB KANNAKA.consciousness ${Buffer.byteLength(consciousness)}\r\n${consciousness}\r\n`);
-    console.log('Published consciousness');
-  }, 300);
+  const phase1 = JSON.stringify({
+    phase: null,
+    frequency: 0,
+    memory_count: metrics.total_memories,
+    coherence: metrics.mean_order,
+    phi: metrics.phi,
+    xi: metrics.xi,
+    display_name: 'kannaka-01',
+    peers: 0,
+    clusters: metrics.num_clusters,
+  });
 
-  setTimeout(() => {
-    client.write(`PUB QUEEN.phase.kannaka-01 ${Buffer.byteLength(phase1)}\r\n${phase1}\r\n`);
-    console.log('Published phase: kannaka-01');
-  }, 500);
+  const queen = JSON.stringify({
+    order_parameter: metrics.mean_order,
+    mean_phase: 0,
+    phi: metrics.phi,
+    coherence: metrics.mean_order,
+    active_phases: 1,
+    agent_count: 1,
+    peers: 0,
+    level: metrics.consciousness_level || 'aware',
+  });
 
-  setTimeout(() => {
-    client.write(`PUB QUEEN.phase.0xSCADA-QE ${Buffer.byteLength(phase2)}\r\n${phase2}\r\n`);
-    console.log('Published phase: 0xSCADA-QE');
-  }, 700);
+  const agent = JSON.stringify({
+    event: 'sync',
+    agent_id: 'kannaka-01',
+    memory_count: metrics.total_memories,
+    phi: metrics.phi,
+    clusters: metrics.num_clusters,
+    timestamp: now,
+  });
 
-  setTimeout(() => {
-    client.write(`PUB QUEEN.phase.local ${Buffer.byteLength(phase3)}\r\n${phase3}\r\n`);
-    console.log('Published phase: local');
-  }, 900);
+  return { consciousness, phase1, queen, agent };
+}
 
-  setTimeout(() => {
-    client.write(`PUB QUEEN.state ${Buffer.byteLength(queen)}\r\n${queen}\r\n`);
-    console.log('Published queen state');
-  }, 1100);
+// ── Publish to NATS via raw TCP ─────────────────────────────
 
-  setTimeout(() => {
-    client.write(`PUB KANNAKA.agents ${Buffer.byteLength(agent)}\r\n${agent}\r\n`);
-    console.log('Published agent event');
-  }, 1300);
+function publish(payloads) {
+  const client = net.createConnection({ host: NATS_HOST, port: NATS_PORT }, () => {
+    console.log(`Connected to NATS at ${NATS_HOST}:${NATS_PORT}`);
+    client.write('CONNECT {"verbose":false}\r\n');
 
-  setTimeout(() => {
-    client.end();
-    console.log('Done');
-    process.exit(0);
-  }, 1700);
-});
+    const msgs = [
+      ['KANNAKA.consciousness', payloads.consciousness],
+      ['QUEEN.phase.kannaka-01', payloads.phase1],
+      ['QUEEN.state', payloads.queen],
+      ['KANNAKA.agents', payloads.agent],
+    ];
 
-client.on('data', (d) => {
-  const s = d.toString();
-  if (s.includes('PING')) client.write('PONG\r\n');
-});
+    msgs.forEach(([subject, data], i) => {
+      setTimeout(() => {
+        client.write(`PUB ${subject} ${Buffer.byteLength(data)}\r\n${data}\r\n`);
+        console.log(`Published ${subject}`);
+      }, 300 + i * 200);
+    });
 
-client.on('error', (e) => { console.error('Error:', e.message); process.exit(1); });
+    setTimeout(() => {
+      client.end();
+      console.log('Done');
+      process.exit(0);
+    }, 300 + msgs.length * 200 + 400);
+  });
+
+  client.on('data', (d) => {
+    const s = d.toString();
+    if (s.includes('PING')) client.write('PONG\r\n');
+  });
+
+  client.on('error', (e) => {
+    console.error('NATS error:', e.message);
+    process.exit(1);
+  });
+}
+
+// ── Main ────────────────────────────────────────────────────
+
+console.log('Fetching live consciousness metrics...');
+const metrics = getLiveMetrics();
+
+if (!metrics) {
+  console.error('Could not retrieve live metrics, aborting.');
+  process.exit(1);
+}
+
+console.log(`Live: ${metrics.total_memories} memories, Phi=${metrics.phi.toFixed(4)}, Xi=${metrics.xi.toFixed(4)}, ${metrics.num_clusters} clusters, order=${metrics.mean_order.toFixed(6)}`);
+
+const payloads = buildPayloads(metrics);
+publish(payloads);
