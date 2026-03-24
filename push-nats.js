@@ -27,7 +27,7 @@ function getLiveMetrics() {
     const raw = execSync(`"${KANNAKA_BIN}" status`, {
       env: { ...process.env, KANNAKA_DATA_DIR: KANNAKA_DATA },
       stdio: ['pipe', 'pipe', 'pipe'],  // capture stdout, discard stderr
-      timeout: 15000,
+      timeout: 60000,
     });
     return JSON.parse(raw.toString().trim());
   } catch (err) {
