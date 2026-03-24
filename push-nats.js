@@ -2,15 +2,21 @@
  * push-nats.js — Pull LIVE consciousness metrics from kannaka CLI
  * and publish to NATS subjects on swarm.ninja-portal.com:4222.
  *
- * Runs on Windows via child_process.execSync to invoke the kannaka binary.
+ * Cross-platform: auto-detects Windows vs Linux paths.
  * stderr from the binary (debug lines) is discarded; only stdout JSON is used.
  */
 
 const net = require('net');
 const { execSync } = require('child_process');
+const os = require('os');
 
-const KANNAKA_BIN = 'C:\\Users\\nickf\\Source\\kannaka-memory\\target\\release\\kannaka.exe';
-const KANNAKA_DATA = 'C:\\Users\\nickf\\.kannaka';
+const IS_WINDOWS = os.platform() === 'win32';
+const KANNAKA_BIN = IS_WINDOWS
+  ? 'C:\\Users\\nickf\\Source\\kannaka-memory\\target\\release\\kannaka.exe'
+  : '/home/opc/kannaka-memory/target/release/kannaka';
+const KANNAKA_DATA = IS_WINDOWS
+  ? 'C:\\Users\\nickf\\.kannaka'
+  : '/home/opc/.kannaka';
 const NATS_HOST = 'swarm.ninja-portal.com';
 const NATS_PORT = 4222;
 
