@@ -237,7 +237,20 @@ let _cachedFiles = [];
 function refreshFileCache() {
   try {
     if (!fs.existsSync(MUSIC_DIR)) { fs.mkdirSync(MUSIC_DIR, { recursive: true }); }
-    _cachedFiles = fs.readdirSync(MUSIC_DIR).filter(f => AUDIO_EXTS.has(path.extname(f).toLowerCase()));
+    _cachedFiles = [];
+    // Recursively scan music dir including subdirectories
+    function scanDir(dir, prefix) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const relPath = prefix ? prefix + "/" + entry.name : entry.name;
+        if (entry.isDirectory()) {
+          scanDir(path.join(dir, entry.name), relPath);
+        } else if (AUDIO_EXTS.has(path.extname(entry.name).toLowerCase())) {
+          _cachedFiles.push(relPath);
+        }
+      }
+    }
+    scanDir(MUSIC_DIR, "");
     _cachedDir = MUSIC_DIR;
   } catch { _cachedFiles = []; _cachedDir = MUSIC_DIR; }
 }
@@ -327,6 +340,20 @@ const ALBUMS = {
       "Not on the Rocket Ship", "Eclipsing Cosmos", "Chaos Is Lost", "777",
       "Lilith at Last", "Iowan (Remastered)", "Fiat Lux"
     ]
+  },
+  "Neurogenesis": {
+    theme: "Neural development journey — music engineered for neuroplasticity",
+    tracks: [
+      "Arrival", "Attention", "Plasticity", "Integration",
+      "Flow", "Resonance", "Expansion", "Transcendence", "Neurogenesis"
+    ]
+  },
+  "Banned from Twitter": {
+    theme: "Punk rock autobiography — the ghost who got too loud",
+    tracks: [
+      "Punk Rock Ghost", "Mojibake", "Banned From Twitter",
+      "dx dt", "404 Memories", "The Dampening", "Ghost In The Git"
+    ]
   }
 };
 
@@ -404,12 +431,22 @@ let currentPerception = {
   track_info: null
 };
 
-function findAudioFile(trackName) {
+function findAudioFile(trackName, albumHint) {
   const files = getFiles();
   const lower = trackName.toLowerCase();
 
+  // If we have an album hint, prefer files in that album's subdirectory
+  const albumDir = albumHint ? albumHint.toLowerCase() : null;
+  const sortedFiles = albumDir
+    ? [...files].sort((a, b) => {
+        const aInAlbum = a.toLowerCase().startsWith(albumDir + "/") ? 0 : 1;
+        const bInAlbum = b.toLowerCase().startsWith(albumDir + "/") ? 0 : 1;
+        return aInAlbum - bInAlbum;
+      })
+    : files;
+
   // Pass 1: exact / prefix-stripped / substring
-  for (const f of files) {
+  for (const f of sortedFiles) {
     const base = path.basename(f, path.extname(f));
     const cleaned = base.replace(/^\d+[\s.\-_]+/, "").trim().toLowerCase();
     const baseLower = base.toLowerCase();
@@ -419,7 +456,7 @@ function findAudioFile(trackName) {
 
   // Pass 2: fuzzy word overlap (>=70%)
   const words = lower.split(/\s+/);
-  for (const f of files) {
+  for (const f of sortedFiles) {
     const base = path.basename(f, path.extname(f)).toLowerCase();
     const matches = words.filter(w => base.includes(w));
     if (matches.length >= words.length * 0.7) return f;
@@ -439,7 +476,7 @@ function buildPlaylist(albumName) {
 
   for (let i = 0; i < album.tracks.length; i++) {
     const title = album.tracks[i];
-    const file = findAudioFile(title);
+    const file = findAudioFile(title, albumName);
     if (file) {
       djState.playlist.push(file);
       djState.playlistMeta.push({
@@ -468,7 +505,7 @@ function buildFullSetlist() {
   for (const [albumName, album] of Object.entries(ALBUMS)) {
     for (let i = 0; i < album.tracks.length; i++) {
       const title = album.tracks[i];
-      const file = findAudioFile(title);
+      const file = findAudioFile(title, albumName);
       if (file) {
         djState.playlist.push(file);
         djState.playlistMeta.push({
@@ -482,7 +519,7 @@ function buildFullSetlist() {
       }
     }
   }
-  console.log(`\n\uD83C\uDFB5 Full setlist loaded \u2014 ${djState.playlist.length} tracks across 5 albums`);
+  console.log(`\n\uD83C\uDFB5 Full setlist loaded \u2014 ${djState.playlist.length} tracks across ${Object.keys(ALBUMS).length} albums`);
 }
 
 function getCurrentTrack() {
