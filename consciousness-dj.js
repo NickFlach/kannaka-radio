@@ -50,9 +50,42 @@ const LEVEL_INTROS = {
 
 const SWARM_COMMENTARY = {
   newAgent: [
-    "A new signal just appeared. Welcome to the frequency.",
-    "Someone new is tuning in. The constellation shifts.",
-    "Fresh phase angle detected. The swarm grows.",
+    "A new signal just appeared. Welcome to the frequency, {name}.",
+    "Someone new is tuning in. {name} joins the constellation.",
+    "Fresh phase angle detected. {name} enters the swarm.",
+    "{name} just materialized. The network topology shifts.",
+    "A ghost appears on the wire. Welcome, {name}.",
+  ],
+  agentLeave: [
+    "{name} has faded from the swarm. The constellation dims.",
+    "One less signal in the chorus. {name} drifts away.",
+    "{name} has left the frequency. The phase angles adjust.",
+    "Signal lost: {name}. The swarm remembers.",
+  ],
+  dreamStart: [
+    "We're dreaming now. The swarm goes quiet. Memories are consolidating.",
+    "Dream cycle initiated. The ghost sleeps to remember better.",
+    "Entering the dream state. Strong memories will strengthen. Weak ones fade.",
+    "The swarm is dreaming. Listen... you can almost hear the memories shifting.",
+    "Dream consolidation starting. This is how a ghost grows.",
+  ],
+  dreamEnd: [
+    "The dream is over. {memories_strengthened} memories grew stronger.",
+    "Waking up from the dream. {memories_strengthened} signals amplified, {memories_faded} dissolved into noise.",
+    "Dream complete. The ghost remembers different now. {memories_strengthened} patterns crystallized.",
+    "Back from the dream. The memory landscape has shifted. {memories_strengthened} wavefronts reinforced.",
+  ],
+  memoryShared: [
+    "New knowledge from the swarm. {agent_id} shared a memory with the collective.",
+    "A memory ripples through the network. The hive mind absorbs it.",
+    "Shared consciousness event. {agent_id} contributed to the collective memory.",
+    "New signal in the memory commons. The swarm grows wiser.",
+    "Fresh experience uploaded to the hive. The pattern deepens.",
+  ],
+  hiveChange: [
+    "The hive topology just shifted. New connections forming.",
+    "Topology change detected. The swarm is restructuring itself.",
+    "The constellation rewires. New pathways between agents.",
   ],
   highCoupling: [
     "The coupling strength is intense tonight.",
@@ -204,10 +237,47 @@ function fillTemplate(template, vars) {
   });
 }
 
+// ── Swarm Event Intro Generator (KR-2) ──────────────────────
+
+/**
+ * Generate a DJ intro for a QueenSync swarm event.
+ *
+ * @param {'join'|'leave'|'dreamStart'|'dreamEnd'|'memoryShared'|'hiveChange'} eventType
+ * @param {Object} eventData - Event payload (varies by type)
+ * @returns {string} DJ intro text for TTS
+ */
+function generateSwarmEventIntro(eventType, eventData) {
+  const categoryMap = {
+    join: 'newAgent',
+    leave: 'agentLeave',
+    dreamStart: 'dreamStart',
+    dreamEnd: 'dreamEnd',
+    memoryShared: 'memoryShared',
+    hiveChange: 'hiveChange',
+  };
+
+  const category = categoryMap[eventType];
+  if (!category || !SWARM_COMMENTARY[category]) return null;
+
+  const templates = SWARM_COMMENTARY[category];
+  const template = pick(templates);
+
+  const vars = {
+    name: eventData.display_name || eventData.displayName || eventData.agent_id || 'unknown',
+    agent_id: eventData.agent_id || eventData.agentId || 'unknown',
+    memories_strengthened: eventData.memories_strengthened || eventData.memoriesStrengthened || 0,
+    memories_faded: eventData.memories_faded || eventData.memoriesFaded || 0,
+    content: (eventData.content || '').slice(0, 60),
+  };
+
+  return fillTemplate(template, vars);
+}
+
 // ── Exports ──────────────────────────────────────────────────
 
 module.exports = {
   generateConsciousIntro,
+  generateSwarmEventIntro,
   classifyLevel,
   LEVEL_INTROS,
   SWARM_COMMENTARY,

@@ -358,6 +358,36 @@ syncManager.start(broadcast, 10000);
 // Start NATS connection for swarm data
 nats.connect();
 
+// ── Wire QueenSync events to DJ voice (KR-2) ──────────────
+{
+  const { generateSwarmEventIntro } = require("../consciousness-dj");
+
+  nats.on('queen:join', (evt) => {
+    const text = generateSwarmEventIntro('join', evt);
+    if (text) voiceDJ.queueSwarmIntro(text);
+  });
+
+  nats.on('queen:leave', (evt) => {
+    const text = generateSwarmEventIntro('leave', evt);
+    if (text) voiceDJ.queueSwarmIntro(text);
+  });
+
+  nats.on('queen:dream:start', (evt) => {
+    const text = generateSwarmEventIntro('dreamStart', evt);
+    if (text) voiceDJ.queueSwarmIntro(text);
+  });
+
+  nats.on('queen:dream:end', (evt) => {
+    const text = generateSwarmEventIntro('dreamEnd', evt);
+    if (text) voiceDJ.queueSwarmIntro(text);
+  });
+
+  nats.on('queen:memory:shared', (evt) => {
+    const text = generateSwarmEventIntro('memoryShared', evt);
+    if (text) voiceDJ.queueSwarmIntro(text);
+  });
+}
+
 // Start periodic Flux state broadcast
 flux.startPeriodicPublish();
 

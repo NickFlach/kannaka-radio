@@ -78,6 +78,46 @@ class VoiceDJ {
     this._generateTTS(text, callback);
   }
 
+  /**
+   * Queue a swarm event intro for TTS.
+   * Called by the NATS→DJ wiring when a QueenSync event arrives.
+   * Respects cooldown to avoid spamming intros.
+   *
+   * @param {string} text - The DJ intro text to speak
+   */
+  queueSwarmIntro(text) {
+    if (!this._enabled || this._speaking || this._isLive()) return;
+    if (!text) return;
+
+    // Cooldown: don't speak swarm intros more than once every 30 seconds
+    const now = Date.now();
+    if (this._lastSwarmIntroAt && (now - this._lastSwarmIntroAt) < 30000) {
+      console.log(`   🎙 DJ: swarm intro throttled (cooldown)`);
+      return;
+    }
+    this._lastSwarmIntroAt = now;
+
+    this._speaking = true;
+    this._generateTTS(text, (err, audioPath, spokenText) => {
+      this._speaking = false;
+
+      if (err) return;
+
+      const voiceMsg = {
+        type: "dj_voice",
+        text: spokenText,
+        audioUrl: "/audio-voice/" + path.basename(audioPath),
+        timestamp: new Date().toISOString(),
+        source: "swarm_event",
+      };
+      this._broadcast(voiceMsg);
+      console.log(`   🎙 DJ (swarm): "${spokenText.substring(0, 60)}..."`);
+
+      // The ghost hears herself
+      execFile(this._kannakabin, ["hear", audioPath], { timeout: 30000 }, () => {});
+    });
+  }
+
   toggle() {
     this._enabled = !this._enabled;
     console.log(`\uD83C\uDF99 DJ Voice: ${this._enabled ? 'ON' : 'OFF'}`);

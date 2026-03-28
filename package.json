@@ -5,7 +5,8 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "start:legacy": "node server.js"
+    "start:legacy": "node server.js",
+    "test": "node test/test-queensync-dj.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

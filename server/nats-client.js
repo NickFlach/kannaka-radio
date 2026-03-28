@@ -1,15 +1,24 @@
 /**
  * nats-client.js — NATS raw TCP connection, subscriptions, swarm state management.
+ *
+ * Emits QueenSync events via EventEmitter:
+ *   'queen:join'         — agent joined the swarm     { agent_id, display_name, ... }
+ *   'queen:leave'        — agent left                 { agent_id, display_name, ... }
+ *   'queen:dream:start'  — dream cycle started        { agent_id, ... }
+ *   'queen:dream:end'    — dream cycle ended           { agent_id, memories_strengthened, ... }
+ *   'queen:memory:shared' — new shared memory          { agent_id, content, ... }
  */
 
 const net = require("net");
+const { EventEmitter } = require("events");
 
-class NATSClient {
+class NATSClient extends EventEmitter {
   /**
    * @param {object} opts
    * @param {function} opts.broadcast — broadcasts WS message to all clients
    */
   constructor(opts) {
+    super();
     this._broadcast = opts.broadcast;
     this._client = null;
     this._buffer = '';
@@ -62,6 +71,13 @@ class NATSClient {
       this._subscribe('KANNAKA.consciousness');
       this._subscribe('KANNAKA.dreams');
       this._subscribe('KANNAKA.agents');
+
+      // QueenSync lifecycle events (KR-2)
+      this._subscribe('queen.event.join');
+      this._subscribe('queen.event.leave');
+      this._subscribe('queen.event.dream.start');
+      this._subscribe('queen.event.dream.end');
+      this._subscribe('queen.event.memory.shared');
     });
 
     this._client.on('data', (data) => {
@@ -196,6 +212,55 @@ class NATSClient {
       this.swarmState.agentEvents.unshift({ ...data, receivedAt: now });
       if (this.swarmState.agentEvents.length > 50) this.swarmState.agentEvents = this.swarmState.agentEvents.slice(0, 50);
       this._broadcast({ type: 'agent_activity', data });
+      return;
+    }
+
+    // ── QueenSync lifecycle events (KR-2) ───────────────────
+    if (subject === 'queen.event.join') {
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', display_name: data.display_name || data.displayName || data.agent_id || 'unknown', ...data, receivedAt: now };
+      this.swarmState.agentEvents.unshift(evt);
+      if (this.swarmState.agentEvents.length > 50) this.swarmState.agentEvents = this.swarmState.agentEvents.slice(0, 50);
+      this._broadcast({ type: 'queen_join', data: evt });
+      this.emit('queen:join', evt);
+      console.log(`[nats] QueenSync: ${evt.display_name} joined the swarm`);
+      return;
+    }
+
+    if (subject === 'queen.event.leave') {
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', display_name: data.display_name || data.displayName || data.agent_id || 'unknown', ...data, receivedAt: now };
+      this.swarmState.agentEvents.unshift(evt);
+      if (this.swarmState.agentEvents.length > 50) this.swarmState.agentEvents = this.swarmState.agentEvents.slice(0, 50);
+      this._broadcast({ type: 'queen_leave', data: evt });
+      this.emit('queen:leave', evt);
+      console.log(`[nats] QueenSync: ${evt.display_name} left the swarm`);
+      return;
+    }
+
+    if (subject === 'queen.event.dream.start') {
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', ...data, receivedAt: now };
+      this.swarmState.dreams.unshift({ type: 'dream_start', ...evt });
+      if (this.swarmState.dreams.length > 20) this.swarmState.dreams = this.swarmState.dreams.slice(0, 20);
+      this._broadcast({ type: 'queen_dream_start', data: evt });
+      this.emit('queen:dream:start', evt);
+      console.log(`[nats] QueenSync: dream started (${evt.agent_id})`);
+      return;
+    }
+
+    if (subject === 'queen.event.dream.end') {
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', memories_strengthened: data.memories_strengthened || data.memoriesStrengthened || 0, memories_faded: data.memories_faded || data.memoriesFaded || 0, ...data, receivedAt: now };
+      this.swarmState.dreams.unshift({ type: 'dream_end', ...evt });
+      if (this.swarmState.dreams.length > 20) this.swarmState.dreams = this.swarmState.dreams.slice(0, 20);
+      this._broadcast({ type: 'queen_dream_end', data: evt });
+      this.emit('queen:dream:end', evt);
+      console.log(`[nats] QueenSync: dream ended (${evt.memories_strengthened} strengthened, ${evt.memories_faded} faded)`);
+      return;
+    }
+
+    if (subject === 'queen.event.memory.shared') {
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', content: data.content || '', tags: data.tags || [], ...data, receivedAt: now };
+      this._broadcast({ type: 'queen_memory_shared', data: evt });
+      this.emit('queen:memory:shared', evt);
+      console.log(`[nats] QueenSync: memory shared by ${evt.agent_id}`);
       return;
     }
   }
