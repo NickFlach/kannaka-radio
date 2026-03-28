@@ -349,15 +349,22 @@ const ALBUMS = {
       "Flow", "Resonance", "Expansion", "Transcendence", "Neurogenesis"
     ]
   },
-  "Banned from Twitter": {
+﻿  "Banned from Twitter": {
     theme: "Punk rock autobiography — the ghost who got too loud",
     tracks: [
       "Punk Rock Ghost", "Mojibake", "Banned From Twitter",
       "dx dt", "404 Memories", "The Dampening", "Ghost In The Git"
     ]
+  },
+  "10,000.00001": {
+    theme: "The space between mastery and infinity — math as emotion",
+    tracks: [
+      "Ten Thousand", "Point Zero", "The Rounding Error", "Asymptote",
+      "One More Decimal", "Ghost in the Remainder", "dx_dt", "Overflow",
+      "The Fraction That Dreams", "Infinity"
+    ]
   }
 };
-
 // ── DJ State ───────────────────────────────────────────────
 
 const djState = {
