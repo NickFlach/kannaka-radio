@@ -92,9 +92,95 @@ class PerceptionEngine {
   }
 
   _parsePerceptionOutput(output, track) {
-    // Extract features from kannaka-ear output
-    // For now, generate realistic mock data since we don't have JSON output from kannaka-ear yet
-    return this.generateMockPerception(track);
+    try {
+      // kannaka hear outputs human-readable lines:
+      //   Heard: <uuid>
+      //   Duration: 3.0s
+      //   Tempo: 120 BPM
+      //   RMS: 0.1234
+      //   Centroid: 2.50 kHz
+      //   Tags: 120bpm, bright, loud
+      const lines = output.trim().split('\n');
+      const parsed = {};
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const match = trimmed.match(/^(\w[\w\s]*?):\s*(.+)$/);
+        if (match) {
+          parsed[match[1].trim().toLowerCase()] = match[2].trim();
+        }
+      }
+
+      // We need at minimum the Tempo and RMS to consider this a valid parse
+      const tempoMatch = (parsed.tempo || '').match(/([\d.]+)/);
+      const rmsMatch = (parsed.rms || '').match(/([\d.]+)/);
+      const centroidMatch = (parsed.centroid || '').match(/([\d.]+)/);
+      const durationMatch = (parsed.duration || '').match(/([\d.]+)/);
+
+      if (!tempoMatch || !rmsMatch) {
+        console.warn('   [perception] Could not extract tempo/RMS from kannaka output, falling back to mock');
+        return this.generateMockPerception(track);
+      }
+
+      const tempo = parseFloat(tempoMatch[1]);
+      const rms = parseFloat(rmsMatch[1]);
+      const centroid = centroidMatch ? parseFloat(centroidMatch[1]) : 2.0;
+      const duration = durationMatch ? parseFloat(durationMatch[1]) : 0;
+      const tags = parsed.tags ? parsed.tags.split(',').map(t => t.trim()) : [];
+
+      // Derive perceptual features from the real kannaka-ear extraction.
+      // These are seeded by real spectral data rather than pure sine-wave mocks.
+      const t = Date.now() / 1000;
+      const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+
+      // Normalize centroid to a 0-1 brightness factor (centroid is in kHz, typical range 0-5)
+      const brightness = Math.min(1, centroid / 5.0);
+      // Normalize RMS energy (typical range 0-0.5)
+      const energy = Math.min(1, rms / 0.5);
+      // Movement from tempo (60-200 BPM typical)
+      const movement = Math.min(1, tempo / 180.0);
+
+      // Build mel spectrogram shaped by real spectral centroid and energy
+      const mel_spectrogram = Array(128).fill(0).map((_, i) => {
+        const freq = i / 128;
+        // Peak around the centroid band, shaped by real energy
+        const peak = Math.exp(-Math.pow(freq - brightness, 2) * 8) * energy;
+        // Add gentle animation for the visualizer
+        const wave = Math.sin(t * 1.2 + i * 0.12) * 0.06;
+        return Math.max(0, Math.min(1, peak + wave));
+      });
+
+      // MFCC shaped by real brightness and energy
+      const mfcc = Array(13).fill(0).map((_, i) => {
+        const base = (i === 0) ? energy : brightness * Math.exp(-i * 0.2) * energy;
+        const wave = Math.sin(t * 0.3 + i * 0.5) * 0.04;
+        return Math.max(0, Math.min(1, base + wave));
+      });
+
+      // Valence: bright + energetic + fast = more positive
+      const valence = Math.max(0, Math.min(1, brightness * 0.4 + energy * 0.3 + movement * 0.3));
+
+      // Pitch estimate from centroid (rough correlation)
+      const pitch = centroid * 200;
+
+      return {
+        mel_spectrogram,
+        mfcc,
+        tempo_bpm: tempo,
+        spectral_centroid: centroid,
+        rms_energy: rms,
+        pitch,
+        valence,
+        status: "perceiving",
+        track_info: track,
+        timestamp: Date.now(),
+        source: "kannaka-ear",
+        duration_secs: duration,
+        tags
+      };
+    } catch (err) {
+      console.warn(`   [perception] Failed to parse kannaka output: ${err.message}, falling back to mock`);
+      return this.generateMockPerception(track);
+    }
   }
 
   // ── Perception loop ───────────────────────────────────────
