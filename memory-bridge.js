@@ -12,8 +12,11 @@
 const { execFile } = require("child_process");
 const path = require("path");
 
-const KANNAKA_BIN = process.env.KANNAKA_BIN ||
-  path.join(__dirname, "..", "kannaka-memory", "target", "release", "kannaka.exe");
+const KANNAKA_BIN = process.env.KANNAKA_BIN || (
+  process.platform === "win32"
+    ? path.join(__dirname, "..", "kannaka-memory", "target", "release", "kannaka.exe")
+    : "/home/opc/.local/bin/kannaka"
+);
 
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
 

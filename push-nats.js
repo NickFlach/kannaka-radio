@@ -13,7 +13,7 @@ const os = require('os');
 const IS_WINDOWS = os.platform() === 'win32';
 const KANNAKA_BIN = IS_WINDOWS
   ? 'C:\\Users\\nickf\\Source\\kannaka-memory\\target\\release\\kannaka.exe'
-  : '/home/opc/kannaka-memory/target/release/kannaka';
+  : '/home/opc/.local/bin/kannaka';
 const KANNAKA_DATA = IS_WINDOWS
   ? 'C:\\Users\\nickf\\.kannaka'
   : '/home/opc/.kannaka';
