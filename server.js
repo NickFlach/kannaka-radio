@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * @deprecated Use `node server/index.js` instead. This monolith is retained
+ * only for reference and will be removed in a future release.
+ *
  * kannaka-radio server — Human-listenable radio station powered by Flux.
  *
  * Serves a web player + DJ engine that:
@@ -36,9 +39,10 @@ let MUSIC_DIR = musicIdx >= 0
   ? path.resolve(args[musicIdx + 1])
   : path.join(__dirname, "music");
 
-const FLUX_TOKEN = process.env.FLUX_TOKEN || "d9c0576f-a400-430b-8910-321d08bb63f4";
+const FLUX_TOKEN = process.env.FLUX_TOKEN || "";
+if (!FLUX_TOKEN) console.warn("[config] FLUX_TOKEN not set — Flux publishing will be disabled");
 const KANNAKA_BIN = process.env.KANNAKA_BIN ||
-  path.join(__dirname, "..", "kannaka-memory", "target", "release", "kannaka.exe");
+  path.join(__dirname, "..", "kannaka-memory", "target", "release", process.platform === "win32" ? "kannaka.exe" : "kannaka");
 
 // ── NATS Swarm State ───────────────────────────────────────
 

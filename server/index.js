@@ -46,9 +46,10 @@ let MUSIC_DIR = musicIdx >= 0
   ? path.resolve(args[musicIdx + 1])
   : path.join(BASE_DIR, "music");
 
-const FLUX_TOKEN = process.env.FLUX_TOKEN || "d9c0576f-a400-430b-8910-321d08bb63f4";
+const FLUX_TOKEN = process.env.FLUX_TOKEN || "";
+if (!FLUX_TOKEN) console.warn("[config] FLUX_TOKEN not set — Flux publishing will be disabled");
 const KANNAKA_BIN = process.env.KANNAKA_BIN ||
-  path.join(BASE_DIR, "..", "kannaka-memory", "target", "release", "kannaka.exe");
+  path.join(BASE_DIR, "..", "kannaka-memory", "target", "release", process.platform === "win32" ? "kannaka.exe" : "kannaka");
 
 const SPA_PATH = path.join(BASE_DIR, "workspace", "index.html");
 const VOICE_DIR = path.join(BASE_DIR, "chunks", "voice");

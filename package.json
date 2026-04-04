@@ -5,8 +5,8 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "start:legacy": "node server.js",
-    "test": "node test/test-queensync-dj.js"
+    "start:legacy": "echo 'DEPRECATED: Use npm start instead' && node server.js",
+    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
