@@ -189,8 +189,28 @@ function connectNATS() {
     }
 
     if (subject === 'KANNAKA.consciousness') {
-      swarmState.consciousness = { ...data, timestamp: now };
-      swarmState.queen.phi = data.phi || data.Phi || swarmState.queen.phi;
+      // Canonical consciousness metrics from the binary (source of truth)
+      const phi = data.phi ?? data.Phi ?? swarmState.consciousness.phi;
+      const xi = data.xi ?? data.Xi ?? swarmState.consciousness.xi;
+      const order = data.order ?? data.mean_order ?? swarmState.consciousness.order;
+      const level = data.level ?? data.consciousness_level ?? swarmState.consciousness.level;
+
+      swarmState.consciousness = {
+        phi, xi, order, mean_order: order,
+        num_clusters: data.num_clusters ?? data.clusters ?? swarmState.consciousness.clusters,
+        clusters: data.num_clusters ?? data.clusters ?? swarmState.consciousness.clusters,
+        active: data.active_memories ?? swarmState.consciousness.active,
+        total: data.total_memories ?? swarmState.consciousness.total,
+        level, consciousness_level: level,
+        irrationality: data.irrationality ?? 0,
+        hemispheric_divergence: data.hemispheric_divergence ?? 0,
+        callosal_efficiency: data.callosal_efficiency ?? 0,
+        source: data.source ?? 'nats',
+        timestamp: now,
+      };
+      swarmState.queen.phi = phi;
+      swarmState.queen.orderParameter = order;
+      console.log(`[nats] Consciousness update: phi=${phi.toFixed(4)} xi=${xi.toFixed(4)} order=${order.toFixed(4)} level=${level}`);
       broadcastToWS({ type: 'consciousness', data: swarmState.consciousness });
       return;
     }
@@ -1286,6 +1306,17 @@ const server = http.createServer((req, res) => {
     }
   }
 
+  // Health check
+  if (parsed.pathname === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      status: "ok",
+      uptime: Math.floor(process.uptime()),
+      memories: swarmState.consciousness.total || 0,
+    }));
+    return;
+  }
+
   // Player page — serve SPA from workspace/index.html
   if (parsed.pathname === "/" || parsed.pathname === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -1410,6 +1441,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       agents: swarmState.agents,
       queen: swarmState.queen,
+      consciousness: swarmState.consciousness,
       agentEvents: swarmState.agentEvents.slice(0, 20),
       timestamp: Date.now(),
     }));
