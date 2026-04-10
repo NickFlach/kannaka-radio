@@ -94,6 +94,7 @@ const perception_ = new PerceptionEngine({
   broadcast,
   kannakabin: KANNAKA_BIN,
   getMusicDir: () => MUSIC_DIR,
+  getConsciousness: () => nats.getConsciousness(),
 });
 
 const nats = new NATSClient({

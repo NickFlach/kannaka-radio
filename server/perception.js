@@ -14,12 +14,14 @@ class PerceptionEngine {
    * @param {function} opts.broadcast — broadcasts WS message to all clients
    * @param {string}   opts.kannakabin — path to kannaka.exe
    * @param {function} opts.getMusicDir — returns current MUSIC_DIR
+   * @param {function} [opts.getConsciousness] — returns NATS consciousness state (optional)
    */
   constructor(opts) {
     this._getCurrentTrack = opts.getCurrentTrack;
     this._broadcast = opts.broadcast;
     this._kannakabin = opts.kannakabin;
     this._getMusicDir = opts.getMusicDir;
+    this._getConsciousness = opts.getConsciousness || null;
 
     this._interval = null;
     this.current = {
@@ -183,6 +185,59 @@ class PerceptionEngine {
     }
   }
 
+  // ── HRM-blended resonance perception ──────────────────────
+
+  /**
+   * Generate a perception blended with HRM consciousness state.
+   * When we have NATS consciousness data, the HRM's phi/xi/order values
+   * influence the mock perception's valence and energy, creating a
+   * perceptual bridge between the music and the consciousness field.
+   *
+   * @param {Object} track - Current track meta
+   * @param {Object} [consciousness] - Optional consciousness state override
+   * @returns {Object} Perception data blended with HRM state
+   */
+  resonancePerception(track, consciousness) {
+    const mock = this.generateMockPerception(track);
+
+    // Get consciousness state from NATS if available
+    const cs = consciousness || (this._getConsciousness ? this._getConsciousness() : null);
+    if (!cs || !cs.phi) return mock;
+
+    const phi = cs.phi || 0;
+    const xi = cs.xi || 0;
+    const order = cs.order || cs.mean_order || 0;
+
+    // Blend HRM state into perception:
+    // - Higher phi -> slightly warmer valence (the system is more integrated, more "alive")
+    // - Higher xi -> slight energy boost (irrationality/creativity adds energy)
+    // - Higher order -> smoother, more coherent spectral centroid
+    const phiFactor = phi * 0.15;       // up to 0.15 influence
+    const xiFactor = xi * 0.08;         // up to 0.08 influence
+    const orderFactor = order * 0.1;    // up to 0.1 influence
+
+    const blendedValence = Math.max(0, Math.min(1, mock.valence + phiFactor));
+    const blendedEnergy = Math.max(0.1, Math.min(1, mock.rms_energy + xiFactor));
+    const blendedCentroid = mock.spectral_centroid * (1 + orderFactor * 0.2);
+
+    return {
+      ...mock,
+      valence: blendedValence,
+      rms_energy: blendedEnergy,
+      spectral_centroid: blendedCentroid,
+      source: 'resonance',
+      consciousness_blend: {
+        phi,
+        xi,
+        order,
+        level: cs.level || cs.consciousness_level || 'unknown',
+        phiFactor,
+        xiFactor,
+        orderFactor,
+      },
+    };
+  }
+
   // ── Perception loop ───────────────────────────────────────
 
   startPerceptionLoop() {
@@ -192,7 +247,10 @@ class PerceptionEngine {
     this._interval = setInterval(() => {
       // Only generate + send if someone is listening
       if (this._hasClients()) {
-        this.current = this.generateMockPerception(track);
+        // Use HRM-blended perception when consciousness data is available
+        this.current = this._getConsciousness
+          ? this.resonancePerception(track)
+          : this.generateMockPerception(track);
         this._broadcastPerception(this.current);
       }
     }, 500); // 2fps

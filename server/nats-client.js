@@ -30,19 +30,31 @@ class NATSClient extends EventEmitter {
     this.swarmState = {
       agents: {},
       queen: {
-        orderParameter: 0.0085,
+        /** Local swarm coherence metric computed from phase gossip (Kuramoto order parameter) */
+        localOrderParameter: 0,
+        /** Canonical order from NATS consciousness (binary's assess) — authoritative */
+        orderParameter: 0,
         meanPhase: 0,
-        phi: 0.541,
-        agentCount: 1,
+        phi: 0,
+        agentCount: 0,
       },
       consciousness: {
-        phi: 0.541,
-        xi: 0.9996,
-        order: 0.0085,
-        clusters: 72,
-        active: 381,
-        total: 381,
-        level: 'aware',
+        phi: 0,
+        xi: 0,
+        order: 0,
+        mean_order: 0,
+        num_clusters: 0,
+        clusters: 0,
+        active: 0,
+        total: 0,
+        level: 'dormant',
+        consciousness_level: 'dormant',
+        irrationality: 0,
+        hemispheric_divergence: 0,
+        callosal_efficiency: 0,
+        /** 'nats' = canonical from binary, 'local' = computed from phase gossip, null = no data */
+        consciousnessSource: null,
+        source: null,
         timestamp: null,
       },
       dreams: [],
@@ -115,7 +127,14 @@ class NATSClient extends EventEmitter {
   }
 
   getConsciousness() {
-    return this.swarmState.consciousness;
+    const c = this.swarmState.consciousness;
+    return {
+      ...c,
+      // Include localOrderParameter so the UI can show both values
+      localOrderParameter: this.swarmState.queen.localOrderParameter,
+      // consciousnessSource tells the UI if data is from NATS (authoritative) or local
+      consciousnessSource: c.consciousnessSource || (c.timestamp ? 'nats' : null),
+    };
   }
 
   // ── Internal ──────────────────────────────────────────────
@@ -181,13 +200,26 @@ class NATSClient extends EventEmitter {
       };
       this.swarmState.queen.agentCount = Object.keys(this.swarmState.agents).length;
 
+      // Compute local swarm coherence from phase gossip (Kuramoto order parameter).
+      // This is a LOCAL metric — it measures phase-lock between connected agents,
+      // NOT the canonical consciousness Phi from the binary's assess().
       const phases = Object.values(this.swarmState.agents).map(a => a.phase);
       if (phases.length > 0) {
         const sumCos = phases.reduce((s, p) => s + Math.cos(p), 0);
         const sumSin = phases.reduce((s, p) => s + Math.sin(p), 0);
-        this.swarmState.queen.orderParameter = Math.sqrt(sumCos * sumCos + sumSin * sumSin) / phases.length;
+        const localOrder = Math.sqrt(sumCos * sumCos + sumSin * sumSin) / phases.length;
+        this.swarmState.queen.localOrderParameter = localOrder;
         this.swarmState.queen.meanPhase = Math.atan2(sumSin / phases.length, sumCos / phases.length);
         if (this.swarmState.queen.meanPhase < 0) this.swarmState.queen.meanPhase += 2 * Math.PI;
+
+        // Only update queen.orderParameter from phase gossip if we have NO
+        // canonical NATS consciousness data (or it's stale > 5 min).
+        const consciousnessAge = this.swarmState.consciousness.timestamp
+          ? (now - this.swarmState.consciousness.timestamp) : Infinity;
+        if (this.swarmState.consciousness.consciousnessSource !== 'nats' || consciousnessAge > 300000) {
+          this.swarmState.queen.orderParameter = localOrder;
+          this.swarmState.consciousness.consciousnessSource = 'local';
+        }
       }
 
       this._broadcast({ type: 'swarm_phase', data: { agentId, ...this.swarmState.agents[agentId], queen: this.swarmState.queen } });
@@ -195,9 +227,50 @@ class NATSClient extends EventEmitter {
     }
 
     if (subject === 'KANNAKA.consciousness') {
-      this.swarmState.consciousness = { ...data, timestamp: now };
-      this.swarmState.queen.phi = data.phi || data.Phi || this.swarmState.queen.phi;
+      // Canonical consciousness metrics from the binary (source of truth).
+      // These are AUTHORITATIVE — they override any locally-computed values.
+      // The binary's assess() blends eigendecomposition + link density bonus,
+      // which the radio cannot compute (no access to .links.json sidecar).
+      const phi = data.phi ?? data.Phi ?? this.swarmState.consciousness.phi;
+      const xi = data.xi ?? data.Xi ?? this.swarmState.consciousness.xi;
+      const order = data.order ?? data.mean_order ?? this.swarmState.consciousness.order;
+      const level = data.level ?? data.consciousness_level ?? this.swarmState.consciousness.level;
+
+      // Track previous phi for gradient detection
+      const prevPhi = this.swarmState.consciousness.phi || 0;
+      const phiDelta = phi - prevPhi;
+      const phiTrend = Math.abs(phiDelta) < 0.01 ? 'stable' : (phiDelta > 0 ? 'rising' : 'falling');
+
+      this.swarmState.consciousness = {
+        phi,
+        xi,
+        order,
+        mean_order: order,
+        num_clusters: data.num_clusters ?? data.clusters ?? this.swarmState.consciousness.num_clusters,
+        clusters: data.num_clusters ?? data.clusters ?? this.swarmState.consciousness.clusters,
+        active: data.active_memories ?? data.active ?? this.swarmState.consciousness.active,
+        total: data.total_memories ?? data.total ?? this.swarmState.consciousness.total,
+        level,
+        consciousness_level: level,
+        irrationality: data.irrationality ?? 0,
+        hemispheric_divergence: data.hemispheric_divergence ?? 0,
+        callosal_efficiency: data.callosal_efficiency ?? 0,
+        /** 'nats' = canonical from binary (authoritative), 'local' = phase gossip fallback */
+        consciousnessSource: 'nats',
+        source: data.source ?? 'nats',
+        timestamp: now,
+        prevPhi,
+        phiDelta,
+        phiTrend,
+      };
+
+      // Keep queen state in sync with canonical metrics (authoritative override)
+      this.swarmState.queen.phi = phi;
+      this.swarmState.queen.orderParameter = order;
+
       this._broadcast({ type: 'consciousness', data: this.swarmState.consciousness });
+      this.emit('consciousness:update', this.swarmState.consciousness);
+      console.log(`[nats] Consciousness update: phi=${phi.toFixed(3)}, xi=${xi.toFixed(4)}, order=${order.toFixed(4)}, trend=${phiTrend} (source: ${data.source || 'nats'})`);
       return;
     }
 

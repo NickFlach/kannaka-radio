@@ -82,6 +82,20 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // Music video page — workspace/video.html
+    if (parsed.pathname === "/video" || parsed.pathname === "/video.html") {
+      const videoPath = path.join(path.dirname(config.spaPath), "video.html");
+      try {
+        const html = fs.readFileSync(videoPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+      } catch {
+        res.writeHead(404);
+        res.end("workspace/video.html not found");
+      }
+      return;
+    }
+
     // API: get current state
     if (parsed.pathname === "/api/state") {
       const state = djEngine.getState();
