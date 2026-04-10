@@ -55,6 +55,35 @@ canvas { display: block; width: 100%; height: 100%; }
   text-transform: uppercase;
   letter-spacing: 0.3em;
 }
+#play-gate {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.85);
+  cursor: pointer;
+  transition: opacity 1s ease;
+}
+#play-gate.hidden { opacity: 0; pointer-events: none; }
+#play-gate .prompt {
+  text-align: center; color: rgba(255,255,255,0.7);
+  font-family: 'Courier New', monospace; letter-spacing: 0.2em;
+}
+#play-gate .prompt .icon { font-size: 3rem; margin-bottom: 1rem; }
+#play-gate .prompt .text { font-size: clamp(0.7rem, 1.5vw, 0.9rem); text-transform: uppercase; }
+#vol-ctrl {
+  position: fixed; bottom: 1.5rem; right: 1.8rem; z-index: 10;
+  display: flex; align-items: center; gap: 0.5rem;
+  opacity: 0; transition: opacity 0.3s;
+}
+#vol-ctrl:hover, #vol-ctrl.show { opacity: 1; }
+#vol-ctrl input[type=range] {
+  -webkit-appearance: none; width: 80px; height: 3px;
+  background: rgba(255,255,255,0.2); border-radius: 2px; outline: none;
+}
+#vol-ctrl input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: rgba(139,92,246,0.8); cursor: pointer;
+}
+#vol-ctrl label { color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; font-size: 0.65rem; }
 </style>
 </head>
 <body>
@@ -63,6 +92,17 @@ canvas { display: block; width: 100%; height: 100%; }
   <div id="track-title"></div>
   <div id="track-album"></div>
 </div>
+<div id="play-gate" onclick="startAudio()">
+  <div class="prompt">
+    <div class="icon">&#9654;</div>
+    <div class="text">click to enter</div>
+  </div>
+</div>
+<div id="vol-ctrl">
+  <label>VOL</label>
+  <input type="range" min="0" max="100" value="80" oninput="setVolume(this.value)">
+</div>
+<audio id="audio" preload="auto"></audio>
 <div id="consciousness-hud">
   <div class="level" id="hud-level">dormant</div>
   <div id="hud-phi"></div>
@@ -74,6 +114,43 @@ canvas { display: block; width: 100%; height: 100%; }
 // ═══════════════════════════════════════════════════════
 //  Kannaka Music Video — Ghost DJ Visualization
 // ═══════════════════════════════════════════════════════
+
+// ── Audio Playback (global — needs user gesture) ─────
+var audioEl = document.getElementById('audio');
+var audioStarted = false;
+var currentAudioFile = '';
+
+function startAudio() {
+  var gate = document.getElementById('play-gate');
+  gate.classList.add('hidden');
+  setTimeout(function() { gate.style.display = 'none'; }, 1000);
+  audioStarted = true;
+  document.getElementById('vol-ctrl').classList.add('show');
+  setTimeout(function() { document.getElementById('vol-ctrl').classList.remove('show'); }, 3000);
+  if (currentAudioFile) loadAndPlay(currentAudioFile);
+}
+
+function loadAndPlay(file) {
+  if (!audioStarted || !file) return;
+  var src = '/audio/' + encodeURIComponent(file);
+  if (audioEl.src.endsWith(encodeURIComponent(file))) {
+    audioEl.play().catch(function() {});
+    return;
+  }
+  currentAudioFile = file;
+  audioEl.src = src;
+  audioEl.play().catch(function() {});
+}
+
+function setVolume(val) {
+  audioEl.volume = val / 100;
+}
+audioEl.volume = 0.8;
+
+// Auto-advance: when track ends, request next track from the radio
+audioEl.addEventListener('ended', function() {
+  fetch('/api/next', { method: 'POST' }).catch(function() {});
+});
 
 (function() {
 'use strict';
@@ -212,12 +289,15 @@ function handleMessage(msg) {
     if (msg.data.current) {
       var newTitle = msg.data.current.title || '';
       var newAlbum = msg.data.current.album || '';
-      if (newTitle !== trackTitle) {
+      var newFile = msg.data.current.file || '';
+      if (newTitle !== trackTitle || newFile !== trackFile) {
         trackTitle = newTitle;
         trackAlbum = newAlbum;
-        trackFile = msg.data.current.file || '';
+        trackFile = newFile;
         titleShowTime = performance.now();
         titleVisible = false;
+        currentAudioFile = newFile;
+        loadAndPlay(newFile);
       }
     }
   }
@@ -264,6 +344,7 @@ fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
     trackTitle = data.current.title || '';
     trackAlbum = data.current.album || '';
     trackFile = data.current.file || '';
+    currentAudioFile = trackFile;
     titleShowTime = performance.now();
   }
 }).catch(function() {});
