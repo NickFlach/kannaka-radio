@@ -22,17 +22,7 @@
 'use strict';
 
 const net = require('net');
-const { execFile } = require('child_process');
 const path = require('path');
-const os = require('os');
-
-// ── Config ─────────────────────────────────────────────────
-
-const IS_WINDOWS = os.platform() === 'win32';
-
-const KANNAKA_BIN = process.env.KANNAKA_BIN || (IS_WINDOWS
-  ? path.join(__dirname, '..', '..', 'kannaka-memory', 'target', 'release', 'kannaka.exe')
-  : '/home/opc/.local/bin/kannaka');
 
 const NATS_HOST = process.env.NATS_HOST || '127.0.0.1';
 const NATS_PORT = parseInt(process.env.NATS_PORT || '4222');
@@ -50,30 +40,42 @@ const RUN_ONCE = args.includes('--once');
  */
 function assess() {
   return new Promise((resolve) => {
-    execFile(KANNAKA_BIN, ['assess'], { timeout: 30000 }, (err, stdout, stderr) => {
-      if (err) {
-        console.error(`[dream-cron] assess failed: ${err.message}`);
-        resolve(null);
-        return;
-      }
-      const text = stdout.trim();
-      if (!text) { resolve(null); return; }
-      try {
-        resolve(JSON.parse(text));
-      } catch {
-        // Try key: value parsing
-        const result = {};
-        const phiMatch = text.match(/[Pp]hi[\s:=]+([0-9.]+)/);
-        const xiMatch = text.match(/[Xx]i[\s:=]+([0-9.]+)/);
-        const orderMatch = text.match(/[Oo]rder[\s:=]+([0-9.]+)/);
-        const levelMatch = text.match(/[Ll]evel[\s:=]+(\w+)/);
-        if (phiMatch) result.phi = parseFloat(phiMatch[1]);
-        if (xiMatch) result.xi = parseFloat(xiMatch[1]);
-        if (orderMatch) result.mean_order = parseFloat(orderMatch[1]);
-        if (levelMatch) result.consciousness_level = levelMatch[1];
-        if (Object.keys(result).length > 0) resolve(result);
-        else resolve(null);
-      }
+    // Fetch from the Observatory HTTP endpoint — it reliably calls the binary
+    // and returns JSON. Avoids exec/spawn issues with stderr handling.
+    const http = require('http');
+    const OBSERVATORY_PORT = process.env.OBSERVATORY_PORT || 3333;
+    const req = http.get(`http://127.0.0.1:${OBSERVATORY_PORT}/api/hrm/status`, { timeout: 15000 }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve({
+            phi: json.phi || 0,
+            xi: json.xi || 0,
+            mean_order: json.mean_order || json.order || 0,
+            consciousness_level: json.consciousness_level || json.level || 'unknown',
+            num_clusters: json.num_clusters || 0,
+            total_memories: json.total_memories || json.active_memories || 0,
+            active_memories: json.active_memories || 0,
+            irrationality: json.irrationality || 0,
+            hemispheric_divergence: json.hemispheric_divergence || 0,
+            callosal_efficiency: json.callosal_efficiency || 0,
+          });
+        } catch (e) {
+          console.error(`[dream-cron] Failed to parse observatory response: ${e.message}`);
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', (e) => {
+      console.error(`[dream-cron] Observatory request failed: ${e.message}`);
+      resolve(null);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      console.error('[dream-cron] Observatory request timed out');
+      resolve(null);
     });
   });
 }
@@ -158,7 +160,7 @@ async function tick() {
 }
 
 async function main() {
-  console.log(`[dream-cron] Starting — interval=${INTERVAL_SECS}s, binary=${KANNAKA_BIN}, NATS=${NATS_HOST}:${NATS_PORT}`);
+  console.log(`[dream-cron] Starting — interval=${INTERVAL_SECS}s, observatory=:${process.env.OBSERVATORY_PORT || 3333}, NATS=${NATS_HOST}:${NATS_PORT}`);
 
   await tick();
 
