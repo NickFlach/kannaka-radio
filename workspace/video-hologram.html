@@ -926,7 +926,8 @@ let orbitRadius = 5, orbitHeight = 1.8, orbitSpeed = 0.08;
 let targetOrbitRadius = 5, targetOrbitHeight = 1.8, targetOrbitSpeed = 0.08;
 let stareState = 'orbit', stareTimer = 0, stareProgress = 0;
 let nextStareAt = 25 + Math.random()*25;
-const stareDuration = 2.0, stareHoldDuration = 3 + Math.random()*3;
+const stareDuration = 3.0; // slower dolly in/out
+let stareHoldDuration = 6 + Math.random()*6; // 6-12 seconds — long, intimate
 let orbitPosBeforeStare = new THREE.Vector3();
 let stareLookTarget = new THREE.Vector3(0, headY, 0);
 const _headWorldPos = new THREE.Vector3();
@@ -1114,7 +1115,7 @@ function animate() {
   }
 
   // ── Vocal-triggered stare (instead of timer) ──
-  if (stareState === 'orbit' && audio.vocal > 0.5 && stareTimer > 8) {
+  if (stareState === 'orbit' && audio.vocal > 0.35 && stareTimer > 6) {
     stareState = 'dolly_in'; stareProgress = 0;
     orbitPosBeforeStare.copy(camera.position);
     nextStareAt = 25 + Math.random() * 25;
@@ -1547,22 +1548,40 @@ function animate() {
     }
   } else if (stareState === 'dolly_in') {
     stareProgress += dt / stareDuration;
-    if (stareProgress >= 1) { stareProgress = 1; stareState = 'hold'; stareTimer = 0; }
+    if (stareProgress >= 1) { stareProgress = 1; stareState = 'hold'; stareTimer = 0; stareHoldDuration = 6 + Math.random() * 6; }
     const s = stareProgress*stareProgress*(3-2*stareProgress);
-    camera.position.lerpVectors(orbitPosBeforeStare, new THREE.Vector3(0, actualHeadY+0.05, 1.2), s);
+    // Close — face fills the view (Z=0.7 instead of 1.2)
+    const closePos = new THREE.Vector3(wanderLookX, actualHeadY + 0.03, wanderLookZ + 0.7);
+    camera.position.lerpVectors(orbitPosBeforeStare, closePos, s);
     camera.lookAt(stareLookTarget);
   } else if (stareState === 'hold') {
-    camera.position.set(0, actualHeadY+0.05, 1.2);
-    camera.lookAt(stareLookTarget);
-    irisMat.emissiveIntensity = 5 + Math.sin(t*3);
-    eyeGlowL.intensity = 6; eyeGlowR.intensity = 6;
+    // Intimate slow drift — camera breathes and sways gently
+    const driftX = Math.sin(t * 0.3) * 0.08;  // slow side drift
+    const driftY = Math.sin(t * 0.2 + 0.5) * 0.04; // subtle vertical
+    const driftZ = Math.sin(t * 0.15) * 0.05;  // breathe in/out
+    camera.position.set(
+      wanderLookX + driftX,
+      actualHeadY + 0.03 + driftY,
+      wanderLookZ + 0.7 + driftZ
+    );
+    camera.lookAt(stareLookTarget.x + driftX * 0.3, stareLookTarget.y, stareLookTarget.z);
+    // Eyes intensify — seductive gaze
+    irisMat.emissiveIntensity = 4 + Math.sin(t * 2) * 1.5;
+    eyeGlowL.intensity = 5 + Math.sin(t * 1.5) * 2;
+    eyeGlowR.intensity = 5 + Math.sin(t * 1.5 + 0.3) * 2; // slight async
+    // Dampen body movement for intimacy (she holds your gaze)
+    if (bones.head) {
+      bones.head.rotation.y *= 0.3; // reduce head turning
+      bones.head.rotation.x = -0.06 + Math.sin(t * 0.4) * 0.02; // slight chin movement
+    }
     if (stareTimer >= stareHoldDuration) { stareState = 'dolly_out'; stareProgress = 0; }
   } else if (stareState === 'dolly_out') {
-    stareProgress += dt / stareDuration;
+    stareProgress += dt / (stareDuration * 1.5); // slower retreat
     if (stareProgress >= 1) { stareProgress = 1; stareState = 'orbit'; stareTimer = 0; }
     const s = stareProgress*stareProgress*(3-2*stareProgress);
     const orbitTarget = new THREE.Vector3(Math.sin(orbitAngle)*orbitRadius, orbitHeight, Math.cos(orbitAngle)*orbitRadius);
-    camera.position.lerpVectors(new THREE.Vector3(0, actualHeadY+0.05, 1.2), orbitTarget, s);
+    const closePos2 = new THREE.Vector3(wanderLookX, actualHeadY + 0.03, wanderLookZ + 0.7);
+    camera.position.lerpVectors(closePos2, orbitTarget, s);
     camera.lookAt(wanderLookX, 1.2, wanderLookZ);
   }
 
