@@ -577,13 +577,13 @@ function drawWavefrontBody(t) {
     return dance.hipPhase * bodyW * 0.4 * (1 - legBlend * 0.8);
   }
 
-  // ── 2a: Filled silhouette glow (makes her visible as a form) ──
+  // ── Build silhouette edge arrays ────────────────────────
   ctx.save();
   ctx.globalAlpha = lc.formAlpha;
+  var glowHue = 280 + sm.valence * 40;
 
-  // Build the silhouette path
-  var numSlices = 60;
-  var leftEdge = [], rightEdge = [];
+  var numSlices = 80;
+  var leftEdge = [], rightEdge = [], centers = [];
   for (var i = 0; i <= numSlices; i++) {
     var nt = i / numSlices;
     var yPos = bodyTop + nt * bodyH;
@@ -591,40 +591,112 @@ function drawWavefrontBody(t) {
     var sway = danceSway(nt);
     leftEdge.push({ x: cx - width + sway, y: yPos });
     rightEdge.push({ x: cx + width + sway, y: yPos });
+    centers.push({ x: cx + sway, y: yPos, w: width });
   }
 
-  // Draw filled silhouette with gradient
-  ctx.beginPath();
-  ctx.moveTo(leftEdge[0].x, leftEdge[0].y);
-  for (var i = 1; i <= numSlices; i++) ctx.lineTo(leftEdge[i].x, leftEdge[i].y);
-  for (var i = numSlices; i >= 0; i--) ctx.lineTo(rightEdge[i].x, rightEdge[i].y);
-  ctx.closePath();
+  // Helper: build and fill the silhouette path
+  function buildSilhouettePath() {
+    ctx.beginPath();
+    ctx.moveTo(leftEdge[0].x, leftEdge[0].y);
+    for (var i = 1; i <= numSlices; i++) ctx.lineTo(leftEdge[i].x, leftEdge[i].y);
+    for (var i = numSlices; i >= 0; i--) ctx.lineTo(rightEdge[i].x, rightEdge[i].y);
+    ctx.closePath();
+  }
 
-  // Vertical gradient fill — gives the form a warm inner glow
-  var bodyGrad = ctx.createLinearGradient(cx, bodyTop, cx, bodyTop + bodyH);
-  var glowHue = 280 + sm.valence * 40;
-  bodyGrad.addColorStop(0, hsla(glowHue, 50, 20, 0.06 * lc.formAlpha));
-  bodyGrad.addColorStop(0.2, hsla(glowHue - 10, 60, 30, 0.12 * lc.formAlpha * (0.5 + sm.energy)));
-  bodyGrad.addColorStop(0.4, hsla(310, 70, 35, 0.15 * lc.formAlpha * (0.5 + sm.energy)));
-  bodyGrad.addColorStop(0.6, hsla(glowHue, 60, 25, 0.10 * lc.formAlpha));
-  bodyGrad.addColorStop(1, hsla(glowHue + 20, 40, 15, 0.04 * lc.formAlpha));
-  ctx.fillStyle = bodyGrad;
+  // ── DEPTH LAYER 1: Deep shadow (furthest back) ────────
+  // Slightly offset, darker — creates depth perception
+  ctx.save();
+  ctx.globalAlpha = lc.formAlpha * 0.3;
+  ctx.beginPath();
+  for (var i = 0; i <= numSlices; i++) ctx.lineTo(leftEdge[i].x - 3, leftEdge[i].y + 2);
+  for (var i = numSlices; i >= 0; i--) ctx.lineTo(rightEdge[i].x + 3, rightEdge[i].y + 2);
+  ctx.closePath();
+  ctx.fillStyle = hsla(260, 40, 8, 0.4);
+  ctx.fill();
+  ctx.restore();
+
+  // ── DEPTH LAYER 2: Warm subsurface (body volume) ──────
+  buildSilhouettePath();
+  var skinGrad = ctx.createLinearGradient(cx - bodyW, bodyTop, cx + bodyW, bodyTop + bodyH);
+  skinGrad.addColorStop(0, hsla(280, 50, 18, 0.15 * lc.formAlpha));
+  skinGrad.addColorStop(0.2, hsla(310, 65, 28, 0.22 * lc.formAlpha * (0.6 + sm.energy * 0.4)));
+  skinGrad.addColorStop(0.35, hsla(320, 70, 35, 0.28 * lc.formAlpha * (0.6 + sm.energy * 0.4)));
+  skinGrad.addColorStop(0.5, hsla(300, 60, 30, 0.20 * lc.formAlpha));
+  skinGrad.addColorStop(0.7, hsla(270, 55, 22, 0.15 * lc.formAlpha));
+  skinGrad.addColorStop(1, hsla(260, 40, 15, 0.08 * lc.formAlpha));
+  ctx.fillStyle = skinGrad;
   ctx.fill();
 
-  // Radial inner glow at chest (warm core)
+  // ── DEPTH LAYER 3: Anatomical contour highlights ──────
+  // Simulate light from upper-right: bright highlights on curves facing light
+  var lightAngle = t * 0.15; // slowly rotating light source
+  var lightX = Math.cos(lightAngle) * 0.6;
+  var lightY = -0.4;
+
+  for (var i = 1; i < numSlices; i++) {
+    var nt = i / numSlices;
+    var c = centers[i];
+    var w = c.w;
+
+    // Anatomical highlight zones: collarbones, bust, waist curve, hip bone, thigh
+    var highlightIntensity = 0;
+    if (nt > 0.10 && nt < 0.15) highlightIntensity = 0.6; // collarbones
+    if (nt > 0.18 && nt < 0.26) highlightIntensity = 0.8 + Math.sin((nt - 0.18) / 0.08 * Math.PI) * 0.3; // bust
+    if (nt > 0.32 && nt < 0.38) highlightIntensity = 0.5; // waist definition
+    if (nt > 0.42 && nt < 0.52) highlightIntensity = 0.7; // hip bones
+    if (nt > 0.55 && nt < 0.65) highlightIntensity = 0.4; // upper thigh
+
+    if (highlightIntensity < 0.1) continue;
+
+    // Light-facing side gets a highlight, shadow side gets subtle dark
+    var highlightSide = lightX > 0 ? 1 : -1;
+    var hlX = c.x + highlightSide * w * 0.5;
+    var hlAlpha = highlightIntensity * 0.12 * lc.formAlpha * (0.5 + sm.energy * 0.5);
+
+    var hlGrad = ctx.createRadialGradient(hlX, c.y, 0, hlX, c.y, w * 0.6);
+    hlGrad.addColorStop(0, hsla(310 + sm.valence * 20, 70, 70, hlAlpha));
+    hlGrad.addColorStop(0.5, hsla(290, 50, 50, hlAlpha * 0.3));
+    hlGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = hlGrad;
+    ctx.fillRect(hlX - w, c.y - bodyH / numSlices, w * 2, bodyH / numSlices * 2);
+  }
+
+  // ── DEPTH LAYER 4: Core luminance (chest, belly, hips) ─
   var chestY = bodyTop + bodyH * 0.22 + dance.bounce * 4;
   var chestSway = danceSway(0.22);
-  var coreGrad = ctx.createRadialGradient(cx + chestSway, chestY, 0, cx + chestSway, chestY, bodyW * 0.7);
-  coreGrad.addColorStop(0, hsla(310, 80, 55, 0.12 * lc.formAlpha * sm.energy));
-  coreGrad.addColorStop(0.4, hsla(glowHue, 70, 40, 0.06 * lc.formAlpha));
+  // Chest glow
+  var coreGrad = ctx.createRadialGradient(cx + chestSway, chestY, 0, cx + chestSway, chestY, bodyW * 0.6);
+  coreGrad.addColorStop(0, hsla(315, 85, 60, 0.18 * lc.formAlpha * sm.energy));
+  coreGrad.addColorStop(0.3, hsla(300, 75, 45, 0.10 * lc.formAlpha));
+  coreGrad.addColorStop(0.7, hsla(280, 50, 30, 0.04 * lc.formAlpha));
   coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = coreGrad;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, bodyTop, W, bodyH);
 
-  // ── 2b: Interference wave lines over the filled form ──────
-  var numLines = 90;
+  // Belly warmth
+  var bellyY = bodyTop + bodyH * 0.38;
+  var bellySway = danceSway(0.38);
+  var bellyGrad = ctx.createRadialGradient(cx + bellySway, bellyY, 0, cx + bellySway, bellyY, bodyW * 0.4);
+  bellyGrad.addColorStop(0, hsla(320, 70, 50, 0.08 * lc.formAlpha * sm.energy));
+  bellyGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = bellyGrad;
+  ctx.fillRect(0, bodyTop, W, bodyH);
+
+  // Hip warmth
+  var hipY = bodyTop + bodyH * 0.48;
+  var hipSway = danceSway(0.48);
+  var hipGrad = ctx.createRadialGradient(cx + hipSway, hipY, 0, cx + hipSway, hipY, bodyW * 0.7);
+  hipGrad.addColorStop(0, hsla(290, 65, 45, 0.10 * lc.formAlpha * sm.energy));
+  hipGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = hipGrad;
+  ctx.fillRect(0, bodyTop, W, bodyH);
+
+  // ── DEPTH LAYER 5: Holographic interference waves ─────
+  // Multiple passes at different scales for depth
   var beatPhase = t * (sm.tempo / 60) * Math.PI * 2;
 
+  // Pass A: Fine interference (foreground)
+  var numLines = 100;
   for (var i = 0; i < numLines; i++) {
     var nt = i / numLines;
     var yPos = bodyTop + nt * bodyH;
@@ -634,49 +706,133 @@ function drawWavefrontBody(t) {
     var melIdx = Math.floor(nt * 127);
     var melVal = sm.mel[melIdx] || 0;
 
-    var waveAmp = 1.5 + melVal * 10 * sm.energy;
-    var waveFreq = 0.03 + sm.centroid * 0.008;
+    var waveAmp = 1 + melVal * 8 * sm.energy;
+    var waveFreq = 0.04 + sm.centroid * 0.01;
     var waveSpeed = t * 1.5 + nt * 0.5;
 
-    var hue = 270 + sm.valence * 50 + nt * 30;
-    var lightness = 45 + melVal * 35;
-    var alpha = (0.35 + melVal * 0.55) * lc.formAlpha;
+    // Iridescent color shift — changes across the body for holographic effect
+    var iridescence = Math.sin(nt * 8 + t * 0.5) * 30;
+    var hue = 270 + sm.valence * 40 + nt * 25 + iridescence;
+    var lightness = 50 + melVal * 30;
+    var alpha = (0.25 + melVal * 0.5) * lc.formAlpha;
 
-    ctx.strokeStyle = hsla(hue, 75, lightness, alpha);
-    ctx.lineWidth = 0.9 + melVal * 1.5;
+    ctx.strokeStyle = hsla(hue, 80, lightness, alpha);
+    ctx.lineWidth = 0.6 + melVal * 1.2;
 
     ctx.beginPath();
     var startX = cx - width + sway;
     var endX = cx + width + sway;
-    var steps = 40;
+    var steps = 45;
 
     for (var j = 0; j <= steps; j++) {
       var jt = j / steps;
       var x = startX + jt * (endX - startX);
       var wave = Math.sin(x * waveFreq + waveSpeed + beatPhase * 0.5) * waveAmp;
-
       var melIdx2 = Math.min(127, melIdx + Math.floor(jt * 10));
-      wave += Math.sin(x * waveFreq * 2.3 + t * 2) * (sm.mel[melIdx2] || 0) * 4;
-
-      var py = yPos + wave;
-      if (j === 0) ctx.moveTo(x, py);
-      else ctx.lineTo(x, py);
+      wave += Math.sin(x * waveFreq * 2.3 + t * 2) * (sm.mel[melIdx2] || 0) * 3;
+      if (j === 0) ctx.moveTo(x, yPos + wave);
+      else ctx.lineTo(x, yPos + wave);
     }
     ctx.stroke();
   }
 
-  // ── 2c: Edge glow — bright outline along the silhouette ───
-  ctx.beginPath();
-  for (var i = 0; i <= numSlices; i++) ctx.lineTo(leftEdge[i].x, leftEdge[i].y);
-  ctx.strokeStyle = hsla(glowHue - 20, 80, 65, 0.15 * lc.formAlpha * (0.5 + sm.energy * 0.5));
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // Pass B: Broad holographic shimmer (mid-depth, slower, wider)
+  ctx.globalCompositeOperation = 'screen';
+  var shimmerLines = 30;
+  for (var i = 0; i < shimmerLines; i++) {
+    var nt = i / shimmerLines;
+    var yPos = bodyTop + nt * bodyH;
+    var width = silhouetteWidth(nt) * bodyW * 0.85;
+    var sway = danceSway(nt);
 
-  ctx.beginPath();
-  for (var i = 0; i <= numSlices; i++) ctx.lineTo(rightEdge[i].x, rightEdge[i].y);
-  ctx.strokeStyle = hsla(glowHue + 20, 80, 65, 0.15 * lc.formAlpha * (0.5 + sm.energy * 0.5));
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+    var melIdx = Math.floor(nt * 127);
+    var melVal = sm.mel[melIdx] || 0;
+
+    // Prismatic rainbow shift for holographic effect
+    var prismHue = (nt * 360 + t * 40) % 360;
+    var prismAlpha = (0.03 + melVal * 0.08) * lc.formAlpha;
+
+    ctx.strokeStyle = hsla(prismHue, 90, 65, prismAlpha);
+    ctx.lineWidth = 2 + melVal * 3;
+
+    ctx.beginPath();
+    var startX = cx - width + sway;
+    var endX = cx + width + sway;
+    for (var j = 0; j <= 30; j++) {
+      var jt = j / 30;
+      var x = startX + jt * (endX - startX);
+      var wave = Math.sin(x * 0.02 + t * 0.8 + nt * 3) * (3 + melVal * 6);
+      if (j === 0) ctx.moveTo(x, yPos + wave);
+      else ctx.lineTo(x, yPos + wave);
+    }
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // ── DEPTH LAYER 6: Edge iridescence ───────────────────
+  // Prismatic rainbow shimmer along the silhouette edges
+  for (var side = 0; side < 2; side++) {
+    var edge = side === 0 ? leftEdge : rightEdge;
+    var dir = side === 0 ? -1 : 1;
+
+    // Draw 3 offset edge lines for prismatic spread
+    for (var p = 0; p < 3; p++) {
+      var offset = (p - 1) * 1.5 * dir;
+      var edgeHue = (glowHue + p * 40 + t * 30) % 360;
+      var edgeAlpha = (0.08 + sm.energy * 0.12) * lc.formAlpha;
+
+      ctx.beginPath();
+      for (var i = 0; i <= numSlices; i++) {
+        ctx.lineTo(edge[i].x + offset, edge[i].y);
+      }
+      ctx.strokeStyle = hsla(edgeHue, 90, 65, edgeAlpha);
+      ctx.lineWidth = 1 + p * 0.3;
+      ctx.stroke();
+    }
+  }
+
+  // ── DEPTH LAYER 7: Highlight sparkles on curves ───────
+  // Tiny bright dots at anatomical high-points that catch the "light"
+  var sparkleZones = [
+    { nt: 0.04, label: 'forehead' },
+    { nt: 0.12, label: 'collarbone_l' },
+    { nt: 0.12, label: 'collarbone_r' },
+    { nt: 0.21, label: 'bust_l' },
+    { nt: 0.21, label: 'bust_r' },
+    { nt: 0.35, label: 'navel' },
+    { nt: 0.47, label: 'hip_l' },
+    { nt: 0.47, label: 'hip_r' },
+  ];
+
+  for (var s = 0; s < sparkleZones.length; s++) {
+    var zone = sparkleZones[s];
+    var nt = zone.nt;
+    var c = centers[Math.floor(nt * numSlices)] || centers[0];
+    var w = c.w;
+    var xOff = zone.label.indexOf('_l') > -1 ? -w * 0.45 :
+               zone.label.indexOf('_r') > -1 ? w * 0.45 : 0;
+    var sparkleX = c.x + xOff;
+    var sparkleY = c.y;
+
+    var twinkle = Math.sin(t * 3 + s * 1.7) * 0.5 + 0.5;
+    var sparkleSize = (1.5 + twinkle * 2) * (0.5 + sm.energy);
+    var sparkleAlpha = twinkle * 0.4 * lc.formAlpha;
+
+    // Bright core
+    ctx.fillStyle = 'rgba(255,255,255,' + sparkleAlpha + ')';
+    ctx.beginPath();
+    ctx.arc(sparkleX, sparkleY, sparkleSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Colored halo
+    var spGrad = ctx.createRadialGradient(sparkleX, sparkleY, 0, sparkleX, sparkleY, sparkleSize * 4);
+    spGrad.addColorStop(0, hsla(310 + s * 15, 80, 70, sparkleAlpha * 0.5));
+    spGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = spGrad;
+    ctx.beginPath();
+    ctx.arc(sparkleX, sparkleY, sparkleSize * 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // ── 2d: Arms (drawn as flowing wave extensions from shoulders) ──
   var shoulderY = bodyTop + bodyH * 0.16;
