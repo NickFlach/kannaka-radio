@@ -691,36 +691,105 @@ function drawWavefrontBody(t) {
   ctx.fillStyle = glowGrad;
   ctx.fillRect(0, 0, W, H);
 
-  // ── Eyes — two glowing points within the interference field ──
-  var headSway = getDanceSway(t, 0.04);
-  var headY = bodyTop + bodyH * 0.035;
-  var eyeSpacing = bodyW * 0.08;
+  // ── Face — glowing eyes, lips, nose within the interference ──
+  var headSway = getDanceSway(t, 0.03);
+  var faceCenter = bodyTop + bodyH * 0.035;
+  var headW = bodyW * 0.24;
   var bps = sm.tempo / 60;
   var eyePulse = Math.pow(Math.max(0, Math.sin(t * bps * Math.PI * 2)), 4);
-  var eyeSize = 2.5 + eyePulse * 2 + sm.energy * 1.5;
+  var fa = lc.formAlpha;
+
+  // Eye parameters — BIG glowing eyes
+  var eyeY = faceCenter;
+  var eyeSpacing = headW * 0.55;
+  var eyeR = headW * 0.16 + eyePulse * 2;
 
   for (var ei = -1; ei <= 1; ei += 2) {
     var ex = cx + headSway + ei * eyeSpacing;
-    // Iris glow
-    var ig = ctx.createRadialGradient(ex, headY, 0, ex, headY, eyeSize * 4);
-    ig.addColorStop(0, hsla(190, 90, 75, (0.4 + eyePulse * 0.3) * lc.formAlpha));
-    ig.addColorStop(0.3, hsla(200, 80, 55, 0.15 * lc.formAlpha));
-    ig.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = ig;
+
+    // Outer glow — large, atmospheric
+    var outerR = eyeR * 6;
+    var og = ctx.createRadialGradient(ex, eyeY, eyeR * 0.5, ex, eyeY, outerR);
+    og.addColorStop(0, hsla(190, 90, 70, (0.25 + eyePulse * 0.2) * fa));
+    og.addColorStop(0.4, hsla(210, 70, 50, 0.08 * fa));
+    og.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = og;
     ctx.beginPath();
-    ctx.arc(ex, headY, eyeSize * 4, 0, Math.PI * 2);
+    ctx.arc(ex, eyeY, outerR, 0, Math.PI * 2);
     ctx.fill();
-    // Bright core
-    ctx.fillStyle = hsla(190, 95, 80, (0.7 + eyePulse * 0.3) * lc.formAlpha);
+
+    // Iris ring
+    ctx.strokeStyle = hsla(190, 95, 72, 0.8 * fa);
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.arc(ex, headY, eyeSize, 0, Math.PI * 2);
-    ctx.fill();
-    // Catchlight
-    ctx.fillStyle = 'rgba(255,255,255,' + (0.6 * lc.formAlpha) + ')';
+    ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Iris fill — deep cyan
+    ctx.fillStyle = hsla(195, 85, 45, 0.4 * fa);
     ctx.beginPath();
-    ctx.arc(ex + eyeSize * 0.3, headY - eyeSize * 0.3, eyeSize * 0.25, 0, Math.PI * 2);
+    ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
     ctx.fill();
+
+    // Pupil
+    var pupilR = eyeR * (0.35 + sm.energy * 0.15);
+    ctx.fillStyle = 'rgba(0,0,0,' + (0.6 * fa) + ')';
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, pupilR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner iris bright ring
+    ctx.strokeStyle = hsla(185, 100, 80, (0.5 + eyePulse * 0.4) * fa);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, pupilR * 1.4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Catchlight — white sparkle
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.8 * fa) + ')';
+    ctx.beginPath();
+    ctx.arc(ex + eyeR * 0.28, eyeY - eyeR * 0.28, eyeR * 0.18, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Upper lash arc
+    ctx.strokeStyle = hsla(190, 60, 55, 0.4 * fa);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(ex, eyeY, eyeR * 1.4, eyeR * 0.7, 0, Math.PI + 0.3, -0.3);
+    ctx.stroke();
   }
+
+  // Nose — subtle bridge and tip
+  var noseTop = eyeY + eyeR * 2.5;
+  var noseBot = faceCenter + bodyH * 0.022;
+  ctx.strokeStyle = 'rgba(255,255,255,' + (0.06 * fa) + ')';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(cx + headSway, noseTop);
+  ctx.lineTo(cx + headSway, noseBot);
+  ctx.stroke();
+  ctx.fillStyle = hsla(200, 40, 65, 0.12 * fa);
+  ctx.beginPath();
+  ctx.arc(cx + headSway, noseBot, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Lips — soft curved line
+  var lipY = noseBot + headW * 0.2;
+  var lipW = headW * 0.45;
+  ctx.strokeStyle = hsla(340, 60, 50, 0.25 * fa);
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(cx + headSway - lipW, lipY);
+  ctx.quadraticCurveTo(cx + headSway - lipW * 0.3, lipY - 2, cx + headSway, lipY - 0.8);
+  ctx.quadraticCurveTo(cx + headSway + lipW * 0.3, lipY - 2, cx + headSway + lipW, lipY);
+  ctx.stroke();
+  // Lower lip
+  ctx.strokeStyle = hsla(340, 55, 45, 0.18 * fa);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx + headSway - lipW * 0.7, lipY + 1);
+  ctx.quadraticCurveTo(cx + headSway, lipY + 3.5, cx + headSway + lipW * 0.7, lipY + 1);
+  ctx.stroke();
 
   // ── Hair — flowing interference strands from the crown ──
   var hairSway = getDanceSway(t, 0.02);
