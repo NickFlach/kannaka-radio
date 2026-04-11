@@ -589,15 +589,25 @@ async function loadModel() {
   model.rotation.y = Math.PI; // face camera
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
 
-  // Keep ALL original textured materials — just enhance with subtle effects
+  // Keep original textured materials — ensure they render
   model.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = false;
       child.receiveShadow = false;
-      // Log mesh names for debugging
-      console.log('[hologram] mesh:', child.name, 'material:', child.material?.type);
+      child.frustumCulled = false; // never cull
+      // Ensure materials are visible
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => { m.side = THREE.DoubleSide; m.needsUpdate = true; });
+        } else {
+          child.material.side = THREE.DoubleSide;
+          child.material.needsUpdate = true;
+        }
+      }
+      console.log('[hologram] mesh:', child.name, 'visible:', child.visible, 'mat:', child.material?.type, 'map:', !!child.material?.map);
     }
   });
+  console.log('[hologram] Model bounds:', new THREE.Box3().setFromObject(model).min.toArray(), 'to', new THREE.Box3().setFromObject(model).max.toArray());
   scene.add(model);
   modelScene = model;
 
