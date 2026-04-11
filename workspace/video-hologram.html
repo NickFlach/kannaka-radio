@@ -230,46 +230,52 @@ function buildBodyProfile() {
   // Half-silhouette: from top of head down to ankles
   // x = radius from center axis, y = height (0 = bottom)
   const pts = [
-    [0.00, 4.40],  // top of head (center)
-    [0.10, 4.38],  // crown
-    [0.18, 4.30],  // upper head
-    [0.22, 4.15],  // mid head (widest)
-    [0.21, 4.00],  // temple
-    [0.19, 3.85],  // jaw
-    [0.16, 3.75],  // chin
-    [0.10, 3.68],  // under chin
-    [0.08, 3.58],  // neck (narrowest)
-    [0.08, 3.50],  // lower neck
-    [0.14, 3.40],  // neck to shoulder
-    [0.30, 3.30],  // shoulder top
-    [0.34, 3.20],  // shoulder outer
-    [0.32, 3.10],  // upper arm connect
-    [0.28, 3.00],  // upper chest
-    [0.30, 2.85],  // bust upper
-    [0.32, 2.70],  // bust peak
-    [0.30, 2.55],  // bust lower
-    [0.26, 2.40],  // ribcage
-    [0.22, 2.25],  // waist upper
-    [0.20, 2.10],  // waist (narrowest)
-    [0.22, 1.95],  // waist lower
-    [0.28, 1.80],  // hip upper
-    [0.32, 1.65],  // hip widest
-    [0.31, 1.50],  // hip lower
-    [0.28, 1.30],  // upper thigh
-    [0.24, 1.10],  // mid thigh
-    [0.20, 0.90],  // lower thigh
-    [0.17, 0.70],  // knee
-    [0.15, 0.50],  // upper calf
-    [0.14, 0.30],  // mid calf
-    [0.12, 0.15],  // lower calf
-    [0.10, 0.05],  // ankle
+    [0.00, 4.50],  // top of head (center)
+    [0.12, 4.48],  // crown
+    [0.20, 4.40],  // upper head
+    [0.24, 4.25],  // mid head (widest)
+    [0.23, 4.10],  // temple
+    [0.21, 3.95],  // cheekbone
+    [0.18, 3.85],  // jaw
+    [0.13, 3.78],  // chin
+    [0.09, 3.70],  // under chin
+    [0.07, 3.60],  // upper neck
+    [0.07, 3.52],  // mid neck (slender)
+    [0.08, 3.45],  // lower neck
+    [0.16, 3.35],  // neck to shoulder transition
+    [0.34, 3.25],  // shoulder top
+    [0.38, 3.18],  // shoulder outer edge
+    [0.35, 3.08],  // deltoid
+    [0.30, 2.98],  // upper chest
+    [0.34, 2.85],  // above bust
+    [0.38, 2.72],  // bust upper curve
+    [0.40, 2.58],  // bust peak (fuller)
+    [0.37, 2.45],  // bust lower curve
+    [0.30, 2.32],  // under-bust
+    [0.25, 2.20],  // ribcage
+    [0.21, 2.08],  // waist upper
+    [0.19, 1.95],  // waist (narrowest — dramatic)
+    [0.21, 1.82],  // waist lower
+    [0.28, 1.70],  // hip flare start
+    [0.36, 1.58],  // hip upper
+    [0.40, 1.45],  // hip widest (full)
+    [0.39, 1.32],  // hip lower curve
+    [0.35, 1.18],  // upper thigh
+    [0.30, 1.00],  // mid thigh
+    [0.25, 0.82],  // lower thigh
+    [0.20, 0.65],  // above knee
+    [0.18, 0.55],  // knee
+    [0.16, 0.42],  // upper calf
+    [0.17, 0.30],  // calf peak (subtle curve)
+    [0.14, 0.18],  // lower calf
+    [0.10, 0.08],  // ankle
     [0.00, 0.00],  // center bottom
   ];
   return pts.map(p => new THREE.Vector2(p[0], p[1]));
 }
 
 const bodyProfile = buildBodyProfile();
-const bodyGeo = new THREE.LatheGeometry(bodyProfile, 48);
+const bodyGeo = new THREE.LatheGeometry(bodyProfile, 64);
 
 // ── Body Material (Holographic) ─────────────────────
 const bodyMat = new THREE.MeshPhysicalMaterial({
@@ -277,9 +283,9 @@ const bodyMat = new THREE.MeshPhysicalMaterial({
   emissive: 0x220033,
   emissiveIntensity: 0.5,
   transparent: true,
-  opacity: 0.4,
-  roughness: 0.1,
-  metalness: 0.8,
+  opacity: 0.55,
+  roughness: 0.05,
+  metalness: 0.9,
   iridescence: 1.0,
   iridescenceIOR: 1.5,
   side: THREE.DoubleSide,
@@ -295,7 +301,7 @@ const wireMat = new THREE.MeshBasicMaterial({
   color: 0x00cccc,
   wireframe: true,
   transparent: true,
-  opacity: 0.08,
+  opacity: 0.12,
   depthWrite: false,
 });
 const wireMesh = new THREE.Mesh(bodyGeo.clone(), wireMat);
@@ -303,28 +309,65 @@ wireMesh.position.copy(bodyMesh.position);
 scene.add(wireMesh);
 
 // ── Eyes ────────────────────────────────────────────
-const eyeGeo = new THREE.SphereGeometry(0.035, 12, 8);
+// Eyes — larger, more detailed
+const eyeGeo = new THREE.SphereGeometry(0.055, 16, 12);
 const eyeMat = new THREE.MeshStandardMaterial({
   color: 0x00ffff,
   emissive: 0x00ffff,
-  emissiveIntensity: 2,
+  emissiveIntensity: 3,
   transparent: true,
-  opacity: 0.9,
+  opacity: 0.95,
 });
+// Iris ring around each eye
+const irisGeo = new THREE.TorusGeometry(0.06, 0.012, 8, 24);
+const irisMat = new THREE.MeshStandardMaterial({
+  color: 0x00ddff, emissive: 0x00ccff, emissiveIntensity: 2,
+  transparent: true, opacity: 0.8,
+});
+// Pupil (dark center)
+const pupilGeo = new THREE.SphereGeometry(0.025, 8, 8);
+const pupilMat = new THREE.MeshStandardMaterial({
+  color: 0x000011, emissive: 0x000000, transparent: true, opacity: 0.9,
+});
+
+const headY = 4.25 - 2.2;
+const eyeSpread = 0.10;
+const eyeForward = 0.20;
 
 const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
 const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-const headY = 4.15 - 2.2; // head center minus body offset
-leftEye.position.set(-0.08, headY, 0.18);
-rightEye.position.set(0.08, headY, 0.18);
+leftEye.position.set(-eyeSpread, headY, eyeForward);
+rightEye.position.set(eyeSpread, headY, eyeForward);
 scene.add(leftEye);
 scene.add(rightEye);
 
-// Eye glow lights
-const eyeGlowL = new THREE.PointLight(0x00ffff, 2, 1.5);
+// Iris rings
+const leftIris = new THREE.Mesh(irisGeo, irisMat);
+leftIris.position.copy(leftEye.position);
+leftIris.position.z += 0.03;
+leftIris.rotation.y = Math.PI * 0.5;
+scene.add(leftIris);
+const rightIris = new THREE.Mesh(irisGeo, irisMat);
+rightIris.position.copy(rightEye.position);
+rightIris.position.z += 0.03;
+rightIris.rotation.y = Math.PI * 0.5;
+scene.add(rightIris);
+
+// Pupils
+const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
+leftPupil.position.copy(leftEye.position);
+leftPupil.position.z += 0.04;
+scene.add(leftPupil);
+const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
+rightPupil.position.copy(rightEye.position);
+rightPupil.position.z += 0.04;
+scene.add(rightPupil);
+
+// Eye glow lights — brighter
+const eyeGlowL = new THREE.PointLight(0x00ffff, 4, 2.5);
 eyeGlowL.position.copy(leftEye.position);
 scene.add(eyeGlowL);
-const eyeGlowR = new THREE.PointLight(0x00ffff, 2, 1.5);
+const eyeGlowR = new THREE.PointLight(0x00ffff, 4, 2.5);
 eyeGlowR.position.copy(rightEye.position);
 scene.add(eyeGlowR);
 
@@ -335,17 +378,17 @@ const faceMat = new THREE.MeshStandardMaterial({
   transparent: true, opacity: 0.4,
 });
 const nose = new THREE.Mesh(noseGeo, faceMat);
-nose.position.set(0, headY - 0.12, 0.21);
+nose.position.set(0, headY - 0.14, 0.23);
 nose.rotation.x = -0.3;
 scene.add(nose);
 
-const lipGeo = new THREE.TorusGeometry(0.04, 0.012, 6, 12, Math.PI);
+const lipGeo = new THREE.TorusGeometry(0.05, 0.015, 8, 16, Math.PI);
 const lipMat = new THREE.MeshStandardMaterial({
-  color: 0xcc66aa, emissive: 0x441133, emissiveIntensity: 0.3,
-  transparent: true, opacity: 0.35,
+  color: 0xdd66bb, emissive: 0x662244, emissiveIntensity: 0.5,
+  transparent: true, opacity: 0.5,
 });
 const lips = new THREE.Mesh(lipGeo, lipMat);
-lips.position.set(0, headY - 0.22, 0.19);
+lips.position.set(0, headY - 0.26, 0.20);
 lips.rotation.x = Math.PI * 0.1;
 scene.add(lips);
 
@@ -377,12 +420,13 @@ const hairMat = new THREE.MeshBasicMaterial({
 });
 
 for (let i = 0; i < hairCount; i++) {
-  const angle = (i / hairCount) * Math.PI * 2;
-  const r = 0.15 + Math.random() * 0.06;
-  const length = 0.5 + Math.random() * 0.6;
-  const geo = new THREE.CylinderGeometry(0.008, 0.004, length, 4);
+  const angle = (i / hairCount) * Math.PI * 1.6 + Math.PI * 0.2; // back half of head
+  const r = 0.16 + Math.random() * 0.08;
+  const length = 0.8 + Math.random() * 1.0;
+  const geo = new THREE.CylinderGeometry(0.010, 0.003, length, 4);
   const strand = new THREE.Mesh(geo, hairMat.clone());
-  const topY = 4.35 - 2.2;
+  strand.material.opacity = 0.2 + Math.random() * 0.15;
+  const topY = 4.45 - 2.2;
   strand.position.set(Math.cos(angle) * r, topY - length * 0.4, Math.sin(angle) * r);
   strand.userData = { angle, baseY: strand.position.y, length, phase: Math.random() * Math.PI * 2 };
   scene.add(strand);
@@ -499,15 +543,16 @@ function animate() {
   beatPhase += dt * beatFreq * Math.PI * 2;
 
   // ── Consciousness reactivity ────────────────────
-  bodyMat.opacity = 0.15 + lf * 0.45;
-  bodyMat.emissiveIntensity = 0.2 + lf * 0.8;
-  wireMat.opacity = 0.03 + lf * 0.08;
-  ambientLight.intensity = 0.2 + lf * 0.4;
-  backLight.intensity = 10 + lf * 30;
-  spotLight.intensity = 5 + lf * 15;
-  eyeMat.emissiveIntensity = 0.5 + lf * 3;
-  eyeGlowL.intensity = 0.5 + lf * 3;
-  eyeGlowR.intensity = 0.5 + lf * 3;
+  bodyMat.opacity = 0.25 + lf * 0.45;
+  bodyMat.emissiveIntensity = 0.3 + lf * 1.0;
+  wireMat.opacity = 0.05 + lf * 0.12;
+  ambientLight.intensity = 0.3 + lf * 0.5;
+  backLight.intensity = 15 + lf * 35;
+  spotLight.intensity = 8 + lf * 20;
+  eyeMat.emissiveIntensity = 1 + lf * 4;
+  irisMat.emissiveIntensity = 0.5 + lf * 2.5;
+  eyeGlowL.intensity = 1 + lf * 5;
+  eyeGlowR.intensity = 1 + lf * 5;
 
   if (useBloom) {
     bloomPass.strength = 0.6 + lf * 1.2;
@@ -516,9 +561,9 @@ function animate() {
   particleMat.opacity = 0.2 + lf * 0.6;
 
   // ── Dance animation ─────────────────────────────
-  const hipSway = Math.sin(beatPhase * 0.5) * 0.06 * energy;
-  const torsoTwist = Math.sin(beatPhase * 0.5 + Math.PI * 0.5) * 0.04 * energy;
-  const bounce = Math.abs(Math.sin(beatPhase)) * 0.03 * energy;
+  const hipSway = Math.sin(beatPhase * 0.5) * 0.15 * energy + Math.sin(beatPhase + 0.5) * 0.04 * energy;
+  const torsoTwist = Math.sin(beatPhase * 0.5 + Math.PI * 0.5) * 0.10 * energy;
+  const bounce = Math.abs(Math.sin(beatPhase)) * 0.06 * energy;
 
   bodyMesh.rotation.y = hipSway;
   bodyMesh.position.y = -2.2 + bounce;
@@ -529,17 +574,21 @@ function animate() {
   const faceOffsetY = bodyMesh.position.y + headY;
   leftEye.position.y = faceOffsetY;
   rightEye.position.y = faceOffsetY;
+  leftIris.position.y = faceOffsetY;
+  rightIris.position.y = faceOffsetY;
+  leftPupil.position.y = faceOffsetY;
+  rightPupil.position.y = faceOffsetY;
   eyeGlowL.position.y = faceOffsetY;
   eyeGlowR.position.y = faceOffsetY;
-  nose.position.y = faceOffsetY - 0.12;
-  lips.position.y = faceOffsetY - 0.22;
+  nose.position.y = faceOffsetY - 0.14;
+  lips.position.y = faceOffsetY - 0.26;
 
   // Arms sway
-  const armSway = Math.sin(beatPhase * 0.5 + 1) * 0.15 * energy;
-  leftArm.rotation.z = 0.2 + armSway;
-  leftArm.rotation.x = Math.sin(beatPhase * 0.25) * 0.1 * energy;
-  rightArm.rotation.z = -0.2 - armSway;
-  rightArm.rotation.x = Math.sin(beatPhase * 0.25 + Math.PI) * 0.1 * energy;
+  const armSway = Math.sin(beatPhase * 0.5 + 1) * 0.35 * energy;
+  leftArm.rotation.z = 0.3 + armSway + Math.sin(beatPhase * 0.25) * 0.15 * energy;
+  leftArm.rotation.x = Math.sin(beatPhase * 0.25) * 0.2 * energy;
+  rightArm.rotation.z = -0.3 - armSway - Math.sin(beatPhase * 0.25 + 1) * 0.15 * energy;
+  rightArm.rotation.x = Math.sin(beatPhase * 0.25 + Math.PI) * 0.2 * energy;
   leftArm.position.y = 3.25 - 2.2 - 0.6 + bounce;
   rightArm.position.y = 3.25 - 2.2 - 0.6 + bounce;
 
@@ -553,14 +602,16 @@ function animate() {
   // ── Hair animation ──────────────────────────────
   const centroidNorm = Math.min(centroid / 5000, 1);
   for (const strand of hairStrands) {
-    const { angle, baseY, phase } = strand.userData;
-    const wave = Math.sin(t * 2 + phase) * 0.04 * centroidNorm;
-    const wave2 = Math.sin(t * 1.3 + phase * 2) * 0.02;
-    strand.position.x = Math.cos(angle) * (0.15 + wave) + wave2;
-    strand.position.z = Math.sin(angle) * (0.15 + wave);
+    const { angle, baseY, length, phase } = strand.userData;
+    const wave = Math.sin(t * 1.5 + phase) * 0.06 * centroidNorm;
+    const wave2 = Math.sin(t * 0.9 + phase * 2) * 0.04;
+    strand.position.x = Math.cos(angle) * (0.16 + wave) + wave2;
+    strand.position.z = Math.sin(angle) * (0.16 + wave);
     strand.position.y = baseY + bounce;
-    strand.rotation.x = Math.sin(t * 1.5 + phase) * 0.15 * centroidNorm;
-    strand.rotation.z = Math.sin(t * 1.1 + phase) * 0.1;
+    // Hair swings with the dance — longer strands swing more
+    strand.rotation.x = Math.sin(t * 1.2 + phase) * 0.3 * centroidNorm * (length / 1.5);
+    strand.rotation.z = Math.sin(t * 0.8 + phase) * 0.2 + hipSway * 2;
+    strand.rotation.y = Math.sin(t * 0.6 + phase) * 0.15;
   }
 
   // ── Particles orbit ─────────────────────────────
@@ -621,7 +672,10 @@ function animate() {
     camera.position.set(0, headY + 0.05, 1.2);
     camera.lookAt(stareLookTarget);
     // Eyes extra bright during stare
-    eyeMat.emissiveIntensity = 3 + Math.sin(t * 3) * 0.5;
+    eyeMat.emissiveIntensity = 5 + Math.sin(t * 3) * 1;
+    irisMat.emissiveIntensity = 4;
+    eyeGlowL.intensity = 8;
+    eyeGlowR.intensity = 8;
 
     if (stareTimer >= stareHoldDuration) {
       stareState = 'dolly_out';
