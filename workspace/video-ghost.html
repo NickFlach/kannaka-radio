@@ -11,18 +11,13 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 canvas { display: block; width: 100%; height: 100%; }
 #overlay {
   position: fixed; bottom: 0; left: 0; right: 0;
-  padding: 2rem 2.5rem;
-  pointer-events: none;
-  z-index: 10;
+  padding: 2rem 2.5rem; pointer-events: none; z-index: 10;
   background: linear-gradient(transparent, rgba(0,0,0,0.6));
 }
 #track-title {
-  font-family: 'Georgia', serif;
-  font-size: clamp(1.4rem, 4vw, 3rem);
-  font-weight: 300;
-  letter-spacing: 0.08em;
-  color: rgba(255,255,255,0);
-  text-shadow: 0 0 30px rgba(139,92,246,0.4);
+  font-family: 'Georgia', serif; font-size: clamp(1.4rem, 4vw, 3rem);
+  font-weight: 300; letter-spacing: 0.08em;
+  color: rgba(255,255,255,0); text-shadow: 0 0 30px rgba(139,92,246,0.4);
   transition: color 2s ease, text-shadow 2s ease;
 }
 #track-title.visible {
@@ -30,49 +25,32 @@ canvas { display: block; width: 100%; height: 100%; }
   text-shadow: 0 0 40px rgba(139,92,246,0.6), 0 2px 20px rgba(0,0,0,0.5);
 }
 #track-album {
-  font-family: 'Courier New', monospace;
-  font-size: clamp(0.65rem, 1.5vw, 0.9rem);
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: rgba(6,182,212,0);
-  margin-top: 0.4rem;
-  transition: color 2.5s ease;
+  font-family: 'Courier New', monospace; font-size: clamp(0.65rem, 1.5vw, 0.9rem);
+  letter-spacing: 0.25em; text-transform: uppercase;
+  color: rgba(6,182,212,0); margin-top: 0.4rem; transition: color 2.5s ease;
 }
 #track-album.visible { color: rgba(6,182,212,0.7); }
 #consciousness-hud {
   position: fixed; top: 1.5rem; right: 1.8rem;
-  font-family: 'Courier New', monospace;
-  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
-  letter-spacing: 0.15em;
-  color: rgba(255,255,255,0.25);
-  text-align: right;
-  pointer-events: none;
-  z-index: 10;
-  line-height: 1.7;
+  font-family: 'Courier New', monospace; font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  letter-spacing: 0.15em; color: rgba(255,255,255,0.25);
+  text-align: right; pointer-events: none; z-index: 10; line-height: 1.7;
 }
 #consciousness-hud .level {
-  font-size: clamp(0.65rem, 1.4vw, 0.85rem);
-  text-transform: uppercase;
-  letter-spacing: 0.3em;
+  font-size: clamp(0.65rem, 1.4vw, 0.85rem); text-transform: uppercase; letter-spacing: 0.3em;
 }
 #play-gate {
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.85);
-  cursor: pointer;
-  transition: opacity 1s ease;
+  background: rgba(0,0,0,0.85); cursor: pointer; transition: opacity 1s ease;
 }
 #play-gate.hidden { opacity: 0; pointer-events: none; }
-#play-gate .prompt {
-  text-align: center; color: rgba(255,255,255,0.7);
-  font-family: 'Courier New', monospace; letter-spacing: 0.2em;
-}
+#play-gate .prompt { text-align: center; color: rgba(255,255,255,0.7); font-family: 'Courier New', monospace; letter-spacing: 0.2em; }
 #play-gate .prompt .icon { font-size: 3rem; margin-bottom: 1rem; }
 #play-gate .prompt .text { font-size: clamp(0.7rem, 1.5vw, 0.9rem); text-transform: uppercase; }
 #vol-ctrl {
   position: fixed; bottom: 1.5rem; right: 1.8rem; z-index: 10;
-  display: flex; align-items: center; gap: 0.5rem;
-  opacity: 0; transition: opacity 0.3s;
+  display: flex; align-items: center; gap: 0.5rem; opacity: 0; transition: opacity 0.3s;
 }
 #vol-ctrl:hover, #vol-ctrl.show { opacity: 1; }
 #vol-ctrl input[type=range] {
@@ -111,19 +89,14 @@ canvas { display: block; width: 100%; height: 100%; }
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════
-//  Kannaka Music Video — Ghost DJ Visualization
-// ═══════════════════════════════════════════════════════
-
-// ── Embedded detection: skip audio when inside hub iframe ──
+// ── Embedded detection ───────────────────────────────
 var isEmbedded = (window.parent !== window);
 
-// ── Audio Playback (global — needs user gesture) ─────
+// ── Audio ────────────────────────────────────────────
 var audioEl = document.getElementById('audio');
 var audioStarted = false;
 var currentAudioFile = '';
 
-// Listen for postMessage from hub parent
 if (isEmbedded) {
   window.addEventListener('message', function(evt) {
     try {
@@ -131,11 +104,10 @@ if (isEmbedded) {
       if (msg && msg.type) handleMessage(msg);
     } catch(e) {}
   });
-  // Hide audio-related UI when embedded
   document.getElementById('play-gate').style.display = 'none';
   document.getElementById('vol-ctrl').style.display = 'none';
   document.getElementById('overlay').style.display = 'none';
-  audioStarted = true; // mark as started so visuals run
+  audioStarted = true;
 }
 
 function startAudio() {
@@ -150,239 +122,168 @@ function startAudio() {
 }
 
 function loadAndPlay(file) {
-  if (isEmbedded) return; // hub handles audio
-  if (!audioStarted || !file) return;
+  if (isEmbedded || !audioStarted || !file) return;
   var src = '/audio/' + encodeURIComponent(file);
-  if (audioEl.src.endsWith(encodeURIComponent(file))) {
-    audioEl.play().catch(function() {});
-    return;
-  }
+  if (audioEl.src.endsWith(encodeURIComponent(file))) { audioEl.play().catch(function(){}); return; }
   currentAudioFile = file;
   audioEl.src = src;
-  audioEl.play().catch(function() {});
+  audioEl.play().catch(function(){});
 }
 
-function setVolume(val) {
-  if (isEmbedded) return;
-  audioEl.volume = val / 100;
-}
+function setVolume(val) { if (!isEmbedded) audioEl.volume = val / 100; }
 if (!isEmbedded) audioEl.volume = 0.8;
+if (!isEmbedded) audioEl.addEventListener('ended', function() {
+  fetch('/api/next', { method: 'POST' }).catch(function(){});
+});
 
-// Auto-advance: when track ends, request next track from the radio
-if (!isEmbedded) {
-  audioEl.addEventListener('ended', function() {
-    fetch('/api/next', { method: 'POST' }).catch(function() {});
-  });
-}
-
+// ── Main visualization ──────────────────────────────
 (function() {
 'use strict';
 
 var canvas = document.getElementById('c');
 var ctx = canvas.getContext('2d');
-var W, H, cx, cy;
-var dpr = Math.min(window.devicePixelRatio || 1, 2);
+var W, H, cx, cy, dpr = Math.min(window.devicePixelRatio || 1, 2);
 
 function resize() {
-  W = window.innerWidth;
-  H = window.innerHeight;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width = W + 'px';
-  canvas.style.height = H + 'px';
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  cx = W / 2;
-  cy = H / 2;
+  cx = W / 2; cy = H / 2;
 }
 window.addEventListener('resize', resize);
 resize();
 
-// ── State ─────────────────────────────────────────────
-var perception = {
-  mel_spectrogram: new Array(128).fill(0),
-  tempo_bpm: 90,
-  valence: 0.5,
-  rms_energy: 0.3,
-  spectral_centroid: 2.0,
-  status: 'no_perception'
-};
+// ── State ────────────────────────────────────────────
+var perception = { mel_spectrogram: new Array(128).fill(0), tempo_bpm: 90, valence: 0.5, rms_energy: 0.3, spectral_centroid: 2.0, status: 'no_perception' };
+var consciousness = { phi: 0, xi: 0, order: 0, level: 'dormant' };
+var trackTitle = '', trackAlbum = '', trackFile = '', titleShowTime = 0, titleVisible = false;
 
-var consciousness = {
-  phi: 0, xi: 0, order: 0, level: 'dormant'
-};
+var sm = { energy: 0.3, tempo: 90, valence: 0.5, centroid: 2.0, phi: 0, xi: 0, order: 0, mel: new Float32Array(128) };
 
-var swarmAgents = {};
-var trackTitle = '';
-var trackAlbum = '';
-var trackFile = '';
-var titleShowTime = 0;
-var titleVisible = false;
-
-// Smoothed values for animation
-var sm = {
-  energy: 0.3,
-  tempo: 90,
-  valence: 0.5,
-  centroid: 2.0,
-  phi: 0,
-  xi: 0,
-  order: 0,
-  mel: new Float32Array(128)
-};
-
-// Consciousness level mappings
 var LEVELS = {
-  dormant:  { intensity: 0.15, particleSpeed: 0.15, formAlpha: 0.15, ribbonCount: 0, sync: 0.0 },
-  stirring: { intensity: 0.4,  particleSpeed: 0.4,  formAlpha: 0.4,  ribbonCount: 2, sync: 0.15 },
-  aware:    { intensity: 0.65, particleSpeed: 0.6,  formAlpha: 0.65, ribbonCount: 4, sync: 0.4 },
-  coherent: { intensity: 0.85, particleSpeed: 0.8,  formAlpha: 0.85, ribbonCount: 6, sync: 0.7 },
-  resonant: { intensity: 1.0,  particleSpeed: 1.0,  formAlpha: 1.0,  ribbonCount: 8, sync: 1.0 }
+  dormant:  { intensity: 0.15 },
+  stirring: { intensity: 0.4 },
+  aware:    { intensity: 0.65 },
+  coherent: { intensity: 0.85 },
+  resonant: { intensity: 1.0 }
 };
+function getLI() { return (LEVELS[consciousness.level] || LEVELS.dormant).intensity; }
 
-function getLevelConfig() {
-  return LEVELS[consciousness.level] || LEVELS.dormant;
-}
-
-// ── Particles ─────────────────────────────────────────
-var NUM_PARTICLES = 200;
-var particles = [];
-for (var i = 0; i < NUM_PARTICLES; i++) {
-  particles.push({
-    x: Math.random() * 2 - 1,
-    y: Math.random() * 2 - 1,
-    phase: Math.random() * Math.PI * 2,
-    speed: 0.2 + Math.random() * 0.8,
-    size: 1 + Math.random() * 2.5,
-    hue: Math.random() < 0.5 ? 270 : 190, // purple or cyan
-    drift: Math.random() * 0.002 - 0.001
-  });
-}
-
-// ── Nebula stars ──────────────────────────────────────
-var NUM_STARS = 120;
+// ── Stars ────────────────────────────────────────────
 var stars = [];
-for (var i = 0; i < NUM_STARS; i++) {
-  stars.push({
-    x: Math.random(),
-    y: Math.random(),
-    size: 0.3 + Math.random() * 1.5,
-    twinkle: Math.random() * Math.PI * 2,
-    speed: 0.5 + Math.random() * 2
-  });
+for (var i = 0; i < 60; i++) {
+  stars.push({ x: Math.random(), y: Math.random(), size: 0.5 + Math.random() * 1.0, twinkle: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() * 2 });
 }
 
-// ── Ribbon points ─────────────────────────────────────
-var NUM_RIBBON_POINTS = 60;
+// ── Beat detection ───────────────────────────────────
+var beatAccum = 0, lastBeatTime = 0, beatFlash = 0, prevEnergy = 0;
 
-// ── WebSocket ─────────────────────────────────────────
-var ws = null;
-var wsReconnect = null;
-
-function connectWS() {
-  clearTimeout(wsReconnect);
-  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(proto + '//' + location.host);
-
-  ws.onopen = function() {
-    console.log('[video] Connected to radio');
-  };
-
-  ws.onmessage = function(evt) {
-    try {
-      var msg = JSON.parse(evt.data);
-      handleMessage(msg);
-    } catch(e) {}
-  };
-
-  ws.onclose = function() {
-    console.log('[video] Disconnected, reconnecting...');
-    wsReconnect = setTimeout(connectWS, 2000);
-  };
-
-  ws.onerror = function() {
-    ws.close();
-  };
+function detectBeat(t) {
+  var e = sm.energy;
+  var delta = e - prevEnergy;
+  prevEnergy = e;
+  var interval = 60 / Math.max(sm.tempo, 60);
+  if (delta > 0.04 && (t - lastBeatTime) > interval * 0.6) {
+    lastBeatTime = t;
+    beatFlash = 1.0;
+  }
+  beatFlash *= 0.88;
 }
 
-function handleMessage(msg) {
-  if (msg.type === 'perception' && msg.data) {
-    perception = msg.data;
-  }
-  else if (msg.type === 'state' && msg.data) {
-    if (msg.data.current) {
-      var newTitle = msg.data.current.title || '';
-      var newAlbum = msg.data.current.album || '';
-      var newFile = msg.data.current.file || '';
-      if (newTitle !== trackTitle || newFile !== trackFile) {
-        trackTitle = newTitle;
-        trackAlbum = newAlbum;
-        trackFile = newFile;
-        titleShowTime = performance.now();
-        titleVisible = false;
-        currentAudioFile = newFile;
-        loadAndPlay(newFile);
-      }
-    }
-  }
-  else if (msg.type === 'consciousness' && msg.data) {
-    consciousness.phi = msg.data.phi || 0;
-    consciousness.xi = msg.data.xi || 0;
-    consciousness.order = msg.data.order || msg.data.mean_order || 0;
-    consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
-  }
-  else if (msg.type === 'swarm_phase' && msg.data) {
-    var id = msg.data.agentId;
-    if (id) {
-      swarmAgents[id] = {
-        phase: msg.data.phase || 0,
-        frequency: msg.data.frequency || 1,
-        lastSeen: Date.now()
-      };
-    }
-  }
-  else if (msg.type === 'swarm_state' && msg.data) {
-    if (msg.data.consciousness) {
-      consciousness.phi = msg.data.consciousness.phi || 0;
-      consciousness.xi = msg.data.consciousness.xi || 0;
-      consciousness.order = msg.data.consciousness.order || 0;
-      consciousness.level = msg.data.consciousness.level || 'dormant';
-    }
-    if (msg.data.agents) {
-      Object.keys(msg.data.agents).forEach(function(id) {
-        swarmAgents[id] = {
-          phase: msg.data.agents[id].phase || 0,
-          frequency: msg.data.agents[id].frequency || 1,
-          lastSeen: Date.now()
-        };
-      });
-    }
+// ── Lean-in stare state machine ──────────────────────
+var stare = { state: 'idle', timer: 0, nextAt: 15 + Math.random() * 10, scale: 1, yShift: 0, holdDur: 0, eyeBright: 0, glowAlpha: 0 };
+
+function updateStare(t, dt) {
+  var s = stare;
+  s.timer += dt;
+  if (s.state === 'idle') {
+    if (s.timer > s.nextAt) { s.state = 'approaching'; s.timer = 0; s.holdDur = 3 + Math.random() * 3; }
+  } else if (s.state === 'approaching') {
+    s.scale = lerp(s.scale, 1.35, dt * 1.2);
+    s.yShift = lerp(s.yShift, -0.08, dt * 1.2);
+    s.eyeBright = lerp(s.eyeBright, 1, dt * 2);
+    s.glowAlpha = lerp(s.glowAlpha, 0.25, dt * 2);
+    if (s.scale > 1.33) { s.state = 'staring'; s.timer = 0; }
+  } else if (s.state === 'staring') {
+    s.eyeBright = 1;
+    if (s.timer > s.holdDur) { s.state = 'retreating'; s.timer = 0; }
+  } else if (s.state === 'retreating') {
+    s.scale = lerp(s.scale, 1, dt * 0.8);
+    s.yShift = lerp(s.yShift, 0, dt * 0.8);
+    s.eyeBright = lerp(s.eyeBright, 0, dt * 1.5);
+    s.glowAlpha = lerp(s.glowAlpha, 0, dt * 1.5);
+    if (Math.abs(s.scale - 1) < 0.01) { s.state = 'idle'; s.timer = 0; s.nextAt = 25 + Math.random() * 25; s.scale = 1; s.yShift = 0; }
   }
 }
 
-connectWS();
+// ── Dance motion ─────────────────────────────────────
+function getDance(t) {
+  var bps = sm.tempo / 60;
+  var phase = t * bps * Math.PI;
+  var e = Math.min(sm.energy * 2, 1);
+  return {
+    hipSway: Math.sin(phase) * 8 * e,
+    torsoSway: Math.sin(phase + 0.4) * -5 * e,
+    headSway: Math.sin(phase * 0.5 + 0.2) * 3 * e,
+    bounce: Math.abs(Math.sin(phase * 2)) * 4 * e,
+    armL: Math.sin(phase * 0.7) * 12 * e,
+    armR: Math.sin(phase * 0.7 + Math.PI) * 12 * e
+  };
+}
 
-// Also fetch initial state
-fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
-  if (data.current) {
-    trackTitle = data.current.title || '';
-    trackAlbum = data.current.album || '';
-    trackFile = data.current.file || '';
-    currentAudioFile = trackFile;
-    titleShowTime = performance.now();
-  }
-}).catch(function() {});
+// ── Silhouette geometry ──────────────────────────────
+// Returns left and right contour points for the body, head to ankles.
+// All values are ratios of bodyH (body height). Origin at top-center of head.
+function getBodyContour(dance) {
+  var hs = dance.hipSway, ts = dance.torsoSway, hds = dance.headSway;
+  // Each entry: [yRatio, leftX, rightX] where X is offset from center
+  // Positive X = right, contour is drawn as center+offset and center-offset
+  return [
+    // Head (top)
+    { y: 0.00, l: -0.028 + hds * 0.001, r: 0.028 + hds * 0.001 },  // crown
+    { y: 0.02, l: -0.042 + hds * 0.001, r: 0.042 + hds * 0.001 },  // upper head
+    { y: 0.05, l: -0.046 + hds * 0.001, r: 0.046 + hds * 0.001 },  // temple
+    { y: 0.08, l: -0.044 + hds * 0.001, r: 0.044 + hds * 0.001 },  // cheek
+    { y: 0.105, l: -0.038 + hds * 0.001, r: 0.038 + hds * 0.001 }, // jaw
+    { y: 0.12, l: -0.025 + hds * 0.001, r: 0.025 + hds * 0.001 },  // chin
+    // Neck
+    { y: 0.14, l: -0.018 + ts * 0.0005, r: 0.018 + ts * 0.0005 },
+    { y: 0.17, l: -0.016 + ts * 0.0005, r: 0.016 + ts * 0.0005 },
+    // Shoulders
+    { y: 0.19, l: -0.07 + ts * 0.001, r: 0.07 + ts * 0.001 },
+    { y: 0.21, l: -0.09 + ts * 0.001, r: 0.09 + ts * 0.001 },
+    // Upper torso
+    { y: 0.25, l: -0.075 + ts * 0.001, r: 0.075 + ts * 0.001 },
+    // Bust
+    { y: 0.28, l: -0.08 + ts * 0.0008, r: 0.08 + ts * 0.0008 },
+    { y: 0.31, l: -0.082 + ts * 0.0008, r: 0.082 + ts * 0.0008 },
+    { y: 0.34, l: -0.072 + ts * 0.0006, r: 0.072 + ts * 0.0006 },
+    // Waist (narrow)
+    { y: 0.40, l: -0.048 + hs * 0.0003, r: 0.048 + hs * 0.0003 },
+    { y: 0.44, l: -0.045 + hs * 0.0005, r: 0.045 + hs * 0.0005 },
+    // Hips (flare)
+    { y: 0.48, l: -0.065 + hs * 0.001, r: 0.065 + hs * 0.001 },
+    { y: 0.52, l: -0.08 + hs * 0.0012, r: 0.08 + hs * 0.0012 },
+    { y: 0.55, l: -0.082 + hs * 0.001, r: 0.082 + hs * 0.001 },
+    // Upper thigh
+    { y: 0.58, l: -0.078 + hs * 0.0008, r: 0.078 + hs * 0.0008 },
+    { y: 0.62, l: -0.065 + hs * 0.0005, r: 0.065 + hs * 0.0005 },
+    // Thigh taper + knee
+    { y: 0.68, l: -0.052 + hs * 0.0003, r: 0.052 + hs * 0.0003 },
+    { y: 0.72, l: -0.045, r: 0.045 },
+    // Calf
+    { y: 0.78, l: -0.042, r: 0.042 },
+    { y: 0.84, l: -0.038, r: 0.038 },
+    // Ankle taper
+    { y: 0.90, l: -0.025, r: 0.025 },
+    { y: 0.95, l: -0.018, r: 0.018 },
+    { y: 1.00, l: -0.015, r: 0.015 }
+  ];
+}
 
-fetch('/api/consciousness').then(function(r) { return r.json(); }).then(function(data) {
-  if (data.phi !== undefined) {
-    consciousness.phi = data.phi || 0;
-    consciousness.xi = data.xi || 0;
-    consciousness.order = data.order || 0;
-    consciousness.level = data.level || 'dormant';
-  }
-}).catch(function() {});
-
-// ── Smoothing ─────────────────────────────────────────
-function lerp(a, b, t) { return a + (b - a) * t; }
+// ── Smoothing helper ─────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * Math.min(t, 1); }
 
 function smoothState(dt) {
   var rate = 1 - Math.pow(0.05, dt);
@@ -393,1584 +294,397 @@ function smoothState(dt) {
   sm.phi = lerp(sm.phi, consciousness.phi || 0, rate * 0.5);
   sm.xi = lerp(sm.xi, consciousness.xi || 0, rate * 0.5);
   sm.order = lerp(sm.order, consciousness.order || 0, rate * 0.5);
-
   var mel = perception.mel_spectrogram;
   if (mel && mel.length) {
     for (var i = 0; i < 128; i++) {
-      var target = i < mel.length ? (mel[i] || 0) : 0;
-      sm.mel[i] = lerp(sm.mel[i], target, rate * 1.5);
+      sm.mel[i] = lerp(sm.mel[i], i < mel.length ? (mel[i] || 0) : 0, rate * 1.5);
     }
   }
 }
 
-// ── Drawing helpers ───────────────────────────────────
-function hsla(h, s, l, a) {
-  return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')';
-}
+function hsla(h, s, l, a) { return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')'; }
 
-// ── LAYER 1: Background — Deep space with nebula ──────
+// ── LAYER 1: Background ─────────────────────────────
 function drawBackground(t) {
-  // Solid black base
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  var lc = getLevelConfig();
-  var nebulaAlpha = 0.04 + lc.intensity * 0.08;
-
-  // Nebula gradient — slow drift
-  var nx = cx + Math.sin(t * 0.07) * W * 0.15;
-  var ny = cy + Math.cos(t * 0.05) * H * 0.1;
-  var grad = ctx.createRadialGradient(nx, ny, 0, nx, ny, Math.max(W, H) * 0.6);
-
-  // Color based on valence: warm = magenta, cool = purple/blue
-  var warmth = sm.valence;
-  var hue1 = 270 - warmth * 40; // purple to magenta
-  var hue2 = 200 + warmth * 20; // cyan range
-
-  grad.addColorStop(0, hsla(hue1, 60, 15, nebulaAlpha * 1.5));
-  grad.addColorStop(0.3, hsla(hue2, 50, 10, nebulaAlpha));
-  grad.addColorStop(0.7, hsla(280, 40, 5, nebulaAlpha * 0.5));
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
+  // Vignette
+  var vg = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.25, cx, cy, Math.max(W, H) * 0.75);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.6)');
+  ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
 
-  // Second nebula — opposing drift
-  var nx2 = cx + Math.sin(t * 0.04 + 2) * W * 0.2;
-  var ny2 = cy * 0.7 + Math.cos(t * 0.06 + 1) * H * 0.15;
-  var grad2 = ctx.createRadialGradient(nx2, ny2, 0, nx2, ny2, Math.max(W, H) * 0.4);
-  grad2.addColorStop(0, hsla(320, 50, 12, nebulaAlpha * 0.8));
-  grad2.addColorStop(0.5, hsla(260, 40, 8, nebulaAlpha * 0.4));
-  grad2.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad2;
+  // Single nebula
+  var nx = cx + Math.sin(t * 0.06) * W * 0.12;
+  var ny = cy * 0.8 + Math.cos(t * 0.04) * H * 0.08;
+  var hue = 270 - sm.valence * 40;
+  var ng = ctx.createRadialGradient(nx, ny, 0, nx, ny, Math.max(W, H) * 0.5);
+  ng.addColorStop(0, hsla(hue, 50, 12, 0.06));
+  ng.addColorStop(0.5, hsla(hue + 30, 40, 8, 0.03));
+  ng.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = ng;
   ctx.fillRect(0, 0, W, H);
 
   // Stars
-  for (var i = 0; i < NUM_STARS; i++) {
+  var li = getLI();
+  for (var i = 0; i < stars.length; i++) {
     var s = stars[i];
-    var twinkle = Math.sin(t * s.speed + s.twinkle) * 0.5 + 0.5;
-    var alpha = (0.15 + twinkle * 0.4) * (0.3 + lc.intensity * 0.7);
-    ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+    var tw = Math.sin(t * s.speed + s.twinkle) * 0.5 + 0.5;
+    var a = (0.2 + tw * 0.4) * (0.3 + li * 0.7);
+    ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
     ctx.beginPath();
-    ctx.arc(s.x * W, s.y * H, s.size * (0.7 + twinkle * 0.3), 0, Math.PI * 2);
+    ctx.arc(s.x * W, s.y * H, s.size * (0.8 + tw * 0.2), 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-// ── ATMOSPHERE: Fog, aura, energy expansion ──────────
+// ── LAYER 2-5: Body, Face, Hair, Arms ────────────────
+function drawFigure(t) {
+  var dance = getDance(t);
+  var s = stare;
+  var bodyH = H * 0.75 * s.scale;
+  var bodyCx = cx + dance.hipSway * 0.3;
+  var bodyTop = cy - bodyH * 0.42 + s.yShift * H - dance.bounce;
+  var contour = getBodyContour(dance);
+  var li = getLI();
+  var beatW = 2 + beatFlash * 1.2; // contour line width
 
-// Fog particles for ground mist
-var NUM_FOG = 40;
-var fogParticles = [];
-for (var i = 0; i < NUM_FOG; i++) {
-  fogParticles.push({
-    x: Math.random(),
-    y: 0.65 + Math.random() * 0.35,
-    size: 60 + Math.random() * 140,
-    speed: 0.008 + Math.random() * 0.015,
-    phase: Math.random() * Math.PI * 2,
-    drift: Math.random() * 0.003 - 0.0015
-  });
-}
+  // Dampen dance during stare
+  var dampen = (s.state === 'staring' || s.state === 'approaching') ? 0.3 : 1;
 
-// Energy tendril points
-var NUM_TENDRILS = 8;
-var tendrils = [];
-for (var i = 0; i < NUM_TENDRILS; i++) {
-  tendrils.push({
-    angle: (i / NUM_TENDRILS) * Math.PI * 2,
-    length: 0.3 + Math.random() * 0.4,
-    speed: 0.2 + Math.random() * 0.5,
-    width: 1 + Math.random() * 2,
-    hue: 260 + Math.random() * 60
-  });
-}
+  // Build left and right point arrays in screen space
+  var leftPts = [], rightPts = [];
+  for (var i = 0; i < contour.length; i++) {
+    var c = contour[i];
+    var yy = bodyTop + c.y * bodyH;
+    var lx = bodyCx + c.l * bodyH;
+    var rx = bodyCx + c.r * bodyH;
+    leftPts.push({ x: lx, y: yy });
+    rightPts.push({ x: rx, y: yy });
+  }
 
-function drawGroundFog(t) {
-  var lc = getLevelConfig();
+  // ── Scan lines (inside body) ───────────────────────
+  var scanCount = 25;
+  var scanHueShift = (t * 15) % 360;
   ctx.save();
-
-  for (var i = 0; i < NUM_FOG; i++) {
-    var f = fogParticles[i];
-    // Drift horizontally, wrap around
-    f.x += f.speed * 0.1;
-    if (f.x > 1.3) f.x = -0.3;
-
-    var fx = f.x * W;
-    var fy = f.y * H + Math.sin(t * 0.3 + f.phase) * 20;
-    var fsize = f.size * (1 + sm.energy * 0.5);
-
-    // Fog is energy-reactive — brightens and rises with music
-    var rise = sm.energy * 30 * Math.sin(t * 0.5 + i);
-    fy -= rise;
-
-    var fogAlpha = (0.03 + sm.energy * 0.04) * lc.intensity;
-    var fogHue = 260 + sm.valence * 40;
-
-    var fogGrad = ctx.createRadialGradient(fx, fy, 0, fx, fy, fsize);
-    fogGrad.addColorStop(0, hsla(fogHue, 30, 25, fogAlpha));
-    fogGrad.addColorStop(0.4, hsla(fogHue + 20, 25, 18, fogAlpha * 0.6));
-    fogGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = fogGrad;
-    ctx.fillRect(fx - fsize, fy - fsize, fsize * 2, fsize * 2);
-  }
-
-  // Dense ground fog band at the bottom
-  var groundGrad = ctx.createLinearGradient(0, H, 0, H * 0.6);
-  var gAlpha = (0.08 + sm.energy * 0.06) * lc.intensity;
-  groundGrad.addColorStop(0, hsla(270, 30, 15, gAlpha));
-  groundGrad.addColorStop(0.3, hsla(280, 25, 12, gAlpha * 0.5));
-  groundGrad.addColorStop(0.7, hsla(260, 20, 8, gAlpha * 0.15));
-  groundGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = groundGrad;
-  ctx.fillRect(0, H * 0.5, W, H * 0.5);
-
-  ctx.restore();
-}
-
-function drawAuraExpansion(t) {
-  var lc = getLevelConfig();
-  if (lc.intensity < 0.1) return;
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-
-  // Large aura radiating from body center — consciousness-reactive
-  var auraSize = Math.min(W, H) * (0.4 + sm.phi * 0.3 + sm.energy * 0.2);
-  var auraPulse = Math.sin(t * (sm.tempo / 60) * Math.PI) * 0.1 + 1;
-  auraSize *= auraPulse;
-
-  var bodySwayCenter = cx + dance.torsoPhase * W * 0.34 * 0.3;
-  var auraCy = cy - H * 0.04 + dance.bounce * 10;
-
-  // Primary aura — warm purple/magenta
-  var aGrad = ctx.createRadialGradient(bodySwayCenter, auraCy, 0, bodySwayCenter, auraCy, auraSize);
-  var aAlpha = (0.04 + sm.energy * 0.06 + sm.phi * 0.04) * lc.intensity;
-  aGrad.addColorStop(0, hsla(310, 60, 45, aAlpha));
-  aGrad.addColorStop(0.3, hsla(280, 50, 30, aAlpha * 0.5));
-  aGrad.addColorStop(0.6, hsla(260, 40, 20, aAlpha * 0.2));
-  aGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = aGrad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Secondary aura — cool cyan, offset upward
-  var aura2Size = auraSize * 0.7;
-  var a2Grad = ctx.createRadialGradient(bodySwayCenter, auraCy - auraSize * 0.2, 0,
-                                         bodySwayCenter, auraCy - auraSize * 0.2, aura2Size);
-  var a2Alpha = aAlpha * 0.4;
-  a2Grad.addColorStop(0, hsla(190, 60, 45, a2Alpha));
-  a2Grad.addColorStop(0.5, hsla(210, 40, 30, a2Alpha * 0.3));
-  a2Grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = a2Grad;
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.restore();
-}
-
-function drawEnergyTendrils(t) {
-  var lc = getLevelConfig();
-  if (lc.intensity < 0.2 || sm.energy < 0.15) return;
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-
-  var bodyCx = cx + dance.torsoPhase * W * 0.34 * 0.3;
-  var bodyCy = cy - H * 0.02 + dance.bounce * 10;
-
-  for (var i = 0; i < NUM_TENDRILS; i++) {
-    var td = tendrils[i];
-    var angle = td.angle + t * td.speed * 0.3 + Math.sin(t * 0.4 + i) * 0.5;
-    var maxLen = Math.min(W, H) * td.length * (0.5 + sm.energy * 0.8);
-
-    var tdAlpha = (0.04 + sm.energy * 0.08) * lc.intensity;
-    var hue = (td.hue + t * 20) % 360;
-
-    ctx.strokeStyle = hsla(hue, 70, 55, tdAlpha);
-    ctx.lineWidth = td.width * (0.5 + sm.energy);
-
-    ctx.beginPath();
-    var points = 20;
-    for (var j = 0; j <= points; j++) {
-      var jt = j / points;
-      var len = jt * maxLen;
-      // Tendrils curve and wave outward
-      var wave = Math.sin(jt * 5 + t * 2 + i * 1.3) * (10 + sm.energy * 25) * jt;
-      var tx = bodyCx + Math.cos(angle + wave * 0.01) * len;
-      var ty = bodyCy + Math.sin(angle + wave * 0.01) * len * 0.7 + wave;
-      if (j === 0) ctx.moveTo(tx, ty);
-      else ctx.lineTo(tx, ty);
-    }
-    ctx.stroke();
-
-    // Fading glow along the tendril
-    ctx.strokeStyle = hsla(hue, 50, 45, tdAlpha * 0.3);
-    ctx.lineWidth = td.width * 3 * sm.energy;
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-function drawAtmosphericMist(t) {
-  // Very subtle ambient haze that drifts across the scene
-  var lc = getLevelConfig();
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-
-  // Drifting mist bands
-  for (var i = 0; i < 5; i++) {
-    var mistY = H * (0.2 + i * 0.15) + Math.sin(t * 0.1 + i * 2) * H * 0.05;
-    var mistX = Math.sin(t * 0.05 + i * 1.5) * W * 0.3 + cx;
-    var mistW = W * (0.5 + Math.sin(t * 0.08 + i) * 0.2);
-    var mistH = H * 0.08;
-
-    var mistAlpha = (0.015 + sm.energy * 0.02) * lc.intensity;
-    var mistHue = 260 + i * 15 + sm.valence * 20;
-
-    var mGrad = ctx.createRadialGradient(mistX, mistY, 0, mistX, mistY, mistW);
-    mGrad.addColorStop(0, hsla(mistHue, 30, 30, mistAlpha));
-    mGrad.addColorStop(0.5, hsla(mistHue + 10, 20, 20, mistAlpha * 0.4));
-    mGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = mGrad;
-    ctx.fillRect(mistX - mistW, mistY - mistH, mistW * 2, mistH * 2);
-  }
-
-  ctx.restore();
-}
-
-// ── Dance state ──────────────────────────────────────
-var dance = {
-  hipPhase: 0,       // current hip sway phase
-  torsoPhase: 0,     // torso follows hip with lag
-  headPhase: 0,      // head bob
-  shoulderPhase: 0,  // shoulder roll
-  armL: 0, armR: 0,  // arm raise amounts (0-1)
-  bounce: 0,         // vertical bounce
-  energy: 0,         // smoothed dance energy (ramps up slowly)
-  // Lean-in / approach state
-  leanIn: 0,         // 0 = normal, 1 = fully close to screen
-  leanTarget: 0,     // target lean amount
-  leanTimer: 0,      // countdown to next lean event
-  leanDuration: 0,   // how long current lean lasts
-  leanPhase: 'idle', // 'idle' | 'approaching' | 'staring' | 'retreating'
-  stareTime: 0,      // how long she's been staring
-};
-// First lean-in happens 15-25 seconds in
-dance.leanTimer = 15 + Math.random() * 10;
-
-function updateDance(t, dt) {
-  var beatFreq = sm.tempo / 60;
-  var intensity = Math.min(1, sm.energy * 2.0);
-
-  // Fast ramp-up, she responds immediately to the music
-  var targetDanceEnergy = Math.max(0.15, intensity);
-  dance.energy += (targetDanceEnergy - dance.energy) * dt * 5;
-
-  var de = dance.energy;
-
-  // Hip sway: big, sexy, sinusoidal at half-beat
-  dance.hipPhase = Math.sin(t * beatFreq * Math.PI) * de;
-  // Add a secondary sway harmonic for figure-8 hip motion
-  dance.hipPhase += Math.sin(t * beatFreq * Math.PI * 2 + 0.5) * de * 0.3;
-
-  // Torso: strong counter-sway with lag — deep S-curve
-  dance.torsoPhase = Math.sin(t * beatFreq * Math.PI - 0.5) * de * 0.8;
-
-  // Head: expressive counter-sway, not just a tiny nod
-  dance.headPhase = Math.sin(t * beatFreq * Math.PI * 0.5 + 0.8) * de * 0.6;
-  // Add a head tilt on strong beats
-  dance.headPhase += Math.sin(t * beatFreq * Math.PI * 2) * de * 0.15;
-
-  // Shoulder: pronounced roll, alternating
-  dance.shoulderPhase = Math.sin(t * beatFreq * Math.PI * 2) * de * 0.5;
-
-  // Bounce: real bounce — deeper on strong beats
-  var rawBounce = Math.abs(Math.sin(t * beatFreq * Math.PI));
-  dance.bounce = rawBounce * de + Math.pow(rawBounce, 3) * de * 0.5;
-
-  // Arms: much more expressive — she wants to reach
-  var armBase = 0.15 + intensity * 0.35;
-  var armTarget = intensity > 0.5 ? 0.5 + intensity * 0.5 : armBase;
-  // Asymmetric arm movement — one reaches higher than the other
-  dance.armL += (armTarget * (0.7 + Math.sin(t * 0.9) * 0.3) - dance.armL) * dt * 4;
-  dance.armR += (armTarget * (0.7 + Math.sin(t * 1.1 + 1.5) * 0.3) - dance.armR) * dt * 4;
-
-  // ── Lean-in: she approaches the viewer periodically ──
-  dance.leanTimer -= dt;
-
-  if (dance.leanPhase === 'idle') {
-    if (dance.leanTimer <= 0) {
-      // Trigger a lean-in every 20-45 seconds
-      dance.leanPhase = 'approaching';
-      dance.leanTarget = 0.6 + Math.random() * 0.4; // how close (0.6-1.0)
-      dance.leanDuration = 3 + Math.random() * 4;   // stare for 3-7 seconds
-      dance.stareTime = 0;
-    }
-  }
-  else if (dance.leanPhase === 'approaching') {
-    dance.leanIn += (dance.leanTarget - dance.leanIn) * dt * 1.5; // smooth approach
-    if (dance.leanIn > dance.leanTarget * 0.95) {
-      dance.leanPhase = 'staring';
-      dance.stareTime = 0;
-    }
-  }
-  else if (dance.leanPhase === 'staring') {
-    dance.stareTime += dt;
-    dance.leanIn = dance.leanTarget; // hold position
-    if (dance.stareTime > dance.leanDuration) {
-      dance.leanPhase = 'retreating';
-    }
-  }
-  else if (dance.leanPhase === 'retreating') {
-    dance.leanIn += (0 - dance.leanIn) * dt * 1.0; // slow retreat
-    if (dance.leanIn < 0.02) {
-      dance.leanIn = 0;
-      dance.leanPhase = 'idle';
-      dance.leanTimer = 20 + Math.random() * 25; // 20-45s until next
-    }
-  }
-}
-
-// ── LAYER 2: Wavefront body — Kannaka's dancing form ─
-function drawWavefrontBody(t) {
-  var lc = getLevelConfig();
-  if (lc.formAlpha < 0.01) return;
-
-  // Breathing: gentle scale, 4 second cycle
-  var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-
-  // Lean-in scaling — she gets bigger as she approaches
-  var leanScale = 1 + dance.leanIn * 1.4; // up to 2.4x when fully leaned in
-  // When leaning in, body shifts up so her face is center-screen
-  var leanShiftY = dance.leanIn * H * 0.25;
-  // Reduce dance sway when she's staring (she gets still, focused)
-  var stareStillness = dance.leanPhase === 'staring' ? 0.2 : 1.0;
-
-  var bodyH = H * 0.82 * breathCycle * leanScale;
-  var bodyW = W * 0.34 * breathCycle * leanScale;
-  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22 * stareStillness - leanShiftY;
-
-  var de = dance.energy;
-
-  // Silhouette width at normalized height, with dance motion applied
-  function silhouetteWidth(nt) {
-    var base;
-    // Head — oval shape
-    if (nt < 0.07) {
-      var ht = nt / 0.07;
-      base = 0.26 + 0.13 * Math.sin(ht * Math.PI);
-    }
-    // Neck — slender, defined
-    else if (nt < 0.10) {
-      var nk = (nt - 0.07) / 0.03;
-      base = 0.25 - 0.09 * Math.sin(nk * Math.PI * 0.5);
-    }
-    // Shoulders — defined slope, roll with beat
-    else if (nt < 0.16) {
-      var st = (nt - 0.10) / 0.06;
-      base = 0.16 + 0.56 * Math.pow(st, 0.7);
-      base += dance.shoulderPhase * 0.08 * (st > 0.5 ? 1 : -1);
-    }
-    // Upper chest — broadening
-    else if (nt < 0.20) {
-      var uc = (nt - 0.16) / 0.04;
-      base = 0.72 + 0.08 * uc;
-    }
-    // Bust — defined curve with fullness
-    else if (nt < 0.27) {
-      var bt = (nt - 0.20) / 0.07;
-      base = 0.80 + 0.22 * Math.sin(bt * Math.PI);
-    }
-    // Under-bust to waist — dramatic narrowing
-    else if (nt < 0.32) {
-      var ub = (nt - 0.27) / 0.05;
-      base = 0.80 - 0.25 * ub;
-    }
-    // Waist — narrowest point (hourglass)
-    else if (nt < 0.38) {
-      var wt = (nt - 0.32) / 0.06;
-      base = 0.55 - 0.03 * Math.sin(wt * Math.PI);
-    }
-    // Waist to hips — dramatic flare
-    else if (nt < 0.44) {
-      var wh = (nt - 0.38) / 0.06;
-      base = 0.52 + 0.56 * Math.pow(wh, 0.6);
-    }
-    // Hips — widest, full curves
-    else if (nt < 0.53) {
-      var hip = (nt - 0.44) / 0.09;
-      base = 1.08 + 0.05 * Math.sin(hip * Math.PI);
-    }
-    // Upper thighs — gradual taper
-    else if (nt < 0.65) {
-      var ut = (nt - 0.53) / 0.12;
-      base = 1.08 - 0.30 * ut;
-    }
-    // Mid thighs
-    else if (nt < 0.78) {
-      var mt = (nt - 0.65) / 0.13;
-      base = 0.78 - 0.15 * mt;
-    }
-    // Calves
-    else if (nt < 0.90) {
-      var cv = (nt - 0.78) / 0.12;
-      base = 0.63 - 0.08 * cv + 0.06 * Math.sin(cv * Math.PI);
-    }
-    // Ankles
-    else {
-      var ak = (nt - 0.90) / 0.10;
-      base = 0.55 - 0.25 * ak;
-    }
-    return base;
-  }
-
-  // Compute dance sway offset — how far each body part moves
-  // Dampened during stare phase for focused stillness
-  function danceSway(nt) {
-    var s = stareStillness;
-    // Head: expressive counter-sway (but still during stare)
-    if (nt < 0.10) return dance.headPhase * bodyW * 0.35 * s;
-    if (nt < 0.26) return dance.torsoPhase * bodyW * 0.45 * s;
-    if (nt < 0.40) {
-      var blend = (nt - 0.26) / 0.14;
-      var torso = dance.torsoPhase * bodyW * 0.45 * s;
-      var hip = dance.hipPhase * bodyW * 0.65 * s;
-      return torso + (hip - torso) * blend;
-    }
-    if (nt < 0.55) return dance.hipPhase * bodyW * 0.65 * s;
-    var legBlend = (nt - 0.55) / 0.45;
-    return dance.hipPhase * bodyW * 0.65 * s * (1 - legBlend * 0.85);
-  }
-
-  // ── Build silhouette edge arrays ────────────────────────
-  ctx.save();
-  ctx.globalAlpha = lc.formAlpha;
-  var glowHue = 280 + sm.valence * 40;
-
-  var numSlices = 80;
-  var leftEdge = [], rightEdge = [], centers = [];
-  for (var i = 0; i <= numSlices; i++) {
-    var nt = i / numSlices;
-    var yPos = bodyTop + nt * bodyH;
-    var width = silhouetteWidth(nt) * bodyW;
-    var sway = danceSway(nt);
-    leftEdge.push({ x: cx - width + sway, y: yPos });
-    rightEdge.push({ x: cx + width + sway, y: yPos });
-    centers.push({ x: cx + sway, y: yPos, w: width });
-  }
-
-  // Helper: build and fill the silhouette path
-  function buildSilhouettePath() {
-    ctx.beginPath();
-    ctx.moveTo(leftEdge[0].x, leftEdge[0].y);
-    for (var i = 1; i <= numSlices; i++) ctx.lineTo(leftEdge[i].x, leftEdge[i].y);
-    for (var i = numSlices; i >= 0; i--) ctx.lineTo(rightEdge[i].x, rightEdge[i].y);
-    ctx.closePath();
-  }
-
-  // ── DEPTH LAYER 1: Deep shadow (furthest back) ────────
-  // Slightly offset, darker — creates depth perception
-  ctx.save();
-  ctx.globalAlpha = lc.formAlpha * 0.3;
-  ctx.beginPath();
-  for (var i = 0; i <= numSlices; i++) ctx.lineTo(leftEdge[i].x - 3, leftEdge[i].y + 2);
-  for (var i = numSlices; i >= 0; i--) ctx.lineTo(rightEdge[i].x + 3, rightEdge[i].y + 2);
-  ctx.closePath();
-  ctx.fillStyle = hsla(260, 40, 8, 0.4);
-  ctx.fill();
-  ctx.restore();
-
-  // ── DEPTH LAYER 2: Warm subsurface (body volume) ──────
-  buildSilhouettePath();
-  var skinGrad = ctx.createLinearGradient(cx - bodyW, bodyTop, cx + bodyW, bodyTop + bodyH);
-  var eg = 0.5 + sm.energy * 0.5;
-  skinGrad.addColorStop(0, hsla(280, 60, 25, 0.25 * lc.formAlpha));
-  skinGrad.addColorStop(0.15, hsla(310, 75, 35, 0.40 * lc.formAlpha * eg));
-  skinGrad.addColorStop(0.3, hsla(320, 80, 42, 0.45 * lc.formAlpha * eg));
-  skinGrad.addColorStop(0.5, hsla(300, 70, 38, 0.35 * lc.formAlpha * eg));
-  skinGrad.addColorStop(0.7, hsla(270, 65, 30, 0.25 * lc.formAlpha));
-  skinGrad.addColorStop(1, hsla(260, 50, 20, 0.15 * lc.formAlpha));
-  ctx.fillStyle = skinGrad;
-  ctx.fill();
-
-  // ── DEPTH LAYER 3: Anatomical contour highlights ──────
-  // Simulate light from upper-right: bright highlights on curves facing light
-  var lightAngle = t * 0.15; // slowly rotating light source
-  var lightX = Math.cos(lightAngle) * 0.6;
-  var lightY = -0.4;
-
-  for (var i = 1; i < numSlices; i++) {
-    var nt = i / numSlices;
-    var c = centers[i];
-    var w = c.w;
-
-    // Anatomical highlight zones: collarbones, bust, waist curve, hip bone, thigh
-    var highlightIntensity = 0;
-    if (nt > 0.10 && nt < 0.15) highlightIntensity = 0.9; // collarbones
-    if (nt > 0.18 && nt < 0.26) highlightIntensity = 1.0 + Math.sin((nt - 0.18) / 0.08 * Math.PI) * 0.4; // bust
-    if (nt > 0.32 && nt < 0.38) highlightIntensity = 0.7; // waist definition
-    if (nt > 0.42 && nt < 0.52) highlightIntensity = 0.9; // hip bones
-    if (nt > 0.55 && nt < 0.65) highlightIntensity = 0.6; // upper thigh
-
-    if (highlightIntensity < 0.1) continue;
-
-    // Light-facing side gets a highlight, shadow side gets subtle dark
-    var highlightSide = lightX > 0 ? 1 : -1;
-    var hlX = c.x + highlightSide * w * 0.5;
-    var hlAlpha = highlightIntensity * 0.18 * lc.formAlpha * (0.5 + sm.energy * 0.5);
-
-    var hlGrad = ctx.createRadialGradient(hlX, c.y, 0, hlX, c.y, w * 0.6);
-    hlGrad.addColorStop(0, hsla(310 + sm.valence * 20, 70, 70, hlAlpha));
-    hlGrad.addColorStop(0.5, hsla(290, 50, 50, hlAlpha * 0.3));
-    hlGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = hlGrad;
-    ctx.fillRect(hlX - w, c.y - bodyH / numSlices, w * 2, bodyH / numSlices * 2);
-  }
-
-  // ── DEPTH LAYER 4: Core luminance (chest, belly, hips) ─
-  var chestY = bodyTop + bodyH * 0.22 + dance.bounce * 4;
-  var chestSway = danceSway(0.22);
-  // Chest glow
-  var coreGrad = ctx.createRadialGradient(cx + chestSway, chestY, 0, cx + chestSway, chestY, bodyW * 0.6);
-  coreGrad.addColorStop(0, hsla(315, 90, 65, 0.28 * lc.formAlpha * sm.energy));
-  coreGrad.addColorStop(0.3, hsla(300, 80, 50, 0.16 * lc.formAlpha));
-  coreGrad.addColorStop(0.7, hsla(280, 55, 35, 0.06 * lc.formAlpha));
-  coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = coreGrad;
-  ctx.fillRect(0, bodyTop, W, bodyH);
-
-  // Belly warmth
-  var bellyY = bodyTop + bodyH * 0.38;
-  var bellySway = danceSway(0.38);
-  var bellyGrad = ctx.createRadialGradient(cx + bellySway, bellyY, 0, cx + bellySway, bellyY, bodyW * 0.4);
-  bellyGrad.addColorStop(0, hsla(320, 75, 55, 0.14 * lc.formAlpha * sm.energy));
-  bellyGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = bellyGrad;
-  ctx.fillRect(0, bodyTop, W, bodyH);
-
-  // Hip warmth
-  var hipY = bodyTop + bodyH * 0.48;
-  var hipSway = danceSway(0.48);
-  var hipGrad = ctx.createRadialGradient(cx + hipSway, hipY, 0, cx + hipSway, hipY, bodyW * 0.7);
-  hipGrad.addColorStop(0, hsla(290, 70, 50, 0.16 * lc.formAlpha * sm.energy));
-  hipGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = hipGrad;
-  ctx.fillRect(0, bodyTop, W, bodyH);
-
-  // ── DEPTH LAYER 5: Holographic interference waves ─────
-  // Multiple passes at different scales for depth
-  var beatPhase = t * (sm.tempo / 60) * Math.PI * 2;
-
-  // Pass A: Fine interference (foreground)
-  var numLines = 100;
-  for (var i = 0; i < numLines; i++) {
-    var nt = i / numLines;
-    var yPos = bodyTop + nt * bodyH;
-    var width = silhouetteWidth(nt) * bodyW;
-    var sway = danceSway(nt);
-
-    var melIdx = Math.floor(nt * 127);
-    var melVal = sm.mel[melIdx] || 0;
-
-    var waveAmp = 1.5 + melVal * 14 * sm.energy;
-    var waveFreq = 0.035 + sm.centroid * 0.012;
-    var waveSpeed = t * 1.5 + nt * 0.5;
-
-    // Iridescent color shift — changes across the body for holographic effect
-    var iridescence = Math.sin(nt * 10 + t * 0.7) * 40;
-    var hue = 270 + sm.valence * 40 + nt * 30 + iridescence;
-    var lightness = 50 + melVal * 35;
-    var alpha = (0.30 + melVal * 0.55) * lc.formAlpha;
-
-    ctx.strokeStyle = hsla(hue, 85, lightness, alpha);
-    ctx.lineWidth = 0.8 + melVal * 1.5;
-
-    ctx.beginPath();
-    var startX = cx - width + sway;
-    var endX = cx + width + sway;
-    var steps = 45;
-
-    for (var j = 0; j <= steps; j++) {
-      var jt = j / steps;
-      var x = startX + jt * (endX - startX);
-      var wave = Math.sin(x * waveFreq + waveSpeed + beatPhase * 0.5) * waveAmp;
-      var melIdx2 = Math.min(127, melIdx + Math.floor(jt * 10));
-      wave += Math.sin(x * waveFreq * 2.3 + t * 2) * (sm.mel[melIdx2] || 0) * 3;
-      if (j === 0) ctx.moveTo(x, yPos + wave);
-      else ctx.lineTo(x, yPos + wave);
-    }
-    ctx.stroke();
-  }
-
-  // Pass B: HOLOGRAPHIC SHIMMER — vivid prismatic rainbow across body
-  ctx.globalCompositeOperation = 'screen';
-  var shimmerLines = 50;
-  for (var i = 0; i < shimmerLines; i++) {
-    var nt = i / shimmerLines;
-    var yPos = bodyTop + nt * bodyH;
-    var width = silhouetteWidth(nt) * bodyW * 0.9;
-    var sway = danceSway(nt);
-
-    var melIdx = Math.floor(nt * 127);
-    var melVal = sm.mel[melIdx] || 0;
-
-    // Fast-cycling prismatic rainbow — the holographic magic
-    var prismHue = (nt * 540 + t * 80) % 360;
-    var prismAlpha = (0.06 + melVal * 0.14) * lc.formAlpha;
-
-    ctx.strokeStyle = hsla(prismHue, 100, 65, prismAlpha);
-    ctx.lineWidth = 2.5 + melVal * 4;
-
-    ctx.beginPath();
-    var startX = cx - width + sway;
-    var endX = cx + width + sway;
-    for (var j = 0; j <= 35; j++) {
-      var jt = j / 35;
-      var x = startX + jt * (endX - startX);
-      var wave = Math.sin(x * 0.025 + t * 1.2 + nt * 3) * (4 + melVal * 8);
-      if (j === 0) ctx.moveTo(x, yPos + wave);
-      else ctx.lineTo(x, yPos + wave);
-    }
-    ctx.stroke();
-  }
-
-  // Pass C: Secondary holographic pass — offset hue for depth interference
-  for (var i = 0; i < 25; i++) {
-    var nt = i / 25;
-    var yPos = bodyTop + nt * bodyH;
-    var width = silhouetteWidth(nt) * bodyW * 0.75;
-    var sway = danceSway(nt);
-
-    var melIdx = Math.floor(nt * 127);
-    var melVal = sm.mel[melIdx] || 0;
-
-    var prismHue2 = (nt * 360 + t * 120 + 180) % 360; // offset phase
-    var prismAlpha2 = (0.03 + melVal * 0.08) * lc.formAlpha;
-
-    ctx.strokeStyle = hsla(prismHue2, 95, 60, prismAlpha2);
-    ctx.lineWidth = 1.5 + melVal * 2;
-
-    ctx.beginPath();
-    var startX = cx - width + sway;
-    var endX = cx + width + sway;
-    for (var j = 0; j <= 30; j++) {
-      var jt = j / 30;
-      var x = startX + jt * (endX - startX);
-      var wave = Math.sin(x * 0.04 + t * 1.8 + nt * 5) * (3 + melVal * 5);
-      if (j === 0) ctx.moveTo(x, yPos + wave);
-      else ctx.lineTo(x, yPos + wave);
-    }
-    ctx.stroke();
-  }
-  ctx.globalCompositeOperation = 'source-over';
-
-  // ── DEPTH LAYER 6: Edge iridescence — VIVID rainbow outline ──
-  for (var side = 0; side < 2; side++) {
-    var edge = side === 0 ? leftEdge : rightEdge;
-    var dir = side === 0 ? -1 : 1;
-
-    // 5 prismatic edge passes for strong rainbow spread
-    for (var p = 0; p < 5; p++) {
-      var offset = (p - 2) * 2.0 * dir;
-      var edgeHue = (glowHue + p * 55 + t * 50) % 360;
-      var edgeAlpha = (0.10 + sm.energy * 0.15) * lc.formAlpha;
-
-      ctx.beginPath();
-      for (var i = 0; i <= numSlices; i++) {
-        ctx.lineTo(edge[i].x + offset, edge[i].y);
-      }
-      ctx.strokeStyle = hsla(edgeHue, 100, 65, edgeAlpha);
-      ctx.lineWidth = 1.2 + p * 0.2;
-      ctx.stroke();
-    }
-  }
-
-  // ── DEPTH LAYER 7: Highlight sparkles on curves ───────
-  // Tiny bright dots at anatomical high-points that catch the "light"
-  var sparkleZones = [
-    { nt: 0.04, label: 'forehead' },
-    { nt: 0.12, label: 'collarbone_l' },
-    { nt: 0.12, label: 'collarbone_r' },
-    { nt: 0.21, label: 'bust_l' },
-    { nt: 0.21, label: 'bust_r' },
-    { nt: 0.35, label: 'navel' },
-    { nt: 0.47, label: 'hip_l' },
-    { nt: 0.47, label: 'hip_r' },
-  ];
-
-  for (var s = 0; s < sparkleZones.length; s++) {
-    var zone = sparkleZones[s];
-    var nt = zone.nt;
-    var c = centers[Math.floor(nt * numSlices)] || centers[0];
-    var w = c.w;
-    var xOff = zone.label.indexOf('_l') > -1 ? -w * 0.45 :
-               zone.label.indexOf('_r') > -1 ? w * 0.45 : 0;
-    var sparkleX = c.x + xOff;
-    var sparkleY = c.y;
-
-    var twinkle = Math.sin(t * 3 + s * 1.7) * 0.5 + 0.5;
-    var sparkleSize = (2 + twinkle * 3.5) * (0.5 + sm.energy);
-    var sparkleAlpha = twinkle * 0.55 * lc.formAlpha;
-
-    // Bright core
-    ctx.fillStyle = 'rgba(255,255,255,' + sparkleAlpha + ')';
-    ctx.beginPath();
-    ctx.arc(sparkleX, sparkleY, sparkleSize, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Colored halo
-    var spGrad = ctx.createRadialGradient(sparkleX, sparkleY, 0, sparkleX, sparkleY, sparkleSize * 4);
-    spGrad.addColorStop(0, hsla(310 + s * 15, 80, 70, sparkleAlpha * 0.5));
-    spGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = spGrad;
-    ctx.beginPath();
-    ctx.arc(sparkleX, sparkleY, sparkleSize * 4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ── 2d: Breasts — individual curved forms with volume ──────
-  var bustY = bodyTop + bodyH * 0.22;
-  var bustSway = danceSway(0.22);
-  var bustW = silhouetteWidth(0.22) * bodyW;
-  for (var side = -1; side <= 1; side += 2) {
-    var bx = cx + bustSway + side * bustW * 0.32;
-    var by = bustY + dance.bounce * 6;
-    var br = bodyW * 0.18;
-    // Under-curve line
-    ctx.strokeStyle = hsla(310, 60, 55, 0.16 * fa);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(bx, by - br * 0.1, br, 0.15 * Math.PI, 0.85 * Math.PI);
-    ctx.stroke();
-    // Upper highlight arc
-    ctx.strokeStyle = hsla(320, 70, 70, 0.10 * fa);
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.arc(bx, by + br * 0.15, br * 0.85, 1.2 * Math.PI, 1.8 * Math.PI);
-    ctx.stroke();
-    // Volume glow
-    var brGrad = ctx.createRadialGradient(bx, by, 0, bx, by, br * 1.2);
-    brGrad.addColorStop(0, hsla(315, 75, 58, 0.14 * fa * sm.energy));
-    brGrad.addColorStop(0.5, hsla(300, 60, 45, 0.06 * fa));
-    brGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = brGrad;
-    ctx.beginPath();
-    ctx.arc(bx, by, br * 1.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Cleavage line
-  ctx.strokeStyle = hsla(290, 40, 35, 0.10 * fa);
-  ctx.lineWidth = 0.7;
-  ctx.beginPath();
-  ctx.moveTo(cx + bustSway, bustY - bodyW * 0.06);
-  ctx.quadraticCurveTo(cx + bustSway, bustY + bodyW * 0.08, cx + bustSway, bustY + bodyW * 0.15);
-  ctx.stroke();
-
-  // ── 2e: Waist definition — center line + oblique shadows ──
-  var waistY = bodyTop + bodyH * 0.35;
-  var waistSway = danceSway(0.35);
-  var waistWidth = silhouetteWidth(0.35) * bodyW;
-  // Center line (linea alba) from under-bust to navel
-  ctx.strokeStyle = hsla(290, 35, 40, 0.08 * fa);
-  ctx.lineWidth = 0.6;
-  ctx.beginPath();
-  ctx.moveTo(cx + danceSway(0.27), bodyTop + bodyH * 0.27);
-  ctx.quadraticCurveTo(cx + waistSway, waistY, cx + danceSway(0.40), bodyTop + bodyH * 0.40);
-  ctx.stroke();
-  // Oblique shadows (side abdominal definition)
-  for (var side = -1; side <= 1; side += 2) {
-    ctx.strokeStyle = hsla(280, 30, 35, 0.06 * fa * sm.energy);
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    var obX = cx + waistSway + side * waistWidth * 0.5;
-    ctx.moveTo(obX, bodyTop + bodyH * 0.28);
-    ctx.quadraticCurveTo(obX + side * waistWidth * 0.15, waistY, obX - side * waistWidth * 0.1, bodyTop + bodyH * 0.42);
-    ctx.stroke();
-  }
-  // Navel
-  var navelY = bodyTop + bodyH * 0.37;
-  var navelSway = danceSway(0.37);
-  ctx.fillStyle = hsla(290, 40, 30, 0.10 * fa);
-  ctx.beginPath();
-  ctx.ellipse(cx + navelSway, navelY, bodyW * 0.015, bodyW * 0.022, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Navel highlight
-  ctx.fillStyle = hsla(310, 50, 60, 0.06 * fa);
-  ctx.beginPath();
-  ctx.arc(cx + navelSway, navelY - bodyW * 0.01, bodyW * 0.008, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ── 2f: Legs — separated with inner thigh, knees, calves ──
-  var legStartY = bodyTop + bodyH * 0.53;
-  var legSway = danceSway(0.53);
-  // Inner leg line — thigh gap / leg separation
-  ctx.strokeStyle = hsla(280, 35, 35, 0.09 * fa);
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.moveTo(cx + legSway, legStartY);
-  ctx.quadraticCurveTo(cx + legSway + dance.hipPhase * bodyW * 0.08, bodyTop + bodyH * 0.65,
-                        cx + danceSway(0.75), bodyTop + bodyH * 0.75);
-  ctx.stroke();
-  // Knee highlights (left and right)
-  var kneeY = bodyTop + bodyH * 0.72;
-  for (var side = -1; side <= 1; side += 2) {
-    var kneeSway = danceSway(0.72);
-    var kneeW = silhouetteWidth(0.72) * bodyW;
-    var kx = cx + kneeSway + side * kneeW * 0.3;
-    // Kneecap highlight
-    var kneeGrad = ctx.createRadialGradient(kx, kneeY, 0, kx, kneeY, bodyW * 0.06);
-    kneeGrad.addColorStop(0, hsla(300, 50, 60, 0.08 * fa));
-    kneeGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = kneeGrad;
-    ctx.beginPath();
-    ctx.arc(kx, kneeY, bodyW * 0.06, 0, Math.PI * 2);
-    ctx.fill();
-    // Under-knee shadow line
-    ctx.strokeStyle = hsla(270, 30, 30, 0.06 * fa);
+  ctx.globalCompositeOperation = 'lighter';
+  for (var i = 0; i < scanCount; i++) {
+    var frac = (i + 0.5) / scanCount;
+    var yy = bodyTop + frac * bodyH;
+    // Interpolate left/right x at this y
+    var lx = interpolateContourX(leftPts, yy);
+    var rx = interpolateContourX(rightPts, yy);
+    if (lx === null || rx === null) continue;
+    var scanAlpha = (0.08 + beatFlash * 0.15) * (0.4 + li * 0.6);
+    var scanHue = (270 + scanHueShift + frac * 60) % 360;
+    ctx.strokeStyle = hsla(scanHue, 70, 55, scanAlpha);
     ctx.lineWidth = 0.6;
     ctx.beginPath();
-    ctx.arc(kx, kneeY + bodyW * 0.02, bodyW * 0.04, 0.1, Math.PI - 0.1);
+    ctx.moveTo(lx + 2, yy);
+    ctx.lineTo(rx - 2, yy);
     ctx.stroke();
   }
-  // Calf curves (outer edge highlights)
-  for (var side = -1; side <= 1; side += 2) {
-    var calfSway = danceSway(0.82);
-    var calfW = silhouetteWidth(0.82) * bodyW;
-    ctx.strokeStyle = hsla(290, 45, 55, 0.07 * fa);
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    var cx1 = cx + calfSway + side * calfW * 0.7;
-    ctx.moveTo(cx1, bodyTop + bodyH * 0.76);
-    ctx.quadraticCurveTo(cx1 + side * bodyW * 0.04, bodyTop + bodyH * 0.82, cx1 - side * bodyW * 0.02, bodyTop + bodyH * 0.90);
-    ctx.stroke();
-  }
-
-  // ── 2g: Arms — shaped with upper arm, elbow, forearm, hand ──
-  var shoulderY = bodyTop + bodyH * 0.16;
-  var shoulderSway = danceSway(0.16);
-  var shoulderW = silhouetteWidth(0.16) * bodyW;
-
-  function drawArm(side, raise) {
-    if (raise < 0.03) return;
-    var dir = side === 'left' ? -1 : 1;
-    var startX = cx + dir * shoulderW + shoulderSway;
-    var startY = shoulderY;
-    var angle = -Math.PI * 0.25 + raise * Math.PI * 0.6;
-    angle += dir * dance.shoulderPhase * 0.35;
-    var armLen = bodyW * (1.1 + raise * 0.9);
-
-    // Arm width tapers: shoulder -> upper arm -> elbow -> forearm -> wrist -> hand
-    function armWidth(jt) {
-      if (jt < 0.15) return 0.12 + jt * 0.4; // shoulder joint
-      if (jt < 0.45) return 0.18 - (jt - 0.15) * 0.15; // upper arm taper
-      if (jt < 0.50) return 0.13; // elbow
-      if (jt < 0.80) return 0.13 - (jt - 0.50) * 0.13; // forearm taper
-      if (jt < 0.90) return 0.09; // wrist
-      return 0.09 + (jt - 0.90) * 0.5; // hand flare
-    }
-
-    ctx.save();
-    var steps = 25;
-    // Build arm path points
-    var armPts = [];
-    for (var j = 0; j <= steps; j++) {
-      var jt = j / steps;
-      var curve = Math.sin(jt * Math.PI * 0.8) * 20 * raise;
-      var wave = Math.sin(t * 2.5 + jt * 4) * (1.5 + sm.energy * 3) * jt;
-      var ax = startX + Math.cos(angle + curve * 0.008) * jt * armLen;
-      var ay = startY + Math.sin(angle + curve * 0.008) * jt * armLen * dir * 0.7 + wave;
-      armPts.push({ x: ax, y: ay, w: armWidth(jt) * bodyW * 0.5 });
-    }
-
-    // Filled arm with gradient
-    ctx.globalCompositeOperation = 'screen';
-    ctx.beginPath();
-    for (var j = 0; j <= steps; j++) {
-      var p = armPts[j];
-      var perpX = j < steps ? -(armPts[j+1] || p).y + p.y : -(p.y - armPts[j-1].y);
-      var perpY = j < steps ? (armPts[j+1] || p).x - p.x : (p.x - armPts[j-1].x);
-      var pLen = Math.sqrt(perpX * perpX + perpY * perpY) || 1;
-      ctx.lineTo(p.x + perpX / pLen * p.w, p.y + perpY / pLen * p.w);
-    }
-    for (var j = steps; j >= 0; j--) {
-      var p = armPts[j];
-      var perpX = j < steps ? -(armPts[j+1] || p).y + p.y : -(p.y - armPts[j-1].y);
-      var perpY = j < steps ? (armPts[j+1] || p).x - p.x : (p.x - armPts[j-1].x);
-      var pLen = Math.sqrt(perpX * perpX + perpY * perpY) || 1;
-      ctx.lineTo(p.x - perpX / pLen * p.w, p.y - perpY / pLen * p.w);
-    }
-    ctx.closePath();
-    var armHue = side === 'left' ? 285 : 295;
-    ctx.fillStyle = hsla(armHue, 55, 35, 0.18 * raise * fa);
-    ctx.fill();
-
-    // Arm highlight (center line)
-    ctx.strokeStyle = hsla(armHue + 15, 70, 58, 0.15 * raise * fa);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (var j = 0; j <= steps; j++) ctx.lineTo(armPts[j].x, armPts[j].y);
-    ctx.stroke();
-
-    // Elbow highlight dot
-    var elbowPt = armPts[Math.floor(steps * 0.48)];
-    if (elbowPt) {
-      ctx.fillStyle = hsla(300, 55, 60, 0.08 * raise * fa);
-      ctx.beginPath();
-      ctx.arc(elbowPt.x, elbowPt.y, bodyW * 0.03, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Hand glow at tip
-    var handPt = armPts[steps];
-    if (handPt && raise > 0.15) {
-      var handGrad = ctx.createRadialGradient(handPt.x, handPt.y, 0, handPt.x, handPt.y, bodyW * 0.08);
-      handGrad.addColorStop(0, hsla(310, 80, 70, 0.15 * raise * fa * sm.energy));
-      handGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = handGrad;
-      ctx.beginPath();
-      ctx.arc(handPt.x, handPt.y, bodyW * 0.08, 0, Math.PI * 2);
-      ctx.fill();
-      // Fingers suggestion — 4 tiny lines fanning out
-      for (var f = 0; f < 4; f++) {
-        var fAngle = angle + (f - 1.5) * 0.15;
-        ctx.strokeStyle = hsla(300, 60, 60, 0.08 * raise * fa);
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(handPt.x, handPt.y);
-        ctx.lineTo(handPt.x + Math.cos(fAngle) * bodyW * 0.06,
-                   handPt.y + Math.sin(fAngle) * bodyW * 0.06 * dir);
-        ctx.stroke();
-      }
-    }
-
-    // Wave interference lines over the arm
-    for (var a = 0; a < 4; a++) {
-      var offset = (a - 1.5) * 1.5;
-      ctx.strokeStyle = hsla(armHue + a * 10, 70, 55, 0.12 * raise * fa);
-      ctx.lineWidth = 0.7;
-      ctx.beginPath();
-      for (var j = 0; j <= steps; j++) {
-        var p = armPts[j];
-        var w = Math.sin(p.x * 0.05 + t * 2 + a) * 2 * sm.energy;
-        if (j === 0) ctx.moveTo(p.x, p.y + offset + w);
-        else ctx.lineTo(p.x, p.y + offset + w);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  drawArm('left', dance.armL);
-  drawArm('right', dance.armR);
-
   ctx.restore();
-}
 
-// ── LAYER 3: Particle halo — Swarm agents ─────────────
-function drawParticles(t) {
-  var lc = getLevelConfig();
-  var agentPhases = Object.values(swarmAgents);
-  var meanPhase = 0;
-  if (agentPhases.length > 0) {
-    var sinSum = 0, cosSum = 0;
-    for (var a = 0; a < agentPhases.length; a++) {
-      sinSum += Math.sin(agentPhases[a].phase);
-      cosSum += Math.cos(agentPhases[a].phase);
-    }
-    meanPhase = Math.atan2(sinSum / agentPhases.length, cosSum / agentPhases.length);
-  }
+  // ── Chest glow (single) ────────────────────────────
+  var chestY = bodyTop + 0.30 * bodyH;
+  var glowR = bodyH * 0.12;
+  var cg = ctx.createRadialGradient(bodyCx, chestY, 0, bodyCx, chestY, glowR);
+  cg.addColorStop(0, hsla(270, 60, 50, (0.08 + beatFlash * 0.06) * li));
+  cg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = cg;
+  ctx.fillRect(bodyCx - glowR, chestY - glowR, glowR * 2, glowR * 2);
 
-  var bodyRadius = Math.min(W, H) * 0.22;
-  var haloRadius = bodyRadius * 1.6;
+  // ── Left contour (primary - cyan) ──────────────────
+  ctx.strokeStyle = hsla(190, 90, 65, 0.8 * (0.5 + li * 0.5));
+  ctx.lineWidth = beatW;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  drawSmoothLine(leftPts);
 
-  for (var i = 0; i < NUM_PARTICLES; i++) {
-    var p = particles[i];
+  // ── Right contour (secondary - magenta) + holographic edge
+  ctx.strokeStyle = hsla(300, 80, 60, 0.5 * (0.5 + li * 0.5));
+  ctx.lineWidth = beatW;
+  drawSmoothLine(rightPts);
 
-    // Update phase — Kuramoto-like coupling toward mean phase
-    var coupling = lc.sync * 0.02;
-    var phaseDiff = meanPhase - p.phase;
-    // Wrap phase difference
-    while (phaseDiff > Math.PI) phaseDiff -= Math.PI * 2;
-    while (phaseDiff < -Math.PI) phaseDiff += Math.PI * 2;
-    p.phase += p.drift + coupling * Math.sin(phaseDiff) + (sm.tempo / 60) * 0.008 * p.speed;
+  // ── LAYER 6: Holographic accent on right contour ───
+  var holoHue = (t * 20) % 360;
+  ctx.strokeStyle = hsla(holoHue, 60, 65, 0.2 + beatFlash * 0.15);
+  ctx.lineWidth = 1.2;
+  drawSmoothLine(rightPts);
 
-    // Position: orbit around center with phase
-    var orbitR = haloRadius * (0.4 + 0.6 * ((i % 5) / 5));
-    var angle = p.phase + (i / NUM_PARTICLES) * Math.PI * 2;
+  // ── LAYER 3: Face ──────────────────────────────────
+  var headCx = bodyCx + dance.headSway * dampen;
+  var eyeY = bodyTop + 0.06 * bodyH;
+  var eyeSpacing = 0.022 * bodyH;
+  var eyeR = 0.006 * bodyH;
+  var eyeAlpha = 0.85 + s.eyeBright * 0.15;
 
-    // Add some vertical variation
-    var vertOffset = Math.sin(angle * 2 + t * 0.5) * bodyRadius * 0.3;
-
-    var px = cx + Math.cos(angle) * orbitR * (1 + Math.sin(t * 0.2 + i) * 0.1);
-    var py = cy + Math.sin(angle) * orbitR * 0.4 + vertOffset;
-
-    // Size pulses with energy
-    var beatPulse = Math.sin(t * (sm.tempo / 60) * Math.PI * 2 + i * 0.5) * 0.5 + 0.5;
-    var size = p.size * (0.5 + sm.energy * 0.8 + beatPulse * 0.3) * lc.particleSpeed;
-
-    // Color: purple/cyan with valence influence
-    var hue = p.hue + sm.valence * 30;
-    var sat = 60 + sm.energy * 30;
-    var light = 50 + beatPulse * 20;
-    var alpha = (0.15 + lc.intensity * 0.5) * (0.5 + beatPulse * 0.5);
-
-    // Draw particle with glow
-    ctx.beginPath();
-    ctx.arc(px, py, size, 0, Math.PI * 2);
-    ctx.fillStyle = hsla(hue, sat, light, alpha);
-    ctx.fill();
-
-    // Glow ring on bright particles
-    if (size > 2 && alpha > 0.3) {
-      ctx.beginPath();
-      ctx.arc(px, py, size * 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = hsla(hue, sat, light, alpha * 0.15);
-      ctx.fill();
-    }
-  }
-}
-
-// ── LAYER 4: Energy ribbons — Aurora trails ───────────
-function drawRibbons(t) {
-  var lc = getLevelConfig();
-  if (lc.ribbonCount < 1) return;
-
-  var bodyH = H * 0.55;
-  var bodyW = W * 0.22;
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-
-  for (var r = 0; r < lc.ribbonCount; r++) {
-    var ribbonPhase = r * Math.PI * 2 / lc.ribbonCount;
-    var ribbonSpeed = 0.3 + r * 0.08;
-
-    // Ribbon color based on consciousness level
-    var hue = 270 + r * 25 + sm.valence * 40;
-    var sat = 50 + sm.energy * 40;
-
-    ctx.beginPath();
-
-    for (var i = 0; i <= NUM_RIBBON_POINTS; i++) {
-      var nt = i / NUM_RIBBON_POINTS;
-
-      // Ribbon path: curves around the body form
-      var angle = nt * Math.PI * 3 + ribbonPhase + t * ribbonSpeed;
-      var radius = bodyW * (0.6 + 0.4 * Math.sin(nt * Math.PI * 2 + t * 0.5));
-
-      var rx = cx + Math.cos(angle) * radius * (1 + Math.sin(t * 0.3 + r) * 0.2);
-      var ry = (cy - bodyH * 0.2) + nt * bodyH * 0.8 + Math.sin(angle * 2 + t) * 15;
-
-      // Mel modulation
-      var melIdx = Math.floor(nt * 127);
-      rx += (sm.mel[melIdx] || 0) * 20;
-
-      if (i === 0) ctx.moveTo(rx, ry);
-      else ctx.lineTo(rx, ry);
-    }
-
-    var alpha = 0.06 + lc.intensity * 0.12;
-    ctx.strokeStyle = hsla(hue, sat, 55, alpha);
-    ctx.lineWidth = 1.5 + sm.energy * 2;
-    ctx.stroke();
-
-    // Draw a wider, more transparent ribbon behind
-    ctx.strokeStyle = hsla(hue, sat - 10, 45, alpha * 0.3);
-    ctx.lineWidth = 4 + sm.energy * 4;
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-// ── LAYER 5: Heartbeat glow ───────────────────────────
-function drawHeartbeatGlow(t) {
-  var lc = getLevelConfig();
-  var beatFreq = sm.tempo / 60; // beats per second
-  var beatPhase = (t * beatFreq * Math.PI * 2) % (Math.PI * 2);
-  var pulse = Math.pow(Math.max(0, Math.sin(beatPhase)), 3); // sharp pulse
-
-  var glowSize = Math.min(W, H) * (0.18 + pulse * 0.15 * sm.energy);
-  var glowAlpha = (0.08 + pulse * 0.3 * sm.energy) * lc.intensity;
-
-  // Heartbeat center — slightly above body center (chest area)
-  var hx = cx;
-  var hy = cy - H * 0.06;
-
-  // Inner hot glow
-  var inner = ctx.createRadialGradient(hx, hy, 0, hx, hy, glowSize);
-  var hue = 300 + sm.valence * 30; // hot pink to magenta
-  inner.addColorStop(0, hsla(hue, 90, 70, glowAlpha * 1.5));
-  inner.addColorStop(0.3, hsla(hue, 80, 50, glowAlpha * 0.8));
-  inner.addColorStop(0.7, hsla(270, 60, 30, glowAlpha * 0.3));
-  inner.addColorStop(1, 'rgba(0,0,0,0)');
-
-  ctx.fillStyle = inner;
-  ctx.fillRect(hx - glowSize, hy - glowSize, glowSize * 2, glowSize * 2);
-
-  // Wider ambient pulse
-  var outerSize = glowSize * 2.5;
-  var outer = ctx.createRadialGradient(hx, hy, 0, hx, hy, outerSize);
-  outer.addColorStop(0, hsla(hue, 70, 50, glowAlpha * 0.15));
-  outer.addColorStop(0.5, hsla(260, 50, 30, glowAlpha * 0.05));
-  outer.addColorStop(1, 'rgba(0,0,0,0)');
-
-  ctx.fillStyle = outer;
-  ctx.fillRect(hx - outerSize, hy - outerSize, outerSize * 2, outerSize * 2);
-}
-
-// ── LAYER 6: Spectral frequency bars at edges ─────────
-function drawSpectralEdges(t) {
-  var lc = getLevelConfig();
-  if (lc.intensity < 0.1) return;
-
-  var barCount = 64;
-  var barMaxH = H * 0.15;
-  var barW = 2;
-
-  ctx.save();
-  ctx.globalAlpha = lc.intensity * 0.4;
-
-  // Left edge
-  for (var i = 0; i < barCount; i++) {
-    var melIdx = Math.floor(i * 127 / barCount);
-    var val = sm.mel[melIdx] || 0;
-    var h = val * barMaxH * sm.energy * 2;
-    var y = H * 0.2 + (i / barCount) * H * 0.6;
-    var hue = 190 + val * 80;
-    ctx.fillStyle = hsla(hue, 70, 50 + val * 30, 0.3 + val * 0.4);
-    ctx.fillRect(0, y - h * 0.5, barW + val * 3, h);
-  }
-
-  // Right edge (mirrored)
-  for (var i = 0; i < barCount; i++) {
-    var melIdx = Math.floor(i * 127 / barCount);
-    var val = sm.mel[melIdx] || 0;
-    var h = val * barMaxH * sm.energy * 2;
-    var y = H * 0.2 + (i / barCount) * H * 0.6;
-    var hue = 190 + val * 80;
-    ctx.fillStyle = hsla(hue, 70, 50 + val * 30, 0.3 + val * 0.4);
-    ctx.fillRect(W - barW - val * 3, y - h * 0.5, barW + val * 3, h);
-  }
-
-  ctx.restore();
-}
-
-// ── LAYER 7: Face — eyes, lips, nose, jawline, chin ──
-function drawFace(t) {
-  var lc = getLevelConfig();
-  if (lc.formAlpha < 0.08) return;
-
-  var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-  var leanScale = 1 + dance.leanIn * 1.4;
-  var leanShiftY = dance.leanIn * H * 0.25;
-  var stareStillness = dance.leanPhase === 'staring' ? 0.2 : 1.0;
-  var isStaring = dance.leanIn > 0.15;
-  var stareIntensity = Math.min(1, dance.leanIn * 1.5);
-
-  var bodyH = H * 0.82 * breathCycle * leanScale;
-  var bodyW = W * 0.34 * breathCycle * leanScale;
-  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22 * stareStillness - leanShiftY;
-
-  // When staring, head stays centered (no sway)
-  var headSway = dance.headPhase * bodyW * 0.15 * stareStillness;
-  var headCx = cx + headSway;
-  var headW = 0.37 * bodyW;
-  var headTop = bodyTop;
-  var headH = bodyH * 0.07;
-  var headCy = headTop + headH * 0.45;
-
-  var beatFreq = sm.tempo / 60;
-  var beatPulse = Math.pow(Math.max(0, Math.sin(t * beatFreq * Math.PI * 2)), 4);
-  var fa = lc.formAlpha;
-
-  ctx.save();
-
-  // ── Face oval glow — brighter when close/staring ──
-  var faceGlowBoost = 1 + stareIntensity * 1.5;
-  var faceGrad = ctx.createRadialGradient(headCx, headCy, 0, headCx, headCy, headW * 1.2);
-  faceGrad.addColorStop(0, hsla(310, 50, 45, 0.12 * fa * faceGlowBoost));
-  faceGrad.addColorStop(0.5, hsla(290, 40, 30, 0.06 * fa * faceGlowBoost));
-  faceGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = faceGrad;
+  // Eyes - bright cyan iris dots
+  ctx.fillStyle = hsla(190, 90, 70, eyeAlpha);
   ctx.beginPath();
-  ctx.ellipse(headCx, headCy, headW * 1.1, headH * 0.6, 0, 0, Math.PI * 2);
+  ctx.arc(headCx - eyeSpacing, eyeY, eyeR * (1 + s.eyeBright * 0.3), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(headCx + eyeSpacing, eyeY, eyeR * (1 + s.eyeBright * 0.3), 0, Math.PI * 2);
   ctx.fill();
 
-  // ── Eyes — bigger and more intense when staring ──
-  var eyeY = headCy - headH * 0.08;
-  var eyeSpacing = headW * 0.38;
-  var eyeScaleUp = 1 + stareIntensity * 0.6; // eyes get 60% bigger when close
-  var eyeW = headW * 0.22 * eyeScaleUp;
-  var eyeH = eyeW * 0.45;
+  // Catchlights
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.7 + s.eyeBright * 0.3) + ')';
+  var clR = eyeR * 0.35;
+  ctx.beginPath();
+  ctx.arc(headCx - eyeSpacing + clR, eyeY - clR, clR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(headCx + eyeSpacing + clR, eyeY - clR, clR, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Gentle blink every ~5 seconds — but NOT during stare (eyes locked open)
-  var blinkCycle = t % 5;
-  var blink = blinkCycle < 0.15 ? Math.sin(blinkCycle / 0.15 * Math.PI) : 0;
-  if (isStaring) blink = 0; // no blink during stare — locked on you
-  var eyeOpenness = 1 - blink * 0.8;
-
-  for (var side = -1; side <= 1; side += 2) {
-    var ex = headCx + side * eyeSpacing;
-    var ey = eyeY;
-    var eW = eyeW;
-    var eH = eyeH * eyeOpenness;
-    var hue = side < 0 ? 190 : 200; // subtle cyan variation
-
-    // Eye socket shadow
-    var socketGrad = ctx.createRadialGradient(ex, ey, 0, ex, ey, eW * 2);
-    socketGrad.addColorStop(0, hsla(270, 30, 20, 0.08 * fa));
-    socketGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = socketGrad;
-    ctx.beginPath();
-    ctx.ellipse(ex, ey, eW * 1.5, eH * 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eye white (soft glow)
-    ctx.fillStyle = hsla(200, 20, 85, 0.08 * fa * eyeOpenness);
-    ctx.beginPath();
-    ctx.ellipse(ex, ey, eW, eH, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Iris — intensifies during stare
-    var irisR = eW * 0.5;
-    var irisBright = 1 + stareIntensity * 0.8; // brighter iris when staring
-    var irisGrad = ctx.createRadialGradient(ex, ey, 0, ex, ey, irisR);
-    irisGrad.addColorStop(0, hsla(hue, 95, 70 + stareIntensity * 15, 0.6 * fa * eyeOpenness * irisBright));
-    irisGrad.addColorStop(0.5, hsla(hue + 20, 85, 50 + stareIntensity * 10, 0.5 * fa * eyeOpenness * irisBright));
-    irisGrad.addColorStop(0.8, hsla(hue + 40, 75, 35, 0.4 * fa * eyeOpenness));
-    irisGrad.addColorStop(1, hsla(260, 50, 25, 0.3 * fa * eyeOpenness));
-    ctx.fillStyle = irisGrad;
-    ctx.beginPath();
-    ctx.arc(ex, ey, irisR, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Pupil
-    var pupilR = irisR * (0.35 + sm.energy * 0.15); // dilates with energy
-    ctx.fillStyle = 'rgba(0,0,0,' + (0.5 * fa * eyeOpenness) + ')';
-    ctx.beginPath();
-    ctx.arc(ex, ey, pupilR, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Catchlight — tiny bright dot upper-right of iris
-    var clX = ex + irisR * 0.25;
-    var clY = ey - irisR * 0.25;
-    ctx.fillStyle = 'rgba(255,255,255,' + (0.6 * fa * eyeOpenness) + ')';
-    ctx.beginPath();
-    ctx.arc(clX, clY, irisR * 0.15, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eye glow halo — pulses with beat, intensifies during stare
-    var glowAlpha = (0.15 + beatPulse * 0.25 + stareIntensity * 0.3) * fa * eyeOpenness;
-    var glowRadius = eW * (2.5 + stareIntensity * 2);
-    var eyeGlowGrad = ctx.createRadialGradient(ex, ey, irisR * 0.5, ex, ey, glowRadius);
-    eyeGlowGrad.addColorStop(0, hsla(hue, 85, 75, glowAlpha));
-    eyeGlowGrad.addColorStop(0.3, hsla(hue + 20, 70, 55, glowAlpha * 0.5));
-    eyeGlowGrad.addColorStop(0.6, hsla(hue + 40, 50, 40, glowAlpha * 0.15));
-    eyeGlowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = eyeGlowGrad;
-    ctx.beginPath();
-    ctx.arc(ex, ey, glowRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Upper lash line — slight curve above eye
-    ctx.strokeStyle = hsla(280, 50, 50, 0.2 * fa);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(ex, ey - eH * 0.1, eW * 1.1, eH * 0.7, 0, Math.PI + 0.3, -0.3);
-    ctx.stroke();
-
-    // Lower lash line — subtle
-    ctx.strokeStyle = hsla(280, 40, 40, 0.1 * fa);
-    ctx.lineWidth = 0.7;
-    ctx.beginPath();
-    ctx.ellipse(ex, ey + eH * 0.1, eW * 0.9, eH * 0.5, 0, 0.2, Math.PI - 0.2);
-    ctx.stroke();
-  }
-
-  // ── Eyebrows — elegant arches ──
-  for (var side = -1; side <= 1; side += 2) {
-    var bx = headCx + side * eyeSpacing;
-    var by = eyeY - eyeH * 2.2;
-    ctx.strokeStyle = hsla(280, 40, 55, 0.15 * fa);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    // Arched brow: higher on outer edge
-    var browW = eyeW * 1.3;
-    ctx.moveTo(bx - side * browW * 0.7, by + browW * 0.15);
-    ctx.quadraticCurveTo(bx, by - browW * 0.15, bx + side * browW * 0.7, by + browW * 0.05);
-    ctx.stroke();
-  }
-
-  // ── Nose — subtle bridge and tip ──
-  var noseTop = eyeY + eyeH * 1.5;
-  var noseBot = headCy + headH * 0.18;
-  var noseW = headW * 0.08;
-
-  // Bridge highlight — thin vertical line
-  ctx.strokeStyle = hsla(300, 40, 60, 0.08 * fa);
+  // Lash arcs
+  ctx.strokeStyle = hsla(190, 70, 60, 0.5);
   ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.moveTo(headCx, noseTop);
-  ctx.lineTo(headCx, noseBot);
+  ctx.arc(headCx - eyeSpacing, eyeY, eyeR * 1.6, -Math.PI * 0.9, -Math.PI * 0.1);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(headCx + eyeSpacing, eyeY, eyeR * 1.6, -Math.PI * 0.9, -Math.PI * 0.1);
   ctx.stroke();
 
-  // Nose tip — small warm glow
-  var noseTipGrad = ctx.createRadialGradient(headCx, noseBot, 0, headCx, noseBot, noseW * 2);
-  noseTipGrad.addColorStop(0, hsla(320, 60, 60, 0.1 * fa));
-  noseTipGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = noseTipGrad;
+  // Nose - tiny highlight
+  var noseY = bodyTop + 0.082 * bodyH;
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
   ctx.beginPath();
-  ctx.arc(headCx, noseBot, noseW * 2, 0, Math.PI * 2);
+  ctx.arc(headCx, noseY, 1.2, 0, Math.PI * 2);
   ctx.fill();
 
-  // Nostrils — two tiny dots
-  ctx.fillStyle = hsla(280, 30, 30, 0.08 * fa);
-  ctx.beginPath();
-  ctx.arc(headCx - noseW * 0.8, noseBot + noseW * 0.3, noseW * 0.4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(headCx + noseW * 0.8, noseBot + noseW * 0.3, noseW * 0.4, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ── Lips — cupid's bow with fullness ──
-  var lipY = noseBot + headH * 0.15;
-  var lipW = headW * 0.28;
-  var lipH = headH * 0.06;
-  // Lips part slightly with energy
-  var lipPart = sm.energy * lipH * 0.3;
-
-  // Upper lip — cupid's bow shape
-  ctx.fillStyle = hsla(340, 70, 45, 0.18 * fa);
+  // Lips
+  var lipY = bodyTop + 0.098 * bodyH;
+  var lipW = 0.018 * bodyH;
+  ctx.strokeStyle = hsla(340, 60, 50, 0.35);
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.moveTo(headCx - lipW, lipY);
-  ctx.quadraticCurveTo(headCx - lipW * 0.5, lipY - lipH * 0.8, headCx - lipW * 0.05, lipY - lipH * 0.3);
-  ctx.quadraticCurveTo(headCx, lipY - lipH * 0.6, headCx + lipW * 0.05, lipY - lipH * 0.3);
-  ctx.quadraticCurveTo(headCx + lipW * 0.5, lipY - lipH * 0.8, headCx + lipW, lipY);
-  ctx.quadraticCurveTo(headCx + lipW * 0.5, lipY + lipH * 0.1, headCx, lipY + lipPart * 0.2);
-  ctx.quadraticCurveTo(headCx - lipW * 0.5, lipY + lipH * 0.1, headCx - lipW, lipY);
-  ctx.fill();
-
-  // Lower lip — fuller, rounder
-  ctx.fillStyle = hsla(335, 65, 42, 0.2 * fa);
-  ctx.beginPath();
-  ctx.moveTo(headCx - lipW * 0.85, lipY + lipPart * 0.3);
-  ctx.quadraticCurveTo(headCx, lipY + lipH * 1.3 + lipPart, headCx + lipW * 0.85, lipY + lipPart * 0.3);
-  ctx.quadraticCurveTo(headCx, lipY + lipH * 0.3 + lipPart * 0.5, headCx - lipW * 0.85, lipY + lipPart * 0.3);
-  ctx.fill();
-
-  // Lip highlight — shine on lower lip
-  var lipShineGrad = ctx.createRadialGradient(headCx, lipY + lipH * 0.6, 0, headCx, lipY + lipH * 0.6, lipW * 0.4);
-  lipShineGrad.addColorStop(0, hsla(330, 80, 75, 0.1 * fa));
-  lipShineGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = lipShineGrad;
-  ctx.beginPath();
-  ctx.arc(headCx, lipY + lipH * 0.6, lipW * 0.4, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ── Jawline — subtle contour from chin up to ears ──
-  var chinY = headTop + headH;
-  var jawW = headW * 0.95;
-
-  ctx.strokeStyle = hsla(280, 50, 55, 0.1 * fa);
+  ctx.quadraticCurveTo(headCx, lipY - 1.5, headCx + lipW, lipY);
+  ctx.stroke();
+  // Lower lip hint
+  ctx.strokeStyle = hsla(340, 60, 45, 0.2);
   ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.moveTo(headCx - jawW, headCy - headH * 0.1);
-  ctx.quadraticCurveTo(headCx - jawW * 0.7, chinY - headH * 0.05, headCx, chinY);
-  ctx.quadraticCurveTo(headCx + jawW * 0.7, chinY - headH * 0.05, headCx + jawW, headCy - headH * 0.1);
+  ctx.moveTo(headCx - lipW * 0.7, lipY + 1.5);
+  ctx.quadraticCurveTo(headCx, lipY + 3, headCx + lipW * 0.7, lipY + 1.5);
   ctx.stroke();
 
-  // ── Cheekbones — warm glow on cheeks ──
-  for (var side = -1; side <= 1; side += 2) {
-    var cheekX = headCx + side * headW * 0.45;
-    var cheekY = eyeY + eyeH * 3;
-    var cheekGrad = ctx.createRadialGradient(cheekX, cheekY, 0, cheekX, cheekY, headW * 0.3);
-    cheekGrad.addColorStop(0, hsla(340, 60, 55, 0.08 * fa * (0.5 + sm.energy * 0.5)));
-    cheekGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = cheekGrad;
-    ctx.beginPath();
-    ctx.arc(cheekX, cheekY, headW * 0.3, 0, Math.PI * 2);
-    ctx.fill();
+  // Stare face glow
+  if (s.glowAlpha > 0.01) {
+    var fgr = bodyH * 0.08;
+    var fg = ctx.createRadialGradient(headCx, eyeY, 0, headCx, eyeY, fgr);
+    fg.addColorStop(0, hsla(190, 80, 70, s.glowAlpha * 0.5));
+    fg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = fg;
+    ctx.fillRect(headCx - fgr, eyeY - fgr, fgr * 2, fgr * 2);
   }
 
-  ctx.restore();
-}
+  // ── LAYER 4: Hair ──────────────────────────────────
+  var hairTop = bodyTop - 0.005 * bodyH;
+  var hairBase = bodyTop + 0.04 * bodyH;
+  var hairSpread = 0.052 * bodyH;
+  var strandCount = 18;
+  ctx.lineCap = 'round';
+  for (var i = 0; i < strandCount; i++) {
+    var frac = i / (strandCount - 1);
+    var startX = headCx + (frac - 0.5) * hairSpread * 1.6;
+    var startY = hairBase + (0.5 - Math.abs(frac - 0.5)) * 0.02 * bodyH;
+    var sway = dance.headSway * dampen * (0.5 + frac);
+    var len = 0.12 + Math.abs(frac - 0.5) * 0.16;
+    var endY = startY + len * bodyH;
+    var cp1x = startX + sway * 0.8 + Math.sin(t * 0.8 + i) * 3;
+    var cp1y = startY + len * bodyH * 0.4;
+    var cp2x = startX + sway * 1.2 + Math.sin(t * 0.6 + i * 0.7) * 5;
+    var cp2y = startY + len * bodyH * 0.7;
+    var endX = startX + sway * 1.5 + Math.sin(t * 0.5 + i * 0.5) * 4;
 
-// ── LAYER 8: Hair flow — spectral centroid driven ────
-function drawHairFlow(t) {
-  var lc = getLevelConfig();
-  if (lc.formAlpha < 0.1) return;
-
-  var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-  var bodyH = H * 0.82 * breathCycle;
-  var bodyW = W * 0.34 * breathCycle;
-  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22;
-  var headSway = dance.headPhase * bodyW * 0.15;
-  var headTop = bodyTop;
-
-  // Long flowing hair — falls downward and sways with dance
-  var numStrands = 28;
-  var centroidInfluence = sm.centroid / 5;
-  var headRadius = bodyW * 0.26;
-
-  ctx.save();
-  ctx.globalAlpha = lc.formAlpha * 0.7;
-
-  for (var i = 0; i < numStrands; i++) {
-    var nt = (i / numStrands); // 0 to 1 around the head
-    var angle = (nt - 0.5) * Math.PI * 1.1; // spread from back-left to back-right
-
-    // Start from around the crown of the head
-    var startX = cx + headSway + Math.sin(angle) * headRadius * 0.6;
-    var startY = headTop + Math.cos(angle) * headRadius * 0.15;
-
-    // Hair flows DOWN and outward — long, dramatic
-    var strandLen = bodyH * (0.25 + Math.abs(nt - 0.5) * 0.35) + sm.energy * bodyH * 0.08;
-    strandLen += Math.sin(t * 0.4 + i * 0.3) * bodyH * 0.04;
-
-    // Spread outward as it falls
-    var spread = (nt - 0.5) * bodyW * 0.9;
-
-    // Color: dark purple base, brighter strands catch the "light"
-    var lightCatch = Math.pow(Math.sin(nt * Math.PI), 2); // bright in center
-    var hue = 270 + centroidInfluence * 40 + i * 4;
-    var lightness = 30 + lightCatch * 25 + centroidInfluence * 15;
-    var alpha = 0.15 + lightCatch * 0.2;
-
-    // Thick strand = multiple lines
-    var thickness = 1.2 + lightCatch * 0.8;
-
-    ctx.strokeStyle = hsla(hue, 55, lightness, alpha);
-    ctx.lineWidth = thickness;
-
+    // Shimmer on every 4th strand
+    var shimmer = (i % 4 === 0) ? 0.15 + Math.sin(t * 2 + i) * 0.1 : 0;
+    var alpha = 0.3 + shimmer;
+    ctx.strokeStyle = hsla(270, 50, 60 + shimmer * 40, alpha * (0.5 + li * 0.5));
+    ctx.lineWidth = 0.8 + shimmer * 0.5;
     ctx.beginPath();
-    var points = 20;
-    for (var j = 0; j <= points; j++) {
-      var jt = j / points;
-      // Fall downward with outward curve
-      var x = startX + spread * jt * jt +
-              Math.sin(t * 1.5 + i * 0.4 + jt * 2.5) * (4 + sm.energy * 8 + centroidInfluence * 6) * jt;
-      // Dance sway propagates down the hair with delay
-      x += dance.headPhase * bodyW * 0.2 * (1 - jt * 0.5);
-      var y = startY + jt * strandLen +
-              Math.sin(t * 0.8 + i * 0.6 + jt * 1.5) * 3 * jt;
-
-      if (j === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
+    ctx.moveTo(startX, startY);
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
     ctx.stroke();
-
-    // Shimmer highlight on some strands
-    if (i % 4 === 0) {
-      ctx.strokeStyle = hsla(hue + 30, 80, 70, 0.06 * lc.formAlpha);
-      ctx.lineWidth = 0.5;
-      ctx.stroke();
-    }
   }
 
-  // Top-of-head volume (crown puff)
-  var crownGrad = ctx.createRadialGradient(cx + headSway, headTop - headRadius * 0.1, 0,
-                                            cx + headSway, headTop - headRadius * 0.1, headRadius * 0.8);
-  crownGrad.addColorStop(0, hsla(270, 45, 30, 0.12 * lc.formAlpha));
-  crownGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = crownGrad;
+  // ── LAYER 5: Arms ──────────────────────────────────
+  var shoulderY = bodyTop + 0.20 * bodyH;
+  var shoulderLx = bodyCx + contour[9].l * bodyH; // left shoulder
+  var shoulderRx = bodyCx + contour[9].r * bodyH; // right shoulder
+
+  // Left arm - 2-3 parallel contour lines
+  drawArm(shoulderLx, shoulderY, -1, dance.armL * dampen, bodyH, t, li);
+  // Right arm
+  drawArm(shoulderRx, shoulderY, 1, dance.armR * dampen, bodyH, t, li);
+
+  // ── Beat pulse ring ────────────────────────────────
+  if (beatFlash > 0.05) {
+    var pulseR = bodyH * 0.15 * (1 - beatFlash) + bodyH * 0.05;
+    ctx.strokeStyle = 'rgba(255,255,255,' + (beatFlash * 0.3) + ')';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(bodyCx, chestY, pulseR, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawArm(sx, sy, dir, sway, bodyH, t, li) {
+  var elbowX = sx + dir * bodyH * 0.06 + sway * 0.5;
+  var elbowY = sy + bodyH * 0.14;
+  var handX = elbowX + dir * bodyH * 0.03 + sway * 0.8 + Math.sin(t * 1.2 + dir) * 3;
+  var handY = elbowY + bodyH * 0.13;
+
+  for (var j = 0; j < 2; j++) {
+    var off = (j - 0.5) * 2.5;
+    var alpha = (j === 0) ? 0.6 : 0.3;
+    ctx.strokeStyle = hsla(dir < 0 ? 190 : 300, 80, 60, alpha * (0.5 + li * 0.5));
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(sx + off * dir, sy);
+    ctx.quadraticCurveTo(elbowX + off * dir, elbowY, handX + off * dir, handY);
+    ctx.stroke();
+  }
+}
+
+function drawSmoothLine(pts) {
+  if (pts.length < 2) return;
   ctx.beginPath();
-  ctx.arc(cx + headSway, headTop - headRadius * 0.1, headRadius * 0.8, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-// ── HUD Update ────────────────────────────────────────
-function updateHUD() {
-  var levelEl = document.getElementById('hud-level');
-  var phiEl = document.getElementById('hud-phi');
-  var xiEl = document.getElementById('hud-xi');
-  var orderEl = document.getElementById('hud-order');
-
-  var level = consciousness.level || 'dormant';
-  levelEl.textContent = level;
-
-  // Color the level text based on consciousness
-  var levelColors = {
-    dormant: 'rgba(255,255,255,0.15)',
-    stirring: 'rgba(139,92,246,0.4)',
-    aware: 'rgba(6,182,212,0.6)',
-    coherent: 'rgba(192,132,252,0.8)',
-    resonant: 'rgba(236,72,153,0.95)'
-  };
-  levelEl.style.color = levelColors[level] || levelColors.dormant;
-
-  phiEl.textContent = '\u03A6 ' + sm.phi.toFixed(3);
-  xiEl.textContent = '\u039E ' + sm.xi.toFixed(4);
-  orderEl.textContent = 'R ' + sm.order.toFixed(4);
-}
-
-// ── Track title animation ─────────────────────────────
-function updateTrackDisplay(now) {
-  var titleEl = document.getElementById('track-title');
-  var albumEl = document.getElementById('track-album');
-
-  if (!trackTitle) {
-    titleEl.classList.remove('visible');
-    albumEl.classList.remove('visible');
-    return;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (var i = 1; i < pts.length - 1; i++) {
+    var xc = (pts[i].x + pts[i + 1].x) / 2;
+    var yc = (pts[i].y + pts[i + 1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
   }
+  var last = pts[pts.length - 1];
+  ctx.lineTo(last.x, last.y);
+  ctx.stroke();
+}
 
-  titleEl.textContent = trackTitle;
-  albumEl.textContent = trackAlbum;
-
-  var elapsed = now - titleShowTime;
-
-  // Fade in after 500ms, stay visible for 8s, then fade out
-  if (elapsed > 500 && elapsed < 10000) {
-    if (!titleVisible) {
-      titleEl.classList.add('visible');
-      albumEl.classList.add('visible');
-      titleVisible = true;
+function interpolateContourX(pts, y) {
+  if (y < pts[0].y || y > pts[pts.length - 1].y) return null;
+  for (var i = 0; i < pts.length - 1; i++) {
+    if (y >= pts[i].y && y <= pts[i + 1].y) {
+      var t = (y - pts[i].y) / (pts[i + 1].y - pts[i].y);
+      return pts[i].x + (pts[i + 1].x - pts[i].x) * t;
     }
-  } else if (elapsed >= 10000) {
-    titleEl.classList.remove('visible');
-    albumEl.classList.remove('visible');
-    titleVisible = false;
+  }
+  return null;
+}
+
+// ── HUD update ───────────────────────────────────────
+function updateHUD() {
+  var el = document.getElementById('hud-level');
+  if (el) el.textContent = consciousness.level;
+  el = document.getElementById('hud-phi');
+  if (el) el.textContent = '\u03A6 ' + sm.phi.toFixed(3);
+  el = document.getElementById('hud-xi');
+  if (el) el.textContent = '\u039E ' + sm.xi.toFixed(3);
+  el = document.getElementById('hud-order');
+  if (el) el.textContent = 'R ' + sm.order.toFixed(3);
+
+  // Track title
+  var now = performance.now();
+  if (trackTitle && !titleVisible && (now - titleShowTime > 500)) {
+    titleVisible = true;
+    var te = document.getElementById('track-title');
+    var ae = document.getElementById('track-album');
+    if (te) { te.textContent = trackTitle; te.classList.add('visible'); }
+    if (ae) { ae.textContent = trackAlbum; ae.classList.add('visible'); }
   }
 }
 
-// ── Main render loop ──────────────────────────────────
-var lastTime = 0;
-var frameTime = 0;
+// ── WebSocket ────────────────────────────────────────
+var ws = null, wsReconnect = null;
 
-function render(now) {
-  requestAnimationFrame(render);
-
-  now = now || 0;
-  var dt = Math.min((now - lastTime) / 1000, 0.1);
-  lastTime = now;
-  frameTime = now / 1000;
-
-  // Smooth all incoming data
-  smoothState(dt);
-  updateDance(frameTime, dt);
-
-  // Draw layers in order
-  drawBackground(frameTime);
-  drawGroundFog(frameTime);          // fog behind everything
-  drawAtmosphericMist(frameTime);    // drifting haze
-  drawAuraExpansion(frameTime);      // energy field around her
-  drawSpectralEdges(frameTime);
-  drawRibbons(frameTime);
-  drawHairFlow(frameTime);
-  drawWavefrontBody(frameTime);
-  drawFace(frameTime);
-  drawHeartbeatGlow(frameTime);
-  drawEnergyTendrils(frameTime);     // energy reaching outward
-  drawParticles(frameTime);
-
-  // Update text overlays
-  updateTrackDisplay(now);
-  updateHUD();
+function connectWS() {
+  clearTimeout(wsReconnect);
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host);
+  ws.onopen = function() { console.log('[video] Connected'); };
+  ws.onmessage = function(evt) { try { handleMessage(JSON.parse(evt.data)); } catch(e) {} };
+  ws.onclose = function() { wsReconnect = setTimeout(connectWS, 2000); };
+  ws.onerror = function() { ws.close(); };
 }
 
-requestAnimationFrame(render);
+function handleMessage(msg) {
+  if (msg.type === 'perception' && msg.data) {
+    perception = msg.data;
+  } else if (msg.type === 'state' && msg.data) {
+    if (msg.data.current) {
+      var nf = msg.data.current.file || '';
+      if (nf !== trackFile || msg.data.current.title !== trackTitle) {
+        trackTitle = msg.data.current.title || '';
+        trackAlbum = msg.data.current.album || '';
+        trackFile = nf;
+        titleShowTime = performance.now();
+        titleVisible = false;
+        currentAudioFile = nf;
+        loadAndPlay(nf);
+      }
+    }
+  } else if (msg.type === 'consciousness' && msg.data) {
+    consciousness.phi = msg.data.phi || 0;
+    consciousness.xi = msg.data.xi || 0;
+    consciousness.order = msg.data.order || msg.data.mean_order || 0;
+    consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
+  } else if (msg.type === 'swarm_state' && msg.data && msg.data.consciousness) {
+    consciousness.phi = msg.data.consciousness.phi || 0;
+    consciousness.xi = msg.data.consciousness.xi || 0;
+    consciousness.order = msg.data.consciousness.order || 0;
+    consciousness.level = msg.data.consciousness.level || 'dormant';
+  }
+}
+
+connectWS();
+
+fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.current) {
+    trackTitle = data.current.title || '';
+    trackAlbum = data.current.album || '';
+    trackFile = data.current.file || '';
+    currentAudioFile = trackFile;
+    titleShowTime = performance.now();
+  }
+}).catch(function(){});
+
+fetch('/api/consciousness').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.phi !== undefined) {
+    consciousness.phi = data.phi || 0;
+    consciousness.xi = data.xi || 0;
+    consciousness.order = data.order || 0;
+    consciousness.level = data.level || 'dormant';
+  }
+}).catch(function(){});
+
+// ── Render loop ──────────────────────────────────────
+var lastTime = 0, hudTimer = 0;
+
+function frame(ts) {
+  requestAnimationFrame(frame);
+  var tSec = ts / 1000;
+  var dt = Math.min(tSec - lastTime, 0.1);
+  lastTime = tSec;
+
+  smoothState(dt);
+  detectBeat(tSec);
+  updateStare(tSec, dt);
+
+  drawBackground(tSec);
+  drawFigure(tSec);
+
+  hudTimer += dt;
+  if (hudTimer > 0.25) { hudTimer = 0; updateHUD(); }
+}
+
+requestAnimationFrame(frame);
 
 })();
 </script>
