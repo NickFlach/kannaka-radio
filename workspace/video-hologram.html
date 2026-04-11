@@ -547,7 +547,7 @@ async function loadVRM() {
   if (bones.chest) bones.chest.scale.set(1.15, 1.0, 1.15);        // fuller chest/bust
   if (bones.upperChest) bones.upperChest.scale.set(1.05, 1.0, 1.05); // slight upper chest
   if (bones.neck) bones.neck.scale.set(0.85, 1.1, 0.85);          // slender neck, slightly longer
-  if (bones.head) bones.head.scale.set(0.92, 0.95, 0.92);         // slightly smaller head (proportional)
+  if (bones.head) bones.head.scale.set(0.001, 0.001, 0.001);      // collapse VRM head to nothing — our custom head replaces it
   if (bones.leftUpperArm) bones.leftUpperArm.scale.set(0.88, 1.0, 0.88);  // slimmer arms
   if (bones.rightUpperArm) bones.rightUpperArm.scale.set(0.88, 1.0, 0.88);
   if (bones.leftUpperLeg) bones.leftUpperLeg.scale.set(1.05, 1.08, 1.0);  // slightly longer, fuller thighs
