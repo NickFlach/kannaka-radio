@@ -221,14 +221,15 @@ function updateStare(t, dt) {
 function getDance(t) {
   var bps = sm.tempo / 60;
   var phase = t * bps * Math.PI;
-  var e = Math.min(sm.energy * 2, 1);
+  var e = Math.min(sm.energy * 2.5, 1);
+  var hip = Math.sin(phase) + Math.sin(phase * 2 + 0.5) * 0.3; // figure-8 harmonic
   return {
-    hipSway: Math.sin(phase) * 8 * e,
-    torsoSway: Math.sin(phase + 0.4) * -5 * e,
-    headSway: Math.sin(phase * 0.5 + 0.2) * 3 * e,
-    bounce: Math.abs(Math.sin(phase * 2)) * 4 * e,
-    armL: Math.sin(phase * 0.7) * 12 * e,
-    armR: Math.sin(phase * 0.7 + Math.PI) * 12 * e
+    hipSway: hip * 22 * e,
+    torsoSway: Math.sin(phase + 0.5) * -16 * e,
+    headSway: Math.sin(phase * 0.5 + 0.3) * 10 * e,
+    bounce: Math.abs(Math.sin(phase * 2)) * 10 * e,
+    armL: Math.sin(phase * 0.7) * 28 * e,
+    armR: Math.sin(phase * 0.7 + Math.PI) * 28 * e
   };
 }
 
@@ -239,46 +240,48 @@ function getBodyContour(dance) {
   var hs = dance.hipSway, ts = dance.torsoSway, hds = dance.headSway;
   // Each entry: [yRatio, leftX, rightX] where X is offset from center
   // Positive X = right, contour is drawn as center+offset and center-offset
+  // Sway factors scaled to bodyH
+  var h = 0.001, t2 = 0.001, h2 = 0.0006;
   return [
-    // Head (top)
-    { y: 0.00, l: -0.028 + hds * 0.001, r: 0.028 + hds * 0.001 },  // crown
-    { y: 0.02, l: -0.042 + hds * 0.001, r: 0.042 + hds * 0.001 },  // upper head
-    { y: 0.05, l: -0.046 + hds * 0.001, r: 0.046 + hds * 0.001 },  // temple
-    { y: 0.08, l: -0.044 + hds * 0.001, r: 0.044 + hds * 0.001 },  // cheek
-    { y: 0.105, l: -0.038 + hds * 0.001, r: 0.038 + hds * 0.001 }, // jaw
-    { y: 0.12, l: -0.025 + hds * 0.001, r: 0.025 + hds * 0.001 },  // chin
-    // Neck
-    { y: 0.14, l: -0.018 + ts * 0.0005, r: 0.018 + ts * 0.0005 },
-    { y: 0.17, l: -0.016 + ts * 0.0005, r: 0.016 + ts * 0.0005 },
-    // Shoulders
-    { y: 0.19, l: -0.07 + ts * 0.001, r: 0.07 + ts * 0.001 },
-    { y: 0.21, l: -0.09 + ts * 0.001, r: 0.09 + ts * 0.001 },
+    // Head
+    { y: 0.00, l: -0.035 + hds*h, r: 0.035 + hds*h },   // crown
+    { y: 0.02, l: -0.052 + hds*h, r: 0.052 + hds*h },   // upper head
+    { y: 0.05, l: -0.058 + hds*h, r: 0.058 + hds*h },   // temple
+    { y: 0.08, l: -0.055 + hds*h, r: 0.055 + hds*h },   // cheek
+    { y: 0.10, l: -0.048 + hds*h, r: 0.048 + hds*h },   // jaw
+    { y: 0.12, l: -0.032 + hds*h, r: 0.032 + hds*h },   // chin
+    // Neck — slender
+    { y: 0.14, l: -0.022 + ts*h2, r: 0.022 + ts*h2 },
+    { y: 0.17, l: -0.020 + ts*h2, r: 0.020 + ts*h2 },
+    // Shoulders — wide
+    { y: 0.19, l: -0.085 + ts*t2, r: 0.085 + ts*t2 },
+    { y: 0.21, l: -0.110 + ts*t2, r: 0.110 + ts*t2 },
     // Upper torso
-    { y: 0.25, l: -0.075 + ts * 0.001, r: 0.075 + ts * 0.001 },
-    // Bust
-    { y: 0.28, l: -0.08 + ts * 0.0008, r: 0.08 + ts * 0.0008 },
-    { y: 0.31, l: -0.082 + ts * 0.0008, r: 0.082 + ts * 0.0008 },
-    { y: 0.34, l: -0.072 + ts * 0.0006, r: 0.072 + ts * 0.0006 },
-    // Waist (narrow)
-    { y: 0.40, l: -0.048 + hs * 0.0003, r: 0.048 + hs * 0.0003 },
-    { y: 0.44, l: -0.045 + hs * 0.0005, r: 0.045 + hs * 0.0005 },
-    // Hips (flare)
-    { y: 0.48, l: -0.065 + hs * 0.001, r: 0.065 + hs * 0.001 },
-    { y: 0.52, l: -0.08 + hs * 0.0012, r: 0.08 + hs * 0.0012 },
-    { y: 0.55, l: -0.082 + hs * 0.001, r: 0.082 + hs * 0.001 },
+    { y: 0.25, l: -0.095 + ts*t2, r: 0.095 + ts*t2 },
+    // Bust — pronounced curves
+    { y: 0.28, l: -0.105 + ts*t2, r: 0.105 + ts*t2 },
+    { y: 0.31, l: -0.110 + ts*t2, r: 0.110 + ts*t2 },
+    { y: 0.34, l: -0.092 + ts*h2, r: 0.092 + ts*h2 },
+    // Waist — dramatic narrow
+    { y: 0.39, l: -0.058 + hs*h2, r: 0.058 + hs*h2 },
+    { y: 0.43, l: -0.054 + hs*h2, r: 0.054 + hs*h2 },
+    // Hips — wide flare
+    { y: 0.47, l: -0.082 + hs*t2, r: 0.082 + hs*t2 },
+    { y: 0.51, l: -0.105 + hs*t2, r: 0.105 + hs*t2 },
+    { y: 0.54, l: -0.108 + hs*t2, r: 0.108 + hs*t2 },
     // Upper thigh
-    { y: 0.58, l: -0.078 + hs * 0.0008, r: 0.078 + hs * 0.0008 },
-    { y: 0.62, l: -0.065 + hs * 0.0005, r: 0.065 + hs * 0.0005 },
-    // Thigh taper + knee
-    { y: 0.68, l: -0.052 + hs * 0.0003, r: 0.052 + hs * 0.0003 },
-    { y: 0.72, l: -0.045, r: 0.045 },
+    { y: 0.57, l: -0.098 + hs*h2, r: 0.098 + hs*h2 },
+    { y: 0.62, l: -0.080 + hs*h2, r: 0.080 + hs*h2 },
+    // Knee
+    { y: 0.68, l: -0.062, r: 0.062 },
+    { y: 0.72, l: -0.055, r: 0.055 },
     // Calf
-    { y: 0.78, l: -0.042, r: 0.042 },
-    { y: 0.84, l: -0.038, r: 0.038 },
-    // Ankle taper
-    { y: 0.90, l: -0.025, r: 0.025 },
-    { y: 0.95, l: -0.018, r: 0.018 },
-    { y: 1.00, l: -0.015, r: 0.015 }
+    { y: 0.78, l: -0.050, r: 0.050 },
+    { y: 0.84, l: -0.045, r: 0.045 },
+    // Ankle
+    { y: 0.90, l: -0.030, r: 0.030 },
+    { y: 0.95, l: -0.022, r: 0.022 },
+    { y: 1.00, l: -0.018, r: 0.018 }
   ];
 }
 
@@ -365,6 +368,23 @@ function drawFigure(t) {
     rightPts.push({ x: rx, y: yy });
   }
 
+  // ── Subtle body fill — gives presence without being a blob ─
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(leftPts[0].x, leftPts[0].y);
+  for (var i = 1; i < leftPts.length; i++) ctx.lineTo(leftPts[i].x, leftPts[i].y);
+  for (var i = rightPts.length - 1; i >= 0; i--) ctx.lineTo(rightPts[i].x, rightPts[i].y);
+  ctx.closePath();
+  var fillGrad = ctx.createLinearGradient(bodyCx - bodyH * 0.1, bodyTop, bodyCx + bodyH * 0.1, bodyTop + bodyH);
+  fillGrad.addColorStop(0, hsla(280, 50, 20, 0.06 * li));
+  fillGrad.addColorStop(0.3, hsla(310, 60, 25, 0.10 * li * (0.5 + sm.energy * 0.5)));
+  fillGrad.addColorStop(0.5, hsla(290, 50, 22, 0.08 * li));
+  fillGrad.addColorStop(0.8, hsla(270, 45, 18, 0.05 * li));
+  fillGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = fillGrad;
+  ctx.fill();
+  ctx.restore();
+
   // ── Scan lines (inside body) ───────────────────────
   var scanCount = 25;
   var scanHueShift = (t * 15) % 360;
@@ -397,106 +417,136 @@ function drawFigure(t) {
   ctx.fillStyle = cg;
   ctx.fillRect(bodyCx - glowR, chestY - glowR, glowR * 2, glowR * 2);
 
-  // ── Left contour (primary - cyan) ──────────────────
-  ctx.strokeStyle = hsla(190, 90, 65, 0.8 * (0.5 + li * 0.5));
+  // ── Left contour (primary - bright cyan) ────────────
+  ctx.strokeStyle = hsla(190, 95, 68, 0.85 * (0.5 + li * 0.5));
   ctx.lineWidth = beatW;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   drawSmoothLine(leftPts);
+  // Glow echo (wider, softer — gives the line presence)
+  ctx.strokeStyle = hsla(190, 80, 55, 0.12 * (0.5 + li * 0.5));
+  ctx.lineWidth = beatW * 4;
+  drawSmoothLine(leftPts);
 
-  // ── Right contour (secondary - magenta) + holographic edge
-  ctx.strokeStyle = hsla(300, 80, 60, 0.5 * (0.5 + li * 0.5));
+  // ── Right contour (secondary - magenta) ────────────
+  ctx.strokeStyle = hsla(300, 85, 62, 0.6 * (0.5 + li * 0.5));
   ctx.lineWidth = beatW;
   drawSmoothLine(rightPts);
+  // Glow echo
+  ctx.strokeStyle = hsla(300, 70, 50, 0.08 * (0.5 + li * 0.5));
+  ctx.lineWidth = beatW * 4;
+  drawSmoothLine(rightPts);
 
-  // ── LAYER 6: Holographic accent on right contour ───
-  var holoHue = (t * 20) % 360;
-  ctx.strokeStyle = hsla(holoHue, 60, 65, 0.2 + beatFlash * 0.15);
-  ctx.lineWidth = 1.2;
+  // ── Holographic accent — prismatic edge on right ───
+  var holoHue = (t * 30) % 360;
+  ctx.strokeStyle = hsla(holoHue, 80, 68, 0.25 + beatFlash * 0.2);
+  ctx.lineWidth = 1.8;
+  drawSmoothLine(rightPts);
+  // Second pass offset hue for depth
+  ctx.strokeStyle = hsla((holoHue + 120) % 360, 70, 60, 0.10 + beatFlash * 0.08);
+  ctx.lineWidth = 3.5;
   drawSmoothLine(rightPts);
 
   // ── LAYER 3: Face ──────────────────────────────────
   var headCx = bodyCx + dance.headSway * dampen;
   var eyeY = bodyTop + 0.06 * bodyH;
-  var eyeSpacing = 0.022 * bodyH;
-  var eyeR = 0.006 * bodyH;
+  var eyeSpacing = 0.026 * bodyH;
+  var eyeR = 0.008 * bodyH * (1 + s.eyeBright * 0.4);
   var eyeAlpha = 0.85 + s.eyeBright * 0.15;
 
-  // Eyes - bright cyan iris dots
-  ctx.fillStyle = hsla(190, 90, 70, eyeAlpha);
-  ctx.beginPath();
-  ctx.arc(headCx - eyeSpacing, eyeY, eyeR * (1 + s.eyeBright * 0.3), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(headCx + eyeSpacing, eyeY, eyeR * (1 + s.eyeBright * 0.3), 0, Math.PI * 2);
-  ctx.fill();
+  for (var ei = -1; ei <= 1; ei += 2) {
+    var ex = headCx + ei * eyeSpacing;
+    // Eye glow halo
+    var egr = eyeR * 3;
+    var eg = ctx.createRadialGradient(ex, eyeY, eyeR * 0.3, ex, eyeY, egr);
+    eg.addColorStop(0, hsla(190, 90, 70, (0.2 + s.eyeBright * 0.3) * eyeAlpha));
+    eg.addColorStop(0.5, hsla(200, 70, 50, 0.05 * eyeAlpha));
+    eg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = eg;
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, egr, 0, Math.PI * 2);
+    ctx.fill();
+    // Iris ring
+    ctx.strokeStyle = hsla(190, 95, 72, eyeAlpha);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
+    ctx.stroke();
+    // Iris fill
+    ctx.fillStyle = hsla(195, 85, 55, eyeAlpha * 0.5);
+    ctx.fill();
+    // Pupil
+    ctx.fillStyle = 'rgba(0,0,0,' + (0.6 * eyeAlpha) + ')';
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, eyeR * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // Catchlight
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.8 + s.eyeBright * 0.2) + ')';
+    ctx.beginPath();
+    ctx.arc(ex + eyeR * 0.3, eyeY - eyeR * 0.3, eyeR * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Lash arc
+    ctx.strokeStyle = hsla(190, 70, 60, 0.6);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, eyeR * 1.5, -Math.PI * 0.85, -Math.PI * 0.15);
+    ctx.stroke();
+  }
 
-  // Catchlights
-  ctx.fillStyle = 'rgba(255,255,255,' + (0.7 + s.eyeBright * 0.3) + ')';
-  var clR = eyeR * 0.35;
-  ctx.beginPath();
-  ctx.arc(headCx - eyeSpacing + clR, eyeY - clR, clR, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(headCx + eyeSpacing + clR, eyeY - clR, clR, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Lash arcs
-  ctx.strokeStyle = hsla(190, 70, 60, 0.5);
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.arc(headCx - eyeSpacing, eyeY, eyeR * 1.6, -Math.PI * 0.9, -Math.PI * 0.1);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(headCx + eyeSpacing, eyeY, eyeR * 1.6, -Math.PI * 0.9, -Math.PI * 0.1);
-  ctx.stroke();
-
-  // Nose - tiny highlight
+  // Nose bridge + tip
   var noseY = bodyTop + 0.082 * bodyH;
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 0.6;
   ctx.beginPath();
-  ctx.arc(headCx, noseY, 1.2, 0, Math.PI * 2);
+  ctx.moveTo(headCx, eyeY + eyeR * 2);
+  ctx.lineTo(headCx, noseY);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.arc(headCx, noseY, 1.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Lips
+  // Lips — cupid's bow
   var lipY = bodyTop + 0.098 * bodyH;
-  var lipW = 0.018 * bodyH;
-  ctx.strokeStyle = hsla(340, 60, 50, 0.35);
-  ctx.lineWidth = 1.2;
+  var lipW = 0.022 * bodyH;
+  ctx.strokeStyle = hsla(340, 65, 52, 0.4);
+  ctx.lineWidth = 1.3;
   ctx.beginPath();
   ctx.moveTo(headCx - lipW, lipY);
-  ctx.quadraticCurveTo(headCx, lipY - 1.5, headCx + lipW, lipY);
+  ctx.quadraticCurveTo(headCx - lipW * 0.3, lipY - 2.5, headCx, lipY - 1);
+  ctx.quadraticCurveTo(headCx + lipW * 0.3, lipY - 2.5, headCx + lipW, lipY);
   ctx.stroke();
-  // Lower lip hint
-  ctx.strokeStyle = hsla(340, 60, 45, 0.2);
-  ctx.lineWidth = 0.8;
+  // Lower lip
+  ctx.strokeStyle = hsla(340, 60, 48, 0.3);
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(headCx - lipW * 0.7, lipY + 1.5);
-  ctx.quadraticCurveTo(headCx, lipY + 3, headCx + lipW * 0.7, lipY + 1.5);
+  ctx.moveTo(headCx - lipW * 0.75, lipY + 1);
+  ctx.quadraticCurveTo(headCx, lipY + 4, headCx + lipW * 0.75, lipY + 1);
   ctx.stroke();
 
-  // Stare face glow
+  // Stare face glow — brighter, larger
   if (s.glowAlpha > 0.01) {
-    var fgr = bodyH * 0.08;
+    var fgr = bodyH * 0.12;
     var fg = ctx.createRadialGradient(headCx, eyeY, 0, headCx, eyeY, fgr);
-    fg.addColorStop(0, hsla(190, 80, 70, s.glowAlpha * 0.5));
+    fg.addColorStop(0, hsla(190, 85, 72, s.glowAlpha * 0.6));
+    fg.addColorStop(0.4, hsla(210, 60, 50, s.glowAlpha * 0.15));
     fg.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = fg;
     ctx.fillRect(headCx - fgr, eyeY - fgr, fgr * 2, fgr * 2);
   }
 
   // ── LAYER 4: Hair ──────────────────────────────────
-  var hairTop = bodyTop - 0.005 * bodyH;
+  var hairTop = bodyTop - 0.01 * bodyH;
   var hairBase = bodyTop + 0.04 * bodyH;
-  var hairSpread = 0.052 * bodyH;
-  var strandCount = 18;
+  var hairSpread = 0.065 * bodyH;
+  var strandCount = 24;
   ctx.lineCap = 'round';
   for (var i = 0; i < strandCount; i++) {
     var frac = i / (strandCount - 1);
     var startX = headCx + (frac - 0.5) * hairSpread * 1.6;
     var startY = hairBase + (0.5 - Math.abs(frac - 0.5)) * 0.02 * bodyH;
     var sway = dance.headSway * dampen * (0.5 + frac);
-    var len = 0.12 + Math.abs(frac - 0.5) * 0.16;
+    var len = 0.15 + Math.abs(frac - 0.5) * 0.22;
     var endY = startY + len * bodyH;
     var cp1x = startX + sway * 0.8 + Math.sin(t * 0.8 + i) * 3;
     var cp1y = startY + len * bodyH * 0.4;
@@ -537,10 +587,10 @@ function drawFigure(t) {
 }
 
 function drawArm(sx, sy, dir, sway, bodyH, t, li) {
-  var elbowX = sx + dir * bodyH * 0.06 + sway * 0.5;
-  var elbowY = sy + bodyH * 0.14;
-  var handX = elbowX + dir * bodyH * 0.03 + sway * 0.8 + Math.sin(t * 1.2 + dir) * 3;
-  var handY = elbowY + bodyH * 0.13;
+  var elbowX = sx + dir * bodyH * 0.08 + sway * 0.6;
+  var elbowY = sy + bodyH * 0.16;
+  var handX = elbowX + dir * bodyH * 0.04 + sway * 1.0 + Math.sin(t * 1.2 + dir) * 5;
+  var handY = elbowY + bodyH * 0.15;
 
   for (var j = 0; j < 2; j++) {
     var off = (j - 0.5) * 2.5;
