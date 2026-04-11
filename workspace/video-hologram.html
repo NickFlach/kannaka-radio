@@ -589,28 +589,13 @@ async function loadModel() {
   model.rotation.y = Math.PI; // face camera
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
 
-  // Apply skin material to body mesh only; keep original materials for eyes, teeth, hair
-  const bodyMeshName = 'H_DDS_HighRes';
+  // Keep ALL original textured materials — just enhance with subtle effects
   model.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = false;
       child.receiveShadow = false;
-      if (child.name === bodyMeshName) {
-        // Apply holographic skin material to body
-        child.material = skinMat.clone();
-        // Add wireframe overlay for body only
-        if (child.isSkinnedMesh) {
-          const wSkinned = new THREE.SkinnedMesh(child.geometry, wireMat.clone());
-          wSkinned.skeleton = child.skeleton;
-          wSkinned.bindMatrix.copy(child.bindMatrix);
-          wSkinned.bindMatrixInverse.copy(child.bindMatrixInverse);
-          child.parent.add(wSkinned);
-        } else {
-          const wire = new THREE.Mesh(child.geometry, wireMat.clone());
-          child.parent.add(wire);
-        }
-      }
-      // All other meshes (eyes, teeth, hair/wig) keep their original textured materials
+      // Log mesh names for debugging
+      console.log('[hologram] mesh:', child.name, 'material:', child.material?.type);
     }
   });
   scene.add(model);
@@ -768,8 +753,7 @@ function animate() {
   }
 
   // Consciousness reactivity
-  skinMat.opacity = 0.4 + lf*0.45;
-  skinMat.emissiveIntensity = 0.15 + lf*0.5;
+  // skinMat not used on new model — original textures preserved
   wireMat.opacity = 0.05 + lf*0.12;
   ambientLight.intensity = 0.3 + lf*0.5;
   backLight.intensity = 15 + lf*35;
@@ -1055,7 +1039,7 @@ function animate() {
   bodyEnergy.scale.setScalar(1 + Math.sin(t * 0.5) * 0.02);
 
   // Skin glow — gentle, warm, not white
-  skinMat.emissiveIntensity = 0.15 + lf * 0.2 + heartBeat * 0.1 * energy;
+  // skin emissive handled by original material
 
   // Position energy at the chest
   if (bones.chest) {
@@ -1199,9 +1183,7 @@ function animate() {
   particles.geometry.attributes.position.needsUpdate = true;
 
   // Emissive color shift
-  // Skin reacts to the music — bass warms, highs shimmer, vocals glow
-  skinMat.emissive.setHSL(0.95 + valence*0.05 - audio.bass*0.05, 0.3 + audio.mid*0.15, 0.05 + energy*0.05 + audio.vocal*0.03);
-  skinMat.iridescence = 0.35 + audio.high * 0.3; // highs bring out the shimmer
+  // Music reactivity through lighting instead of material swap
 
   // Camera orbit + stare
   stareTimer += dt;
