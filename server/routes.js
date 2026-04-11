@@ -64,6 +64,20 @@ module.exports = function setupRoutes(deps) {
   return function handleRequest(req, res) {
     const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
+    // Art directory listing
+    if (parsed.pathname === '/models/art/list') {
+      const artDir = path.join(config.baseDir, 'workspace', 'models', 'art');
+      try {
+        const files = fs.readdirSync(artDir).filter(f => /\.(png|jpg|jpeg|webp|gif)$/i.test(f));
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' });
+        res.end(JSON.stringify({ files, count: files.length }));
+      } catch {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ files: [], count: 0 }));
+      }
+      return;
+    }
+
     // Static model files
     if (parsed.pathname.startsWith('/models/')) {
       const filename = decodeURIComponent(parsed.pathname.slice(8));
@@ -73,7 +87,10 @@ module.exports = function setupRoutes(deps) {
       if (!resolved.startsWith(path.resolve(modelsDir))) { res.writeHead(403); res.end(); return; }
       if (!fs.existsSync(resolved)) { res.writeHead(404); res.end('Not found'); return; }
       const stat = fs.statSync(resolved);
-      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=604800' });
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.vrm': 'application/octet-stream', '.glb': 'model/gltf-binary' };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=604800', 'Access-Control-Allow-Origin': '*' });
       fs.createReadStream(resolved).pipe(res);
       return;
     }

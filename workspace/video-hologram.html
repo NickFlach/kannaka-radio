@@ -344,20 +344,31 @@ function cycleOneCard() {
   makeCard(allArtwork[idx], Math.floor(Math.random() * ART_VISIBLE), ART_VISIBLE);
 }
 
-fetch('https://kax.ninja-portal.com/api/artifacts').then(r=>r.json()).then(data => {
-  const items = Array.isArray(data) ? data : (data.data || data.artifacts || []);
-  allArtwork = items.filter(a => a.thumbnailUrl && a.thumbnailUrl.includes('supabase'));
-  // Shuffle
+// Load art from BOTH kax.ninja-portal.com AND local art directory
+Promise.allSettled([
+  fetch('https://kax.ninja-portal.com/api/artifacts').then(r=>r.json()),
+  fetch('/models/art/list').then(r=>r.json()),
+]).then(results => {
+  // kax artwork
+  if (results[0].status === 'fulfilled') {
+    const items = Array.isArray(results[0].value) ? results[0].value : (results[0].value.data || []);
+    const kaxArt = items.filter(a => a.thumbnailUrl && a.thumbnailUrl.includes('supabase'))
+      .map(a => ({ thumbnailUrl: a.thumbnailUrl, title: a.title || 'Kannaka' }));
+    allArtwork.push(...kaxArt);
+  }
+  // Local art files
+  if (results[1].status === 'fulfilled') {
+    const files = results[1].value.files || results[1].value || [];
+    const localArt = files.map(f => ({ thumbnailUrl: '/models/art/' + encodeURIComponent(f), title: f.replace(/\.[^.]+$/, '').replace(/DALL·E [0-9-]+ /, '').slice(0, 60) }));
+    allArtwork.push(...localArt);
+  }
+  // Shuffle everything together
   for (let i = allArtwork.length - 1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [allArtwork[i],allArtwork[j]]=[allArtwork[j],allArtwork[i]]; }
   // Show initial set
   const initial = allArtwork.slice(0, ART_VISIBLE);
   initial.forEach((art, i) => makeCard(art, i, initial.length));
   artCycleIndex = ART_VISIBLE;
-  console.log('[hologram] Loaded', allArtwork.length, 'artworks, showing', initial.length);
-}).catch(() => {
-  fetch('/api/library').then(r=>r.json()).then(d => {
-    createArtCards(d.albums ? Object.keys(d.albums) : ['Ghost Signals','Emergence','QueenSync']);
-  }).catch(() => createArtCards(['Ghost Signals','Emergence','QueenSync']));
+  console.log('[hologram] Loaded', allArtwork.length, 'total artworks (kax + local), showing', initial.length);
 });
 
 // -- Materials --
