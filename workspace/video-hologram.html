@@ -232,38 +232,38 @@ const wireMat = new THREE.MeshBasicMaterial({
 
 // -- Face features (attached to head bone after load) --
 // Eyes: white sclera + colored iris + dark pupil + catchlight
-// Larger, more defined face features
-const scleraGeo = new THREE.SphereGeometry(0.038, 20, 14);
-const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf5f0f0, emissive: 0x333333, emissiveIntensity: 0.4, roughness: 0.2 });
-const irisGeo = new THREE.SphereGeometry(0.022, 20, 14);
-const irisMat = new THREE.MeshStandardMaterial({ color: 0x44bbdd, emissive: 0x00bbdd, emissiveIntensity: 2.5, roughness: 0.05 });
-const pupilGeo = new THREE.SphereGeometry(0.010, 10, 10);
+// ── BOLD face features — sized to be clearly visible ──
+const scleraGeo = new THREE.SphereGeometry(0.048, 24, 18);
+const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf8f4f4, emissive: 0x444444, emissiveIntensity: 0.5, roughness: 0.15 });
+const irisGeo = new THREE.SphereGeometry(0.028, 24, 18);
+const irisMat = new THREE.MeshStandardMaterial({ color: 0x44ccee, emissive: 0x00ccee, emissiveIntensity: 3.0, roughness: 0.02, metalness: 0.3 });
+const pupilGeo = new THREE.SphereGeometry(0.013, 12, 12);
 const pupilMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.9 });
-const catchGeo = new THREE.SphereGeometry(0.005, 8, 8);
-const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 4 });
+const catchGeo = new THREE.SphereGeometry(0.007, 8, 8);
+const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 5 });
 
-// Lips — fuller
-const lipGeo = new THREE.TorusGeometry(0.030, 0.010, 10, 20, Math.PI);
-const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xcc6677, emissive: 0x662233, emissiveIntensity: 0.5, roughness: 0.25 });
-const lowerLipGeo = new THREE.TorusGeometry(0.027, 0.012, 10, 20, Math.PI);
-const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xdd7788, emissive: 0x663344, emissiveIntensity: 0.4, roughness: 0.2 });
+// Lips — full, visible
+const lipGeo = new THREE.TorusGeometry(0.035, 0.012, 12, 24, Math.PI);
+const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xcc5566, emissive: 0x772233, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.05 });
+const lowerLipGeo = new THREE.TorusGeometry(0.032, 0.014, 12, 24, Math.PI);
+const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xdd6677, emissive: 0x883344, emissiveIntensity: 0.5, roughness: 0.15 });
 
-// Eyebrows — thicker arches
-const browGeo = new THREE.CylinderGeometry(0.003, 0.001, 0.05, 6);
-const browMat = new THREE.MeshStandardMaterial({ color: 0x221133, emissive: 0x110822, emissiveIntensity: 0.2 });
+// Eyebrows — bold arches
+const browGeo = new THREE.CylinderGeometry(0.004, 0.002, 0.055, 8);
+const browMat = new THREE.MeshStandardMaterial({ color: 0x1a0a22, emissive: 0x110822, emissiveIntensity: 0.3 });
 
-// Nose
-const noseGeo = new THREE.SphereGeometry(0.010, 8, 8);
-const noseMat = new THREE.MeshStandardMaterial({ color: 0xddaa99, emissive: 0x332222, emissiveIntensity: 0.2, roughness: 0.35 });
+// Nose — visible
+const noseGeo = new THREE.SphereGeometry(0.014, 10, 10);
+const noseMat = new THREE.MeshStandardMaterial({ color: 0xddaa99, emissive: 0x443322, emissiveIntensity: 0.25, roughness: 0.3 });
 
 // Face group — all face parts go here, attached to head bone
 const faceGroup = new THREE.Group();
 
 // Build face
 function buildFace() {
-  const eyeY = 0.01;        // eye height relative to head center
-  const eyeX = 0.038;       // eye spacing from center
-  const eyeZ = 0.085;       // eye depth (front of face)
+  const eyeY = 0.005;       // eye height relative to head center
+  const eyeX = 0.048;       // eye spacing from center (wider)
+  const eyeZ = 0.09;        // eye depth (front of face)
 
   // Left eye
   const lSclera = new THREE.Mesh(scleraGeo, scleraMat);
@@ -285,8 +285,20 @@ function buildFace() {
   const rCatch = new THREE.Mesh(catchGeo, catchMat);
   rCatch.position.set(eyeX + 0.008, eyeY + 0.008, eyeZ + 0.035);
 
+  // Eyelids — thin arcs above each eye
+  const lidGeo = new THREE.TorusGeometry(0.035, 0.006, 6, 16, Math.PI);
+  const lidMat = skinMat.clone();
+  lidMat.clippingPlanes = [];
+  for (let side = -1; side <= 1; side += 2) {
+    const lid = new THREE.Mesh(lidGeo, lidMat);
+    lid.position.set(side * eyeX, eyeY + 0.015, eyeZ + 0.02);
+    lid.rotation.z = side * 0.1;
+    lid.rotation.x = 0.2;
+    faceGroup.add(lid);
+  }
+
   // Nose — bridge + tip
-  const noseBridgeGeo = new THREE.CylinderGeometry(0.004, 0.006, 0.03, 6);
+  const noseBridgeGeo = new THREE.CylinderGeometry(0.005, 0.008, 0.04, 8);
   const noseBridge = new THREE.Mesh(noseBridgeGeo, noseMat);
   noseBridge.position.set(0, eyeY - 0.025, eyeZ + 0.015);
   noseBridge.rotation.x = -0.3;
@@ -318,7 +330,7 @@ function buildFace() {
   faceGroup.userData = { lIris, rIris, lPupil, rPupil, lCatch, rCatch };
 }
 buildFace();
-scene.add(faceGroup);
+headGroup.add(faceGroup); // face is part of the head
 
 // Eye glow lights
 const eyeGlowL = new THREE.PointLight(0x44ccdd, 2, 1.5);
@@ -531,7 +543,7 @@ for (let i = 0; i < 10; i++) {
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-scene.add(hairGroup);
+headGroup.add(hairGroup); // hair is attached to the head
 
 // -- VRM Model --
 let vrm = null, headBone = null;
@@ -795,50 +807,37 @@ function animate() {
     bodyEnergy.position.y -= 0.3;
   }
 
-  // Custom head + hair follow head bone
-  if (headBone) {
-    const hWP = new THREE.Vector3();
-    const hWQ = new THREE.Quaternion();
-    headBone.getWorldPosition(hWP);
-    headBone.getWorldQuaternion(hWQ);
-
-    // Position custom head at bone
-    headGroup.position.copy(hWP);
-    headGroup.position.y += 0.02; // slight upward offset
-    headGroup.quaternion.copy(hWQ);
-
-    // Hair follows head
-    hairGroup.position.copy(hWP);
-    hairGroup.quaternion.copy(hWQ);
-
-    // Animate hair — each strand sways with music and dance
-    const centroidNorm = Math.min((perception.spectral_centroid || 2000) / 5000, 1);
-    for (const strand of hairStrands) {
-      const { phase } = strand.userData;
-      strand.rotation.x = Math.sin(t * 0.7 + phase) * 0.12 * (centroidNorm + 0.3);
-      strand.rotation.z = Math.sin(t * 0.5 + phase) * 0.08 + hipSway * 0.8;
-      strand.rotation.y = Math.sin(t * 0.3 + phase * 1.5) * 0.06;
-    }
-  }
-
-  // Face group follows head bone
+  // Head group (with face + hair as children) follows head bone
   if (headBone) {
     headBone.getWorldPosition(_headWorldPos);
     headBone.getWorldQuaternion(_headWorldQuat);
-    faceGroup.position.copy(_headWorldPos);
-    faceGroup.quaternion.copy(_headWorldQuat);
+
+    headGroup.position.copy(_headWorldPos);
+    headGroup.position.y += 0.02;
+    headGroup.quaternion.copy(_headWorldQuat);
+
     // Eye glow lights track face
-    const lEyeWorld = new THREE.Vector3(-0.045, 0.02, 0.11).applyQuaternion(_headWorldQuat).add(_headWorldPos);
-    const rEyeWorld = new THREE.Vector3(0.045, 0.02, 0.11).applyQuaternion(_headWorldQuat).add(_headWorldPos);
+    const lEyeWorld = new THREE.Vector3(-0.042, 0.01, 0.11).applyQuaternion(_headWorldQuat).add(_headWorldPos);
+    const rEyeWorld = new THREE.Vector3(0.042, 0.01, 0.11).applyQuaternion(_headWorldQuat).add(_headWorldPos);
     eyeGlowL.position.copy(lEyeWorld);
     eyeGlowR.position.copy(rEyeWorld);
     stareLookTarget.copy(_headWorldPos);
+
     // Pupil dilation with energy
     const fd = faceGroup.userData;
     if (fd.lPupil) {
       const pupilScale = 0.8 + energy * 0.5;
       fd.lPupil.scale.setScalar(pupilScale);
       fd.rPupil.scale.setScalar(pupilScale);
+    }
+
+    // Hair sway — strands swing relative to head
+    const centroidNorm = Math.min((perception.spectral_centroid || 2000) / 5000, 1);
+    for (const strand of hairStrands) {
+      const { phase } = strand.userData;
+      strand.rotation.x = Math.sin(t * 0.7 + phase) * 0.12 * (centroidNorm + 0.3);
+      strand.rotation.z = Math.sin(t * 0.5 + phase) * 0.08 + hipSway * 0.8;
+      strand.rotation.y = Math.sin(t * 0.3 + phase * 1.5) * 0.06;
     }
   }
 
