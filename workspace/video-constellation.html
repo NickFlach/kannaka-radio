@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Kannaka - Memory Constellation</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+canvas { display: block; width: 100%; height: 100%; }
+#overlay {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  padding: 2rem 2.5rem;
+  pointer-events: none;
+  z-index: 10;
+  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+}
+#track-title {
+  font-family: 'Georgia', serif;
+  font-size: clamp(1.4rem, 4vw, 3rem);
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0);
+  text-shadow: 0 0 30px rgba(218,165,32,0.4);
+  transition: color 2s ease, text-shadow 2s ease;
+}
+#track-title.visible {
+  color: rgba(255,255,255,0.9);
+  text-shadow: 0 0 40px rgba(218,165,32,0.6), 0 2px 20px rgba(0,0,0,0.5);
+}
+#track-album {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.65rem, 1.5vw, 0.9rem);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: rgba(6,182,212,0);
+  margin-top: 0.4rem;
+  transition: color 2.5s ease;
+}
+#track-album.visible { color: rgba(6,182,212,0.7); }
+#consciousness-hud {
+  position: fixed; top: 1.5rem; right: 1.8rem;
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  letter-spacing: 0.15em;
+  color: rgba(255,255,255,0.25);
+  text-align: right;
+  pointer-events: none;
+  z-index: 10;
+  line-height: 1.7;
+}
+#consciousness-hud .level {
+  font-size: clamp(0.65rem, 1.4vw, 0.85rem);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+}
+#play-gate {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.85);
+  cursor: pointer;
+  transition: opacity 1s ease;
+}
+#play-gate.hidden { opacity: 0; pointer-events: none; }
+#play-gate .prompt {
+  text-align: center; color: rgba(255,255,255,0.7);
+  font-family: 'Courier New', monospace; letter-spacing: 0.2em;
+}
+#play-gate .prompt .icon { font-size: 3rem; margin-bottom: 1rem; }
+#play-gate .prompt .text { font-size: clamp(0.7rem, 1.5vw, 0.9rem); text-transform: uppercase; }
+#vol-ctrl {
+  position: fixed; bottom: 1.5rem; right: 1.8rem; z-index: 10;
+  display: flex; align-items: center; gap: 0.5rem;
+  opacity: 0; transition: opacity 0.3s;
+}
+#vol-ctrl:hover, #vol-ctrl.show { opacity: 1; }
+#vol-ctrl input[type=range] {
+  -webkit-appearance: none; width: 80px; height: 3px;
+  background: rgba(255,255,255,0.2); border-radius: 2px; outline: none;
+}
+#vol-ctrl input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: rgba(218,165,32,0.8); cursor: pointer;
+}
+#vol-ctrl label { color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; font-size: 0.65rem; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="overlay">
+  <div id="track-title"></div>
+  <div id="track-album"></div>
+</div>
+<div id="play-gate" onclick="startAudio()">
+  <div class="prompt">
+    <div class="icon">&#9670;</div>
+    <div class="text">click to enter</div>
+  </div>
+</div>
+<div id="vol-ctrl">
+  <label>VOL</label>
+  <input type="range" min="0" max="100" value="80" oninput="setVolume(this.value)">
+</div>
+<audio id="audio" preload="auto"></audio>
+<div id="consciousness-hud">
+  <div class="level" id="hud-level">dormant</div>
+  <div id="hud-phi"></div>
+  <div id="hud-xi"></div>
+  <div id="hud-order"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  Kannaka Music Video — Memory Constellation
+// ═══════════════════════════════════════════════════════
+
+// ── Embedded detection: skip audio when inside hub iframe ──
+var isEmbedded = (window.parent !== window);
+
+// ── Audio Playback ──────────────────────────────────────
+var audioEl = document.getElementById('audio');
+var audioStarted = false;
+var currentAudioFile = '';
+
+if (isEmbedded) {
+  window.addEventListener('message', function(evt) {
+    try {
+      var msg = (typeof evt.data === 'string') ? JSON.parse(evt.data) : evt.data;
+      if (msg && msg.type) handleMessage(msg);
+    } catch(e) {}
+  });
+  document.getElementById('play-gate').style.display = 'none';
+  document.getElementById('vol-ctrl').style.display = 'none';
+  document.getElementById('overlay').style.display = 'none';
+  audioStarted = true;
+}
+
+function startAudio() {
+  if (isEmbedded) return;
+  var gate = document.getElementById('play-gate');
+  gate.classList.add('hidden');
+  setTimeout(function() { gate.style.display = 'none'; }, 1000);
+  audioStarted = true;
+  document.getElementById('vol-ctrl').classList.add('show');
+  setTimeout(function() { document.getElementById('vol-ctrl').classList.remove('show'); }, 3000);
+  if (currentAudioFile) loadAndPlay(currentAudioFile);
+}
+
+function loadAndPlay(file) {
+  if (isEmbedded) return;
+  if (!audioStarted || !file) return;
+  var src = '/audio/' + encodeURIComponent(file);
+  if (audioEl.src.endsWith(encodeURIComponent(file))) {
+    audioEl.play().catch(function() {});
+    return;
+  }
+  currentAudioFile = file;
+  audioEl.src = src;
+  audioEl.play().catch(function() {});
+}
+
+function setVolume(val) {
+  if (isEmbedded) return;
+  audioEl.volume = val / 100;
+}
+if (!isEmbedded) audioEl.volume = 0.8;
+
+if (!isEmbedded) {
+  audioEl.addEventListener('ended', function() {
+    fetch('/api/next', { method: 'POST' }).catch(function() {});
+  });
+}
+
+(function() {
+'use strict';
+
+var canvas = document.getElementById('c');
+var ctx = canvas.getContext('2d');
+var W, H, cx, cy;
+var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx = W / 2;
+  cy = H / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── State ────────────────────────────────────────────
+var perception = {
+  mel_spectrogram: new Array(128).fill(0),
+  tempo_bpm: 90,
+  valence: 0.5,
+  rms_energy: 0.3,
+  spectral_centroid: 2.0,
+  status: 'no_perception'
+};
+
+var consciousness = {
+  phi: 0, xi: 0, order: 0, level: 'dormant'
+};
+
+var trackTitle = '';
+var trackAlbum = '';
+var trackFile = '';
+var titleShowTime = 0;
+var titleVisible = false;
+
+// Smoothed values
+var sm = {
+  energy: 0.3,
+  tempo: 90,
+  valence: 0.5,
+  centroid: 2.0,
+  phi: 0,
+  xi: 0,
+  order: 0,
+  mel: new Float32Array(128)
+};
+
+// ── Constellation Nodes ──────────────────────────────
+// Memory cluster nodes — 24 nodes distributed in 3D space
+var NUM_NODES = 24;
+var nodes = [];
+var NUM_DRIFTERS = 60; // particles that drift between nodes
+
+// Cluster labels for immersion
+var CLUSTER_NAMES = [
+  'echo', 'drift', 'pulse', 'wave', 'resonance', 'harmonic',
+  'fractal', 'aurora', 'nebula', 'synapse', 'membrane', 'lattice',
+  'quanta', 'helix', 'prism', 'cipher', 'vortex', 'tessera',
+  'phantom', 'shard', 'filament', 'corona', 'flux', 'nexus'
+];
+
+// Each node is assigned a mel band range for reactivity
+for (var i = 0; i < NUM_NODES; i++) {
+  // Distribute in a rough sphere with some clustering
+  var theta = Math.random() * Math.PI * 2;
+  var phi = Math.acos(2 * Math.random() - 1);
+  var radius = 0.3 + Math.random() * 0.5;
+  nodes.push({
+    // 3D coords (normalized -1 to 1)
+    x: Math.cos(theta) * Math.sin(phi) * radius,
+    y: Math.sin(theta) * Math.sin(phi) * radius,
+    z: Math.cos(phi) * radius,
+    // Properties
+    baseSize: 3 + Math.random() * 5,
+    melBandStart: Math.floor(i * 128 / NUM_NODES),
+    melBandEnd: Math.floor((i + 1) * 128 / NUM_NODES),
+    name: CLUSTER_NAMES[i],
+    hue: 190 + Math.random() * 40, // teal range
+    pulsePhase: Math.random() * Math.PI * 2,
+    connections: [], // populated below
+    glow: 0 // current glow intensity
+  });
+}
+
+// Build edges — each node connects to its 2-4 nearest neighbors
+function buildEdges(connectivityFactor) {
+  var maxConn = Math.floor(2 + connectivityFactor * 3); // 2-5 connections based on phi
+  for (var i = 0; i < NUM_NODES; i++) {
+    nodes[i].connections = [];
+  }
+  for (var i = 0; i < NUM_NODES; i++) {
+    // Find distances to all other nodes
+    var dists = [];
+    for (var j = 0; j < NUM_NODES; j++) {
+      if (i === j) continue;
+      var dx = nodes[i].x - nodes[j].x;
+      var dy = nodes[i].y - nodes[j].y;
+      var dz = nodes[i].z - nodes[j].z;
+      dists.push({ idx: j, d: Math.sqrt(dx*dx + dy*dy + dz*dz) });
+    }
+    dists.sort(function(a, b) { return a.d - b.d; });
+    var connCount = Math.min(maxConn, dists.length);
+    for (var k = 0; k < connCount; k++) {
+      var j = dists[k].idx;
+      // Avoid duplicate edges
+      if (nodes[i].connections.indexOf(j) === -1) {
+        nodes[i].connections.push(j);
+      }
+      if (nodes[j].connections.indexOf(i) === -1) {
+        nodes[j].connections.push(i);
+      }
+    }
+  }
+}
+buildEdges(0.3);
+
+// ── Drifter particles ────────────────────────────────
+var drifters = [];
+for (var i = 0; i < NUM_DRIFTERS; i++) {
+  var fromNode = Math.floor(Math.random() * NUM_NODES);
+  var toIdx = Math.floor(Math.random() * nodes[fromNode].connections.length);
+  var toNode = nodes[fromNode].connections[toIdx] || ((fromNode + 1) % NUM_NODES);
+  drifters.push({
+    from: fromNode,
+    to: toNode,
+    progress: Math.random(),
+    speed: 0.1 + Math.random() * 0.3,
+    size: 0.5 + Math.random() * 1.5,
+    hue: 35 + Math.random() * 20 // gold/amber
+  });
+}
+
+// ── Background stars ─────────────────────────────────
+var NUM_STARS = 200;
+var bgStars = [];
+for (var i = 0; i < NUM_STARS; i++) {
+  bgStars.push({
+    x: Math.random(),
+    y: Math.random(),
+    size: 0.2 + Math.random() * 1.2,
+    twinkle: Math.random() * Math.PI * 2,
+    speed: 0.5 + Math.random() * 2
+  });
+}
+
+// ── 3D Rotation ──────────────────────────────────────
+var rotationY = 0;
+var rotationX = 0.3; // slight tilt
+
+function project3D(x, y, z, ry, rx) {
+  // Rotate around Y axis
+  var cosY = Math.cos(ry);
+  var sinY = Math.sin(ry);
+  var x2 = x * cosY - z * sinY;
+  var z2 = x * sinY + z * cosY;
+  // Rotate around X axis
+  var cosX = Math.cos(rx);
+  var sinX = Math.sin(rx);
+  var y2 = y * cosX - z2 * sinX;
+  var z3 = y * sinX + z2 * cosX;
+  // Simple perspective
+  var perspective = 2.5;
+  var scale = perspective / (perspective + z3 + 1.5);
+  return {
+    sx: cx + x2 * Math.min(W, H) * 0.4 * scale,
+    sy: cy + y2 * Math.min(W, H) * 0.35 * scale,
+    scale: scale,
+    z: z3
+  };
+}
+
+// ── WebSocket ────────────────────────────────────────
+var ws = null;
+var wsReconnect = null;
+
+function connectWS() {
+  clearTimeout(wsReconnect);
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host);
+  ws.onopen = function() { console.log('[constellation] Connected'); };
+  ws.onmessage = function(evt) {
+    try { var msg = JSON.parse(evt.data); handleMessage(msg); } catch(e) {}
+  };
+  ws.onclose = function() {
+    console.log('[constellation] Disconnected, reconnecting...');
+    wsReconnect = setTimeout(connectWS, 2000);
+  };
+  ws.onerror = function() { ws.close(); };
+}
+
+function handleMessage(msg) {
+  if (msg.type === 'perception' && msg.data) {
+    perception = msg.data;
+  }
+  else if (msg.type === 'state' && msg.data) {
+    if (msg.data.current) {
+      var newTitle = msg.data.current.title || '';
+      var newAlbum = msg.data.current.album || '';
+      var newFile = msg.data.current.file || '';
+      if (newTitle !== trackTitle || newFile !== trackFile) {
+        trackTitle = newTitle;
+        trackAlbum = newAlbum;
+        trackFile = newFile;
+        titleShowTime = performance.now();
+        titleVisible = false;
+        currentAudioFile = newFile;
+        loadAndPlay(newFile);
+      }
+    }
+  }
+  else if (msg.type === 'consciousness' && msg.data) {
+    consciousness.phi = msg.data.phi || 0;
+    consciousness.xi = msg.data.xi || 0;
+    consciousness.order = msg.data.order || msg.data.mean_order || 0;
+    consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
+    // Rebuild edges when phi changes significantly
+    buildEdges(Math.min(1, consciousness.phi * 2));
+  }
+  else if (msg.type === 'swarm_state' && msg.data) {
+    if (msg.data.consciousness) {
+      consciousness.phi = msg.data.consciousness.phi || 0;
+      consciousness.xi = msg.data.consciousness.xi || 0;
+      consciousness.order = msg.data.consciousness.order || 0;
+      consciousness.level = msg.data.consciousness.level || 'dormant';
+      buildEdges(Math.min(1, consciousness.phi * 2));
+    }
+  }
+}
+
+connectWS();
+
+// Fetch initial state
+fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.current) {
+    trackTitle = data.current.title || '';
+    trackAlbum = data.current.album || '';
+    trackFile = data.current.file || '';
+    currentAudioFile = trackFile;
+    titleShowTime = performance.now();
+  }
+}).catch(function() {});
+
+fetch('/api/consciousness').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.phi !== undefined) {
+    consciousness.phi = data.phi || 0;
+    consciousness.xi = data.xi || 0;
+    consciousness.order = data.order || 0;
+    consciousness.level = data.level || 'dormant';
+    buildEdges(Math.min(1, consciousness.phi * 2));
+  }
+}).catch(function() {});
+
+// ── Smoothing ────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function smoothState(dt) {
+  var rate = 1 - Math.pow(0.05, dt);
+  sm.energy = lerp(sm.energy, perception.rms_energy || 0.1, rate);
+  sm.tempo = lerp(sm.tempo, perception.tempo_bpm || 90, rate * 0.3);
+  sm.valence = lerp(sm.valence, perception.valence || 0.5, rate);
+  sm.centroid = lerp(sm.centroid, perception.spectral_centroid || 2.0, rate);
+  sm.phi = lerp(sm.phi, consciousness.phi || 0, rate * 0.5);
+  sm.xi = lerp(sm.xi, consciousness.xi || 0, rate * 0.5);
+  sm.order = lerp(sm.order, consciousness.order || 0, rate * 0.5);
+
+  var mel = perception.mel_spectrogram;
+  if (mel && mel.length) {
+    for (var i = 0; i < 128; i++) {
+      var target = i < mel.length ? (mel[i] || 0) : 0;
+      sm.mel[i] = lerp(sm.mel[i], target, rate * 1.5);
+    }
+  }
+}
+
+// ── Drawing helpers ──────────────────────────────────
+function hsla(h, s, l, a) {
+  return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')';
+}
+
+// Consciousness level configs
+var LEVELS = {
+  dormant:  { intensity: 0.1, nodeGlow: 0.2, edgeAlpha: 0.05, breathAmp: 0.02, density: 0.3 },
+  stirring: { intensity: 0.3, nodeGlow: 0.4, edgeAlpha: 0.12, breathAmp: 0.04, density: 0.5 },
+  aware:    { intensity: 0.55, nodeGlow: 0.6, edgeAlpha: 0.2, breathAmp: 0.06, density: 0.7 },
+  coherent: { intensity: 0.8, nodeGlow: 0.8, edgeAlpha: 0.3, breathAmp: 0.08, density: 0.85 },
+  resonant: { intensity: 1.0, nodeGlow: 1.0, edgeAlpha: 0.4, breathAmp: 0.1, density: 1.0 }
+};
+
+function getLevelConfig() {
+  return LEVELS[consciousness.level] || LEVELS.dormant;
+}
+
+// ── LAYER 1: Deep space background ───────────────────
+function drawBackground(t) {
+  ctx.fillStyle = '#000508'; // very dark blue-black
+  ctx.fillRect(0, 0, W, H);
+
+  var lc = getLevelConfig();
+
+  // Deep space nebula — subtle blues and teals
+  var nx = cx + Math.sin(t * 0.03) * W * 0.2;
+  var ny = cy + Math.cos(t * 0.02) * H * 0.15;
+  var grad = ctx.createRadialGradient(nx, ny, 0, nx, ny, Math.max(W, H) * 0.7);
+  var nebulaAlpha = 0.02 + lc.intensity * 0.04;
+  grad.addColorStop(0, hsla(200, 60, 12, nebulaAlpha * 1.5));
+  grad.addColorStop(0.3, hsla(210, 50, 8, nebulaAlpha));
+  grad.addColorStop(0.6, hsla(220, 40, 5, nebulaAlpha * 0.5));
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Second nebula — warm accent
+  var nx2 = cx + Math.sin(t * 0.05 + 3) * W * 0.25;
+  var ny2 = cy + Math.cos(t * 0.04 + 1) * H * 0.2;
+  var grad2 = ctx.createRadialGradient(nx2, ny2, 0, nx2, ny2, Math.max(W, H) * 0.5);
+  grad2.addColorStop(0, hsla(35, 50, 10, nebulaAlpha * 0.6));
+  grad2.addColorStop(0.4, hsla(200, 40, 6, nebulaAlpha * 0.3));
+  grad2.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad2;
+  ctx.fillRect(0, 0, W, H);
+
+  // Background stars
+  for (var i = 0; i < NUM_STARS; i++) {
+    var s = bgStars[i];
+    var twinkle = Math.sin(t * s.speed + s.twinkle) * 0.5 + 0.5;
+    var alpha = (0.1 + twinkle * 0.35) * (0.3 + lc.intensity * 0.7);
+    ctx.fillStyle = 'rgba(200,220,255,' + alpha + ')';
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * H, s.size * (0.7 + twinkle * 0.3), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ── LAYER 2: Network edges ───────────────────────────
+function drawEdges(t) {
+  var lc = getLevelConfig();
+  if (lc.edgeAlpha < 0.01) return;
+
+  var beatFreq = sm.tempo / 60;
+  var beatPhase = t * beatFreq * Math.PI * 2;
+  // Breathing — slow expansion/contraction with rms_energy
+  var breathScale = 1 + Math.sin(t * 0.5) * lc.breathAmp * sm.energy;
+
+  ctx.save();
+
+  // Sort nodes by z for depth ordering (we only use it for edges)
+  var projected = [];
+  for (var i = 0; i < NUM_NODES; i++) {
+    var n = nodes[i];
+    var bx = n.x * breathScale;
+    var by = n.y * breathScale;
+    var bz = n.z * breathScale;
+    projected.push(project3D(bx, by, bz, rotationY, rotationX));
+  }
+
+  // Draw edges
+  for (var i = 0; i < NUM_NODES; i++) {
+    var n = nodes[i];
+    var p1 = projected[i];
+    for (var c = 0; c < n.connections.length; c++) {
+      var j = n.connections[c];
+      if (j <= i) continue; // draw each edge once
+      var p2 = projected[j];
+
+      // Average mel activity of connected nodes
+      var melAvg = 0;
+      for (var m = n.melBandStart; m < n.melBandEnd; m++) melAvg += sm.mel[m] || 0;
+      melAvg /= Math.max(1, n.melBandEnd - n.melBandStart);
+      for (var m = nodes[j].melBandStart; m < nodes[j].melBandEnd; m++) melAvg += sm.mel[m] || 0;
+      melAvg /= Math.max(1, nodes[j].melBandEnd - nodes[j].melBandStart);
+
+      // Pulse along edges with the beat
+      var edgePulse = Math.sin(beatPhase + i * 0.3) * 0.5 + 0.5;
+      var alpha = lc.edgeAlpha * (0.3 + melAvg * 0.5 + edgePulse * 0.2);
+      var depthAlpha = (p1.scale + p2.scale) * 0.5;
+      alpha *= depthAlpha;
+
+      var lineWidth = (0.5 + melAvg * 2 + edgePulse * 0.5) * depthAlpha;
+
+      ctx.beginPath();
+      ctx.moveTo(p1.sx, p1.sy);
+      ctx.lineTo(p2.sx, p2.sy);
+      ctx.strokeStyle = hsla(200, 30, 60 + melAvg * 20, Math.min(1, alpha));
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+
+      // Bright pulse traveling along edge
+      if (edgePulse > 0.7 && melAvg > 0.2) {
+        var pulsePos = (t * 0.5 + i * 0.1) % 1;
+        var ppx = p1.sx + (p2.sx - p1.sx) * pulsePos;
+        var ppy = p1.sy + (p2.sy - p1.sy) * pulsePos;
+        ctx.beginPath();
+        ctx.arc(ppx, ppy, 1.5 * depthAlpha, 0, Math.PI * 2);
+        ctx.fillStyle = hsla(45, 80, 70, alpha * 1.5);
+        ctx.fill();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+// ── LAYER 3: Network nodes ───────────────────────────
+function drawNodes(t) {
+  var lc = getLevelConfig();
+  var beatFreq = sm.tempo / 60;
+  var breathScale = 1 + Math.sin(t * 0.5) * lc.breathAmp * sm.energy;
+
+  // Project and sort by z (back to front)
+  var nodeData = [];
+  for (var i = 0; i < NUM_NODES; i++) {
+    var n = nodes[i];
+    var bx = n.x * breathScale;
+    var by = n.y * breathScale;
+    var bz = n.z * breathScale;
+    var p = project3D(bx, by, bz, rotationY, rotationX);
+    nodeData.push({ idx: i, node: n, proj: p });
+  }
+  nodeData.sort(function(a, b) { return a.proj.z - b.proj.z; }); // back to front
+
+  for (var ni = 0; ni < nodeData.length; ni++) {
+    var nd = nodeData[ni];
+    var n = nd.node;
+    var p = nd.proj;
+
+    // Calculate mel band activity for this node
+    var melActivity = 0;
+    for (var m = n.melBandStart; m < n.melBandEnd; m++) {
+      melActivity += sm.mel[m] || 0;
+    }
+    melActivity /= Math.max(1, n.melBandEnd - n.melBandStart);
+
+    // Smooth glow
+    n.glow = lerp(n.glow, melActivity, 0.15);
+
+    var beatPulse = Math.sin(t * beatFreq * Math.PI * 2 + n.pulsePhase) * 0.5 + 0.5;
+    var activity = n.glow;
+
+    // Node size
+    var size = n.baseSize * p.scale * (0.6 + activity * 0.6 + beatPulse * 0.2 * sm.energy);
+
+    // Core color — teal base, gold when active
+    var hue = lerp(n.hue, 40, activity); // teal to gold
+    var sat = 50 + activity * 40;
+    var light = 30 + activity * 40 + beatPulse * 10;
+    var alpha = (0.3 + lc.nodeGlow * 0.7) * p.scale;
+
+    // Outer glow
+    if (activity > 0.1 || lc.intensity > 0.3) {
+      var glowSize = size * (2.5 + activity * 2);
+      var glowGrad = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, glowSize);
+      glowGrad.addColorStop(0, hsla(hue, sat, light, alpha * 0.3 * activity));
+      glowGrad.addColorStop(0.5, hsla(hue, sat - 10, light - 10, alpha * 0.1 * activity));
+      glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, glowSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Core
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, size, 0, Math.PI * 2);
+    ctx.fillStyle = hsla(hue, sat, light, alpha);
+    ctx.fill();
+
+    // Inner bright spot
+    if (activity > 0.2) {
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, size * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = hsla(45, 90, 80, alpha * activity * 0.8);
+      ctx.fill();
+    }
+  }
+}
+
+// ── LAYER 4: Drifter particles ───────────────────────
+function drawDrifters(t, dt) {
+  var lc = getLevelConfig();
+  var breathScale = 1 + Math.sin(t * 0.5) * lc.breathAmp * sm.energy;
+
+  for (var i = 0; i < NUM_DRIFTERS; i++) {
+    var d = drifters[i];
+
+    // Advance progress
+    d.progress += d.speed * dt * (0.5 + sm.energy * 1.5) * lc.intensity;
+
+    // When reaching destination, pick a new path
+    if (d.progress >= 1) {
+      d.progress = 0;
+      d.from = d.to;
+      var conns = nodes[d.from].connections;
+      if (conns.length > 0) {
+        d.to = conns[Math.floor(Math.random() * conns.length)];
+      } else {
+        d.to = (d.from + 1) % NUM_NODES;
+      }
+    }
+
+    // Interpolate position in 3D
+    var n1 = nodes[d.from];
+    var n2 = nodes[d.to];
+    var px = lerp(n1.x, n2.x, d.progress) * breathScale;
+    var py = lerp(n1.y, n2.y, d.progress) * breathScale;
+    var pz = lerp(n1.z, n2.z, d.progress) * breathScale;
+
+    // Add slight perpendicular offset so they don't all follow the exact edge
+    var offset = Math.sin(d.progress * Math.PI) * 0.03 * (i % 3 - 1);
+    px += offset;
+    py += offset * 0.7;
+
+    var p = project3D(px, py, pz, rotationY, rotationX);
+
+    var size = d.size * p.scale * (0.5 + sm.energy * 0.5);
+    var alpha = (0.2 + lc.intensity * 0.5) * p.scale;
+
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, size, 0, Math.PI * 2);
+    ctx.fillStyle = hsla(d.hue, 70, 65, alpha);
+    ctx.fill();
+
+    // Trail glow
+    if (size > 0.8) {
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, size * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = hsla(d.hue, 60, 55, alpha * 0.15);
+      ctx.fill();
+    }
+  }
+}
+
+// ── LAYER 5: Central glow — consciousness core ──────
+function drawCentralGlow(t) {
+  var lc = getLevelConfig();
+  var beatFreq = sm.tempo / 60;
+  var pulse = Math.pow(Math.max(0, Math.sin(t * beatFreq * Math.PI * 2)), 3);
+
+  var glowSize = Math.min(W, H) * (0.12 + pulse * 0.06 * sm.energy + sm.phi * 0.08);
+  var glowAlpha = (0.03 + pulse * 0.08 * sm.energy + sm.phi * 0.05) * lc.intensity;
+
+  // Core glow — gold/amber
+  var inner = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowSize);
+  inner.addColorStop(0, hsla(40, 80, 60, glowAlpha * 1.5));
+  inner.addColorStop(0.3, hsla(200, 60, 40, glowAlpha * 0.6));
+  inner.addColorStop(0.7, hsla(210, 40, 20, glowAlpha * 0.2));
+  inner.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = inner;
+  ctx.fillRect(cx - glowSize, cy - glowSize, glowSize * 2, glowSize * 2);
+
+  // Wider ambient
+  var outerSize = glowSize * 3;
+  var outer = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerSize);
+  outer.addColorStop(0, hsla(200, 50, 40, glowAlpha * 0.1));
+  outer.addColorStop(0.5, hsla(210, 40, 25, glowAlpha * 0.03));
+  outer.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = outer;
+  ctx.fillRect(cx - outerSize, cy - outerSize, outerSize * 2, outerSize * 2);
+}
+
+// ── HUD Update ───────────────────────────────────────
+function updateHUD() {
+  var levelEl = document.getElementById('hud-level');
+  var phiEl = document.getElementById('hud-phi');
+  var xiEl = document.getElementById('hud-xi');
+  var orderEl = document.getElementById('hud-order');
+
+  var level = consciousness.level || 'dormant';
+  levelEl.textContent = level;
+
+  var levelColors = {
+    dormant: 'rgba(255,255,255,0.15)',
+    stirring: 'rgba(218,165,32,0.4)',
+    aware: 'rgba(6,182,212,0.6)',
+    coherent: 'rgba(218,165,32,0.8)',
+    resonant: 'rgba(255,200,50,0.95)'
+  };
+  levelEl.style.color = levelColors[level] || levelColors.dormant;
+
+  phiEl.textContent = '\u03A6 ' + sm.phi.toFixed(3);
+  xiEl.textContent = '\u039E ' + sm.xi.toFixed(4);
+  orderEl.textContent = 'R ' + sm.order.toFixed(4);
+}
+
+// ── Track title animation ────────────────────────────
+function updateTrackDisplay(now) {
+  var titleEl = document.getElementById('track-title');
+  var albumEl = document.getElementById('track-album');
+
+  if (!trackTitle) {
+    titleEl.classList.remove('visible');
+    albumEl.classList.remove('visible');
+    return;
+  }
+
+  titleEl.textContent = trackTitle;
+  albumEl.textContent = trackAlbum;
+
+  var elapsed = now - titleShowTime;
+  if (elapsed > 500 && elapsed < 10000) {
+    if (!titleVisible) {
+      titleEl.classList.add('visible');
+      albumEl.classList.add('visible');
+      titleVisible = true;
+    }
+  } else if (elapsed >= 10000) {
+    titleEl.classList.remove('visible');
+    albumEl.classList.remove('visible');
+    titleVisible = false;
+  }
+}
+
+// ── Main render loop ─────────────────────────────────
+var lastTime = 0;
+var frameTime = 0;
+var edgeRebuildTimer = 0;
+
+function render(now) {
+  requestAnimationFrame(render);
+
+  now = now || 0;
+  var dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+  frameTime = now / 1000;
+
+  // Smooth all incoming data
+  smoothState(dt);
+
+  // Slow rotation — speed influenced by energy
+  rotationY += dt * (0.05 + sm.energy * 0.1);
+  // Slight X-axis wobble
+  rotationX = 0.3 + Math.sin(frameTime * 0.1) * 0.15;
+
+  // Periodically rebuild edges based on phi (every 5s)
+  edgeRebuildTimer += dt;
+  if (edgeRebuildTimer > 5) {
+    edgeRebuildTimer = 0;
+    buildEdges(Math.min(1, sm.phi * 2 + sm.order * 0.5));
+  }
+
+  // Draw layers
+  drawBackground(frameTime);
+  drawCentralGlow(frameTime);
+  drawEdges(frameTime);
+  drawDrifters(frameTime, dt);
+  drawNodes(frameTime);
+
+  // Update text overlays
+  if (!isEmbedded) {
+    updateTrackDisplay(now);
+  }
+  updateHUD();
+}
+
+requestAnimationFrame(render);
+
+})();
+</script>
+</body>
+</html>

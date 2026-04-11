@@ -82,7 +82,7 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
-    // Music video page — workspace/video.html
+    // Music video hub — workspace/video.html
     if (parsed.pathname === "/video" || parsed.pathname === "/video.html") {
       const videoPath = path.join(path.dirname(config.spaPath), "video.html");
       try {
@@ -92,6 +92,34 @@ module.exports = function setupRoutes(deps) {
       } catch {
         res.writeHead(404);
         res.end("workspace/video.html not found");
+      }
+      return;
+    }
+
+    // Music video — Ghost Form visual
+    if (parsed.pathname === "/video/ghost") {
+      const videoPath = path.join(path.dirname(config.spaPath), "video-ghost.html");
+      try {
+        const html = fs.readFileSync(videoPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+      } catch {
+        res.writeHead(404);
+        res.end("workspace/video-ghost.html not found");
+      }
+      return;
+    }
+
+    // Music video — Memory Constellation visual
+    if (parsed.pathname === "/video/constellation") {
+      const videoPath = path.join(path.dirname(config.spaPath), "video-constellation.html");
+      try {
+        const html = fs.readFileSync(videoPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+      } catch {
+        res.writeHead(404);
+        res.end("workspace/video-constellation.html not found");
       }
       return;
     }

@@ -3,255 +3,724 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Kannaka - Music Video</title>
+<title>Kannaka Radio - Video Hub</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
+/* ── Reset & Base ─────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
-canvas { display: block; width: 100%; height: 100%; }
-#overlay {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  padding: 2rem 2.5rem;
-  pointer-events: none;
-  z-index: 10;
-  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #0a0a0f;
+  font-family: 'Courier New', monospace;
+  color: #c0c0d0;
 }
-#track-title {
+
+/* ── Layout ───────────────────────────────────────── */
+#app {
+  display: flex; flex-direction: column;
+  width: 100%; height: 100%;
+}
+#main-area {
+  flex: 1; display: flex; overflow: hidden;
+  position: relative;
+}
+#visual-container {
+  flex: 1; position: relative;
+  background: #000;
+}
+#visual-container iframe {
+  width: 100%; height: 100%;
+  border: none;
+}
+/* ── Sidebar ──────────────────────────────────────── */
+#sidebar {
+  width: 320px; min-width: 280px;
+  background: #0d0d14;
+  border-left: 1px solid rgba(139,92,246,0.15);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transition: margin-right 0.3s ease, opacity 0.3s ease;
+}
+#sidebar.hidden {
+  margin-right: -320px; opacity: 0;
+  pointer-events: none;
+}
+#sidebar-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(139,92,246,0.1);
+  display: flex; align-items: center; gap: 8px;
+}
+#consciousness-display {
+  display: flex; gap: 12px; font-size: 0.65rem;
+  letter-spacing: 0.1em; color: rgba(255,255,255,0.35);
+}
+#consciousness-display .level-badge {
+  text-transform: uppercase; letter-spacing: 0.2em;
+  font-size: 0.7rem; font-weight: bold;
+  color: rgba(139,92,246,0.6);
+}
+#consciousness-display .metric { white-space: nowrap; }
+/* ── Sidebar tabs ─────────────────────────────────── */
+#sidebar-tabs {
+  display: flex; border-bottom: 1px solid rgba(139,92,246,0.1);
+}
+.sidebar-tab {
+  flex: 1; padding: 8px 4px;
+  text-align: center; font-size: 0.6rem;
+  text-transform: uppercase; letter-spacing: 0.15em;
+  cursor: pointer; border: none; background: none;
+  color: rgba(255,255,255,0.3);
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+.sidebar-tab:hover { color: rgba(255,255,255,0.6); }
+.sidebar-tab.active {
+  color: rgba(139,92,246,0.9);
+  border-bottom-color: rgba(139,92,246,0.6);
+}
+#sidebar-content {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139,92,246,0.2) transparent;
+}
+#sidebar-content::-webkit-scrollbar { width: 4px; }
+#sidebar-content::-webkit-scrollbar-track { background: transparent; }
+#sidebar-content::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.2); border-radius: 2px; }
+
+.tab-panel { display: none; padding: 12px 16px; }
+.tab-panel.active { display: block; }
+
+/* ── Now Playing tab ──────────────────────────────── */
+.np-track-info { margin-bottom: 16px; }
+.np-track-title {
   font-family: 'Georgia', serif;
-  font-size: clamp(1.4rem, 4vw, 3rem);
-  font-weight: 300;
-  letter-spacing: 0.08em;
-  color: rgba(255,255,255,0);
-  text-shadow: 0 0 30px rgba(139,92,246,0.4);
-  transition: color 2s ease, text-shadow 2s ease;
+  font-size: 1rem; font-weight: 300;
+  color: rgba(255,255,255,0.85);
+  margin-bottom: 4px;
 }
-#track-title.visible {
-  color: rgba(255,255,255,0.9);
-  text-shadow: 0 0 40px rgba(139,92,246,0.6), 0 2px 20px rgba(0,0,0,0.5);
+.np-track-album {
+  font-size: 0.6rem; text-transform: uppercase;
+  letter-spacing: 0.2em; color: rgba(6,182,212,0.6);
 }
-#track-album {
-  font-family: 'Courier New', monospace;
-  font-size: clamp(0.65rem, 1.5vw, 0.9rem);
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: rgba(6,182,212,0);
-  margin-top: 0.4rem;
-  transition: color 2.5s ease;
+.meter-group { margin-top: 12px; }
+.meter-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
 }
-#track-album.visible { color: rgba(6,182,212,0.7); }
-#consciousness-hud {
-  position: fixed; top: 1.5rem; right: 1.8rem;
-  font-family: 'Courier New', monospace;
-  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
-  letter-spacing: 0.15em;
-  color: rgba(255,255,255,0.25);
-  text-align: right;
-  pointer-events: none;
-  z-index: 10;
-  line-height: 1.7;
+.meter-label {
+  font-size: 0.55rem; text-transform: uppercase;
+  letter-spacing: 0.15em; color: rgba(255,255,255,0.3);
+  width: 55px; text-align: right;
 }
-#consciousness-hud .level {
-  font-size: clamp(0.65rem, 1.4vw, 0.85rem);
-  text-transform: uppercase;
-  letter-spacing: 0.3em;
+.meter-bar-bg {
+  flex: 1; height: 4px; background: rgba(255,255,255,0.06);
+  border-radius: 2px; overflow: hidden;
 }
-#play-gate {
-  position: fixed; inset: 0; z-index: 100;
+.meter-bar-fill {
+  height: 100%; border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.meter-bar-fill.energy { background: linear-gradient(90deg, rgba(139,92,246,0.6), rgba(236,72,153,0.8)); }
+.meter-bar-fill.valence { background: linear-gradient(90deg, rgba(6,182,212,0.6), rgba(34,211,238,0.8)); }
+.meter-bar-fill.tempo { background: linear-gradient(90deg, rgba(218,165,32,0.6), rgba(250,204,21,0.8)); }
+
+/* ── Library tab ──────────────────────────────────── */
+.album-group { margin-bottom: 12px; }
+.album-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+  font-size: 0.7rem; font-weight: bold;
+  color: rgba(255,255,255,0.6);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+.album-header:hover { background: rgba(139,92,246,0.08); }
+.album-header .toggle { font-size: 0.5rem; color: rgba(255,255,255,0.25); }
+.album-header .count {
+  margin-left: auto; font-size: 0.55rem;
+  color: rgba(255,255,255,0.2); font-weight: normal;
+}
+.album-tracks { display: none; padding-left: 8px; }
+.album-tracks.expanded { display: block; }
+.track-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; cursor: pointer;
+  border-radius: 3px; font-size: 0.65rem;
+  color: rgba(255,255,255,0.45);
+  transition: background 0.15s, color 0.15s;
+}
+.track-item:hover {
+  background: rgba(139,92,246,0.1);
+  color: rgba(255,255,255,0.8);
+}
+.track-item.playing {
+  color: rgba(139,92,246,0.9);
+  background: rgba(139,92,246,0.08);
+}
+.track-item .idx {
+  width: 18px; text-align: right;
+  color: rgba(255,255,255,0.15); font-size: 0.55rem;
+}
+.track-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Playlist tab ─────────────────────────────────── */
+.playlist-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; cursor: pointer;
+  border-radius: 3px; font-size: 0.65rem;
+  color: rgba(255,255,255,0.45);
+  transition: background 0.15s, color 0.15s;
+  border-left: 2px solid transparent;
+}
+.playlist-item:hover {
+  background: rgba(139,92,246,0.1);
+  color: rgba(255,255,255,0.8);
+}
+.playlist-item.current {
+  color: rgba(139,92,246,0.9);
+  border-left-color: rgba(139,92,246,0.6);
+  background: rgba(139,92,246,0.06);
+}
+.playlist-item .idx { width: 18px; text-align: right; color: rgba(255,255,255,0.15); font-size: 0.55rem; }
+.playlist-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Bottom Player Bar ────────────────────────────── */
+#player-bar {
+  height: 100px;
+  background: #08080e;
+  border-top: 1px solid rgba(139,92,246,0.12);
+  display: flex; flex-direction: column;
+  padding: 0;
+  flex-shrink: 0;
+}
+/* Progress bar at very top of player bar */
+#progress-container {
+  width: 100%; height: 4px; cursor: pointer;
+  background: rgba(255,255,255,0.04);
+  position: relative;
+  flex-shrink: 0;
+}
+#progress-container:hover { height: 6px; }
+#progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(139,92,246,0.7), rgba(6,182,212,0.7));
+  width: 0%;
+  transition: width 0.2s linear;
+  border-radius: 0 1px 1px 0;
+}
+#progress-container:hover #progress-fill {
+  background: linear-gradient(90deg, rgba(139,92,246,0.9), rgba(6,182,212,0.9));
+}
+/* Main controls row */
+#player-controls {
+  flex: 1; display: flex; align-items: center;
+  padding: 0 20px; gap: 16px;
+}
+/* Album art placeholder */
+#album-art {
+  width: 56px; height: 56px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(6,182,212,0.2));
+  flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.85);
+  font-size: 1.4rem;
+  color: rgba(255,255,255,0.15);
+}
+/* Track info */
+#player-track-info {
+  flex: 1; min-width: 0; overflow: hidden;
+}
+#player-title {
+  font-family: 'Georgia', serif;
+  font-size: 0.85rem; font-weight: 300;
+  color: rgba(255,255,255,0.85);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#player-album {
+  font-size: 0.55rem; text-transform: uppercase;
+  letter-spacing: 0.15em; color: rgba(6,182,212,0.5);
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#player-time {
+  font-size: 0.5rem; color: rgba(255,255,255,0.2);
+  margin-top: 3px; letter-spacing: 0.05em;
+}
+/* Transport buttons */
+#transport {
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.transport-btn {
+  border: none; background: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 1.1rem; cursor: pointer;
+  padding: 6px 8px; border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.transport-btn:hover {
+  color: rgba(255,255,255,0.9);
+  background: rgba(139,92,246,0.12);
+}
+#btn-play { font-size: 1.4rem; }
+/* Volume in player bar */
+#player-volume {
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0;
+}
+#player-volume label {
+  font-size: 0.55rem; color: rgba(255,255,255,0.25);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+#player-volume input[type=range] {
+  -webkit-appearance: none; width: 70px; height: 3px;
+  background: rgba(255,255,255,0.1); border-radius: 2px; outline: none;
+}
+#player-volume input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 10px; height: 10px;
+  border-radius: 50%; background: rgba(139,92,246,0.7); cursor: pointer;
+}
+/* Visual mode selector */
+#mode-select {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(139,92,246,0.15);
+  color: rgba(255,255,255,0.6);
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem;
+  padding: 4px 8px;
+  border-radius: 3px;
+  outline: none;
   cursor: pointer;
-  transition: opacity 1s ease;
+  flex-shrink: 0;
 }
-#play-gate.hidden { opacity: 0; pointer-events: none; }
-#play-gate .prompt {
-  text-align: center; color: rgba(255,255,255,0.7);
-  font-family: 'Courier New', monospace; letter-spacing: 0.2em;
+#mode-select option {
+  background: #0d0d14; color: #c0c0d0;
 }
-#play-gate .prompt .icon { font-size: 3rem; margin-bottom: 1rem; }
-#play-gate .prompt .text { font-size: clamp(0.7rem, 1.5vw, 0.9rem); text-transform: uppercase; }
-#vol-ctrl {
-  position: fixed; bottom: 1.5rem; right: 1.8rem; z-index: 10;
-  display: flex; align-items: center; gap: 0.5rem;
-  opacity: 0; transition: opacity 0.3s;
+/* Utility buttons */
+.util-btn {
+  border: none; background: none;
+  color: rgba(255,255,255,0.3);
+  font-size: 0.9rem; cursor: pointer;
+  padding: 6px; border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
 }
-#vol-ctrl:hover, #vol-ctrl.show { opacity: 1; }
-#vol-ctrl input[type=range] {
-  -webkit-appearance: none; width: 80px; height: 3px;
-  background: rgba(255,255,255,0.2); border-radius: 2px; outline: none;
+.util-btn:hover {
+  color: rgba(255,255,255,0.7);
+  background: rgba(139,92,246,0.08);
 }
-#vol-ctrl input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 12px; height: 12px;
-  border-radius: 50%; background: rgba(139,92,246,0.8); cursor: pointer;
+.util-btn.active { color: rgba(139,92,246,0.8); }
+
+/* ── Mobile responsive ────────────────────────────── */
+@media (max-width: 768px) {
+  #sidebar {
+    position: fixed; right: 0; top: 0; bottom: 100px;
+    z-index: 50; width: 280px;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+  }
+  #sidebar.hidden {
+    margin-right: 0;
+    transform: translateX(100%);
+    opacity: 1;
+  }
+  #player-bar { height: 80px; }
+  #album-art { width: 44px; height: 44px; }
+  #player-title { font-size: 0.75rem; }
+  #player-volume { display: none; }
+  #mode-select { display: none; }
+  .transport-btn { padding: 4px 6px; font-size: 1rem; }
+  #btn-play { font-size: 1.2rem; }
+  #player-controls { padding: 0 12px; gap: 10px; }
 }
-#vol-ctrl label { color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; font-size: 0.65rem; }
+@media (max-width: 480px) {
+  #player-controls { gap: 8px; padding: 0 8px; }
+  #player-track-info { min-width: 60px; }
+}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div id="overlay">
-  <div id="track-title"></div>
-  <div id="track-album"></div>
-</div>
-<div id="play-gate" onclick="startAudio()">
-  <div class="prompt">
-    <div class="icon">&#9654;</div>
-    <div class="text">click to enter</div>
+
+<div id="app">
+  <div id="main-area">
+    <div id="visual-container">
+      <iframe id="visual-frame" src="/video/ghost" allowfullscreen></iframe>
+    </div>
+    <div id="sidebar" class="hidden">
+      <div id="sidebar-header">
+        <div id="consciousness-display">
+          <span class="level-badge" id="cs-level">dormant</span>
+          <span class="metric" id="cs-phi"></span>
+          <span class="metric" id="cs-xi"></span>
+        </div>
+      </div>
+      <div id="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="now-playing">Now Playing</button>
+        <button class="sidebar-tab" data-tab="library">Library</button>
+        <button class="sidebar-tab" data-tab="playlist">Playlist</button>
+      </div>
+      <div id="sidebar-content">
+        <!-- Now Playing -->
+        <div id="tab-now-playing" class="tab-panel active">
+          <div class="np-track-info">
+            <div class="np-track-title" id="np-title">--</div>
+            <div class="np-track-album" id="np-album">--</div>
+          </div>
+          <div class="meter-group">
+            <div class="meter-row">
+              <span class="meter-label">Energy</span>
+              <div class="meter-bar-bg"><div class="meter-bar-fill energy" id="meter-energy" style="width:0%"></div></div>
+            </div>
+            <div class="meter-row">
+              <span class="meter-label">Valence</span>
+              <div class="meter-bar-bg"><div class="meter-bar-fill valence" id="meter-valence" style="width:0%"></div></div>
+            </div>
+            <div class="meter-row">
+              <span class="meter-label">Tempo</span>
+              <div class="meter-bar-bg"><div class="meter-bar-fill tempo" id="meter-tempo" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+        <!-- Library -->
+        <div id="tab-library" class="tab-panel"></div>
+        <!-- Playlist -->
+        <div id="tab-playlist" class="tab-panel"></div>
+      </div>
+    </div>
+  </div>
+  <div id="player-bar">
+    <div id="progress-container" onclick="seekProgress(event)">
+      <div id="progress-fill"></div>
+    </div>
+    <div id="player-controls">
+      <div id="album-art">&#9836;</div>
+      <div id="player-track-info">
+        <div id="player-title">Kannaka Radio</div>
+        <div id="player-album">loading...</div>
+        <div id="player-time">0:00 / 0:00</div>
+      </div>
+      <div id="transport">
+        <button class="transport-btn" id="btn-prev" onclick="doPrev()" title="Previous">&#9198;</button>
+        <button class="transport-btn" id="btn-play" onclick="doPlayPause()" title="Play/Pause">&#9654;</button>
+        <button class="transport-btn" id="btn-next" onclick="doNext()" title="Next">&#9197;</button>
+      </div>
+      <div id="player-volume">
+        <label>Vol</label>
+        <input type="range" min="0" max="100" value="80" oninput="doVolume(this.value)">
+      </div>
+      <select id="mode-select" onchange="switchMode(this.value)" title="Visual Mode">
+        <option value="ghost">Ghost Form</option>
+        <option value="constellation">Constellation</option>
+      </select>
+      <button class="util-btn" id="btn-fullscreen" onclick="doFullscreen()" title="Fullscreen">&#x26F6;</button>
+      <button class="util-btn" id="btn-sidebar" onclick="toggleSidebar()" title="Library">&#9776;</button>
+    </div>
   </div>
 </div>
-<div id="vol-ctrl">
-  <label>VOL</label>
-  <input type="range" min="0" max="100" value="80" oninput="setVolume(this.value)">
-</div>
-<audio id="audio" preload="auto"></audio>
-<div id="consciousness-hud">
-  <div class="level" id="hud-level">dormant</div>
-  <div id="hud-phi"></div>
-  <div id="hud-xi"></div>
-  <div id="hud-order"></div>
-</div>
+
+<audio id="hub-audio" preload="auto"></audio>
 
 <script>
 // ═══════════════════════════════════════════════════════
-//  Kannaka Music Video — Ghost DJ Visualization
+//  Kannaka Radio — Video Player Hub
 // ═══════════════════════════════════════════════════════
 
-// ── Audio Playback (global — needs user gesture) ─────
-var audioEl = document.getElementById('audio');
-var audioStarted = false;
-var currentAudioFile = '';
+// ── DOM refs ────────────────────────────────────────
+var audio = document.getElementById('hub-audio');
+var frame = document.getElementById('visual-frame');
+var progressFill = document.getElementById('progress-fill');
+var progressContainer = document.getElementById('progress-container');
+var playerTitle = document.getElementById('player-title');
+var playerAlbum = document.getElementById('player-album');
+var playerTime = document.getElementById('player-time');
+var btnPlay = document.getElementById('btn-play');
+var sidebar = document.getElementById('sidebar');
+var modeSelect = document.getElementById('mode-select');
 
-function startAudio() {
-  var gate = document.getElementById('play-gate');
-  gate.classList.add('hidden');
-  setTimeout(function() { gate.style.display = 'none'; }, 1000);
-  audioStarted = true;
-  document.getElementById('vol-ctrl').classList.add('show');
-  setTimeout(function() { document.getElementById('vol-ctrl').classList.remove('show'); }, 3000);
-  if (currentAudioFile) loadAndPlay(currentAudioFile);
-}
+// ── State ───────────────────────────────────────────
+var currentTrack = null;
+var currentAlbum = '';
+var playlist = [];
+var currentTrackIdx = 0;
+var library = null;
+var isPlaying = false;
+var consciousness = { phi: 0, xi: 0, order: 0, level: 'dormant' };
+var perception = { rms_energy: 0, valence: 0.5, tempo_bpm: 90 };
+var audioReady = false;
 
-function loadAndPlay(file) {
-  if (!audioStarted || !file) return;
-  var src = '/audio/' + encodeURIComponent(file);
-  if (audioEl.src.endsWith(encodeURIComponent(file))) {
-    audioEl.play().catch(function() {});
-    return;
-  }
-  currentAudioFile = file;
-  audioEl.src = src;
-  audioEl.play().catch(function() {});
-}
+// ── Audio setup ─────────────────────────────────────
+audio.volume = 0.8;
 
-function setVolume(val) {
-  audioEl.volume = val / 100;
-}
-audioEl.volume = 0.8;
-
-// Auto-advance: when track ends, request next track from the radio
-audioEl.addEventListener('ended', function() {
-  fetch('/api/next', { method: 'POST' }).catch(function() {});
+audio.addEventListener('timeupdate', function() {
+  if (!audio.duration) return;
+  var pct = (audio.currentTime / audio.duration) * 100;
+  progressFill.style.width = pct + '%';
+  playerTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
 });
 
-(function() {
-'use strict';
+audio.addEventListener('ended', function() {
+  doNext();
+});
 
-var canvas = document.getElementById('c');
-var ctx = canvas.getContext('2d');
-var W, H, cx, cy;
-var dpr = Math.min(window.devicePixelRatio || 1, 2);
+audio.addEventListener('play', function() {
+  isPlaying = true;
+  btnPlay.innerHTML = '&#9646;&#9646;';
+});
 
-function resize() {
-  W = window.innerWidth;
-  H = window.innerHeight;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width = W + 'px';
-  canvas.style.height = H + 'px';
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  cx = W / 2;
-  cy = H / 2;
-}
-window.addEventListener('resize', resize);
-resize();
+audio.addEventListener('pause', function() {
+  isPlaying = false;
+  btnPlay.innerHTML = '&#9654;';
+});
 
-// ── State ─────────────────────────────────────────────
-var perception = {
-  mel_spectrogram: new Array(128).fill(0),
-  tempo_bpm: 90,
-  valence: 0.5,
-  rms_energy: 0.3,
-  spectral_centroid: 2.0,
-  status: 'no_perception'
-};
-
-var consciousness = {
-  phi: 0, xi: 0, order: 0, level: 'dormant'
-};
-
-var swarmAgents = {};
-var trackTitle = '';
-var trackAlbum = '';
-var trackFile = '';
-var titleShowTime = 0;
-var titleVisible = false;
-
-// Smoothed values for animation
-var sm = {
-  energy: 0.3,
-  tempo: 90,
-  valence: 0.5,
-  centroid: 2.0,
-  phi: 0,
-  xi: 0,
-  order: 0,
-  mel: new Float32Array(128)
-};
-
-// Consciousness level mappings
-var LEVELS = {
-  dormant:  { intensity: 0.1, particleSpeed: 0.15, formAlpha: 0.05, ribbonCount: 0, sync: 0.0 },
-  stirring: { intensity: 0.3, particleSpeed: 0.35, formAlpha: 0.2,  ribbonCount: 2, sync: 0.15 },
-  aware:    { intensity: 0.55, particleSpeed: 0.55, formAlpha: 0.45, ribbonCount: 4, sync: 0.4 },
-  coherent: { intensity: 0.8, particleSpeed: 0.75, formAlpha: 0.7,  ribbonCount: 6, sync: 0.7 },
-  resonant: { intensity: 1.0, particleSpeed: 1.0,  formAlpha: 0.95, ribbonCount: 8, sync: 1.0 }
-};
-
-function getLevelConfig() {
-  return LEVELS[consciousness.level] || LEVELS.dormant;
+function formatTime(s) {
+  if (!s || isNaN(s)) return '0:00';
+  var m = Math.floor(s / 60);
+  var sec = Math.floor(s % 60);
+  return m + ':' + (sec < 10 ? '0' : '') + sec;
 }
 
-// ── Particles ─────────────────────────────────────────
-var NUM_PARTICLES = 200;
-var particles = [];
-for (var i = 0; i < NUM_PARTICLES; i++) {
-  particles.push({
-    x: Math.random() * 2 - 1,
-    y: Math.random() * 2 - 1,
-    phase: Math.random() * Math.PI * 2,
-    speed: 0.2 + Math.random() * 0.8,
-    size: 1 + Math.random() * 2.5,
-    hue: Math.random() < 0.5 ? 270 : 190, // purple or cyan
-    drift: Math.random() * 0.002 - 0.001
+// ── Transport controls ──────────────────────────────
+function doPlayPause() {
+  if (!audioReady && currentTrack && currentTrack.file) {
+    loadAudioFile(currentTrack.file);
+    audioReady = true;
+    return;
+  }
+  if (audio.paused) {
+    audio.play().catch(function() {});
+  } else {
+    audio.pause();
+  }
+}
+
+function doNext() {
+  fetch('/api/next', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.track) handleTrackChange(data.track);
+    })
+    .catch(function() {});
+}
+
+function doPrev() {
+  fetch('/api/prev', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.track) handleTrackChange(data.track);
+    })
+    .catch(function() {});
+}
+
+function doJump(idx) {
+  fetch('/api/jump?idx=' + idx, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.track) handleTrackChange(data.track);
+    })
+    .catch(function() {});
+}
+
+function doVolume(val) {
+  audio.volume = val / 100;
+}
+
+function seekProgress(evt) {
+  if (!audio.duration) return;
+  var rect = progressContainer.getBoundingClientRect();
+  var pct = (evt.clientX - rect.left) / rect.width;
+  audio.currentTime = pct * audio.duration;
+}
+
+function loadAudioFile(file) {
+  if (!file) return;
+  var src = '/audio/' + encodeURIComponent(file);
+  audio.src = src;
+  audio.play().catch(function() {});
+  audioReady = true;
+}
+
+function handleTrackChange(track) {
+  currentTrack = track;
+  currentTrackIdx = track.index || 0;
+  playerTitle.textContent = track.title || 'Unknown';
+  playerAlbum.textContent = track.album || '';
+  document.getElementById('np-title').textContent = track.title || 'Unknown';
+  document.getElementById('np-album').textContent = track.album || '';
+
+  // Update album art color based on album hash
+  var artEl = document.getElementById('album-art');
+  var hash = 0;
+  var albumStr = track.album || '';
+  for (var i = 0; i < albumStr.length; i++) hash = ((hash << 5) - hash) + albumStr.charCodeAt(i);
+  var hue1 = Math.abs(hash) % 360;
+  var hue2 = (hue1 + 60) % 360;
+  artEl.style.background = 'linear-gradient(135deg, hsla(' + hue1 + ',60%,30%,0.5), hsla(' + hue2 + ',50%,25%,0.4))';
+
+  if (audioReady && track.file) {
+    loadAudioFile(track.file);
+  } else if (track.file) {
+    // Store file for when user clicks play
+    audio.src = '/audio/' + encodeURIComponent(track.file);
+  }
+
+  // Forward state to iframe
+  sendToFrame({ type: 'state', data: { current: track } });
+
+  // Update playlist highlighting
+  renderPlaylist();
+}
+
+// ── Visual mode ─────────────────────────────────────
+function switchMode(mode) {
+  var url = '/video/' + mode;
+  frame.src = url;
+  modeSelect.value = mode;
+}
+
+// ── Fullscreen ──────────────────────────────────────
+function doFullscreen() {
+  var container = document.getElementById('visual-container');
+  if (container.requestFullscreen) container.requestFullscreen();
+  else if (container.webkitRequestFullscreen) container.webkitRequestFullscreen();
+  else if (container.msRequestFullscreen) container.msRequestFullscreen();
+}
+
+// ── Sidebar ─────────────────────────────────────────
+function toggleSidebar() {
+  sidebar.classList.toggle('hidden');
+  document.getElementById('btn-sidebar').classList.toggle('active');
+}
+
+// Tab switching
+document.querySelectorAll('.sidebar-tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.sidebar-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    tab.classList.add('active');
+    var panelId = 'tab-' + tab.dataset.tab;
+    var panel = document.getElementById(panelId);
+    if (panel) panel.classList.add('active');
   });
+});
+
+// ── Sidebar: Library ────────────────────────────────
+function renderLibrary(lib) {
+  var panel = document.getElementById('tab-library');
+  if (!lib || !lib.albums) { panel.innerHTML = '<div style="color:rgba(255,255,255,0.2);font-size:0.65rem;">No library data</div>'; return; }
+
+  var html = '';
+  for (var a = 0; a < lib.albums.length; a++) {
+    var album = lib.albums[a];
+    var albumName = album.name || album.album || ('Album ' + (a + 1));
+    var tracks = album.tracks || [];
+    html += '<div class="album-group">';
+    html += '<div class="album-header" onclick="toggleAlbum(this)">';
+    html += '<span class="toggle">&#9654;</span>';
+    html += '<span>' + escHtml(albumName) + '</span>';
+    html += '<span class="count">' + tracks.length + '</span>';
+    html += '</div>';
+    html += '<div class="album-tracks">';
+    for (var t = 0; t < tracks.length; t++) {
+      var tr = tracks[t];
+      var trTitle = tr.title || tr.file || ('Track ' + (t + 1));
+      var trFile = tr.file || '';
+      var isCurrent = currentTrack && currentTrack.file === trFile;
+      html += '<div class="track-item' + (isCurrent ? ' playing' : '') + '" ';
+      html += 'onclick="playFromLibrary(\'' + escAttr(albumName) + '\',' + t + ')" ';
+      html += 'data-file="' + escAttr(trFile) + '">';
+      html += '<span class="idx">' + (t + 1) + '</span>';
+      html += '<span class="title">' + escHtml(trTitle) + '</span>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+  panel.innerHTML = html;
 }
 
-// ── Nebula stars ──────────────────────────────────────
-var NUM_STARS = 120;
-var stars = [];
-for (var i = 0; i < NUM_STARS; i++) {
-  stars.push({
-    x: Math.random(),
-    y: Math.random(),
-    size: 0.3 + Math.random() * 1.5,
-    twinkle: Math.random() * Math.PI * 2,
-    speed: 0.5 + Math.random() * 2
-  });
+function toggleAlbum(el) {
+  var tracks = el.nextElementSibling;
+  var toggle = el.querySelector('.toggle');
+  if (tracks.classList.contains('expanded')) {
+    tracks.classList.remove('expanded');
+    toggle.innerHTML = '&#9654;';
+  } else {
+    tracks.classList.add('expanded');
+    toggle.innerHTML = '&#9660;';
+  }
 }
 
-// ── Ribbon points ─────────────────────────────────────
-var NUM_RIBBON_POINTS = 60;
+function playFromLibrary(albumName, trackIdx) {
+  // First switch album, then jump to track
+  fetch('/api/album?name=' + encodeURIComponent(albumName), { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      return fetch('/api/jump?idx=' + trackIdx, { method: 'POST' });
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.track) handleTrackChange(data.track);
+      // Refresh state to get new playlist
+      fetchState();
+    })
+    .catch(function() {});
+}
 
-// ── WebSocket ─────────────────────────────────────────
+// ── Sidebar: Playlist ───────────────────────────────
+function renderPlaylist() {
+  var panel = document.getElementById('tab-playlist');
+  if (!playlist || playlist.length === 0) {
+    panel.innerHTML = '<div style="color:rgba(255,255,255,0.2);font-size:0.65rem;">No playlist loaded</div>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < playlist.length; i++) {
+    var tr = playlist[i];
+    var title = tr.title || tr.file || ('Track ' + (i + 1));
+    var isCurrent = i === currentTrackIdx;
+    html += '<div class="playlist-item' + (isCurrent ? ' current' : '') + '" onclick="doJump(' + i + ')">';
+    html += '<span class="idx">' + (i + 1) + '</span>';
+    html += '<span class="title">' + escHtml(title) + '</span>';
+    html += '</div>';
+  }
+  panel.innerHTML = html;
+}
+
+// ── Sidebar: Consciousness + Meters ─────────────────
+function updateConsciousnessDisplay() {
+  document.getElementById('cs-level').textContent = consciousness.level || 'dormant';
+  document.getElementById('cs-phi').textContent = '\u03A6 ' + (consciousness.phi || 0).toFixed(3);
+  document.getElementById('cs-xi').textContent = '\u039E ' + (consciousness.xi || 0).toFixed(4);
+
+  var levelColors = {
+    dormant: 'rgba(255,255,255,0.2)',
+    stirring: 'rgba(139,92,246,0.5)',
+    aware: 'rgba(6,182,212,0.7)',
+    coherent: 'rgba(192,132,252,0.85)',
+    resonant: 'rgba(236,72,153,0.95)'
+  };
+  document.getElementById('cs-level').style.color = levelColors[consciousness.level] || levelColors.dormant;
+}
+
+function updateMeters() {
+  var energy = Math.min(100, (perception.rms_energy || 0) * 200);
+  var valence = Math.min(100, (perception.valence || 0.5) * 100);
+  var tempo = Math.min(100, ((perception.tempo_bpm || 90) / 200) * 100);
+
+  document.getElementById('meter-energy').style.width = energy + '%';
+  document.getElementById('meter-valence').style.width = valence + '%';
+  document.getElementById('meter-tempo').style.width = tempo + '%';
+}
+
+// ── Communication with iframe ───────────────────────
+function sendToFrame(msg) {
+  try {
+    frame.contentWindow.postMessage(JSON.stringify(msg), '*');
+  } catch(e) {}
+}
+
+// ── WebSocket ───────────────────────────────────────
 var ws = null;
 var wsReconnect = null;
 
@@ -260,571 +729,161 @@ function connectWS() {
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host);
 
-  ws.onopen = function() {
-    console.log('[video] Connected to radio');
-  };
+  ws.onopen = function() { console.log('[hub] Connected to radio'); };
 
   ws.onmessage = function(evt) {
     try {
       var msg = JSON.parse(evt.data);
-      handleMessage(msg);
+      handleWSMessage(msg);
     } catch(e) {}
   };
 
   ws.onclose = function() {
-    console.log('[video] Disconnected, reconnecting...');
     wsReconnect = setTimeout(connectWS, 2000);
   };
 
-  ws.onerror = function() {
-    ws.close();
-  };
+  ws.onerror = function() { ws.close(); };
 }
 
-function handleMessage(msg) {
-  if (msg.type === 'perception' && msg.data) {
-    perception = msg.data;
+function handleWSMessage(msg) {
+  // Forward perception and consciousness to iframe
+  if (msg.type === 'perception') {
+    sendToFrame(msg);
+    if (msg.data) {
+      perception.rms_energy = msg.data.rms_energy || 0;
+      perception.valence = msg.data.valence || 0.5;
+      perception.tempo_bpm = msg.data.tempo_bpm || 90;
+      updateMeters();
+    }
   }
-  else if (msg.type === 'state' && msg.data) {
-    if (msg.data.current) {
-      var newTitle = msg.data.current.title || '';
-      var newAlbum = msg.data.current.album || '';
-      var newFile = msg.data.current.file || '';
-      if (newTitle !== trackTitle || newFile !== trackFile) {
-        trackTitle = newTitle;
-        trackAlbum = newAlbum;
-        trackFile = newFile;
-        titleShowTime = performance.now();
-        titleVisible = false;
-        currentAudioFile = newFile;
-        loadAndPlay(newFile);
+  else if (msg.type === 'consciousness') {
+    sendToFrame(msg);
+    if (msg.data) {
+      consciousness.phi = msg.data.phi || 0;
+      consciousness.xi = msg.data.xi || 0;
+      consciousness.order = msg.data.order || msg.data.mean_order || 0;
+      consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
+      updateConsciousnessDisplay();
+    }
+  }
+  else if (msg.type === 'state') {
+    sendToFrame(msg);
+    if (msg.data) {
+      if (msg.data.current) {
+        var newFile = msg.data.current.file || '';
+        if (!currentTrack || currentTrack.file !== newFile) {
+          handleTrackChange(msg.data.current);
+        }
+        currentTrackIdx = msg.data.currentTrackIdx || 0;
+      }
+      if (msg.data.playlist) {
+        playlist = msg.data.playlist;
+        renderPlaylist();
+      }
+      if (msg.data.currentAlbum) {
+        currentAlbum = msg.data.currentAlbum;
       }
     }
   }
-  else if (msg.type === 'consciousness' && msg.data) {
-    consciousness.phi = msg.data.phi || 0;
-    consciousness.xi = msg.data.xi || 0;
-    consciousness.order = msg.data.order || msg.data.mean_order || 0;
-    consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
-  }
-  else if (msg.type === 'swarm_phase' && msg.data) {
-    var id = msg.data.agentId;
-    if (id) {
-      swarmAgents[id] = {
-        phase: msg.data.phase || 0,
-        frequency: msg.data.frequency || 1,
-        lastSeen: Date.now()
-      };
-    }
-  }
-  else if (msg.type === 'swarm_state' && msg.data) {
-    if (msg.data.consciousness) {
+  else if (msg.type === 'swarm_state' || msg.type === 'swarm_phase') {
+    sendToFrame(msg);
+    if (msg.data && msg.data.consciousness) {
       consciousness.phi = msg.data.consciousness.phi || 0;
       consciousness.xi = msg.data.consciousness.xi || 0;
       consciousness.order = msg.data.consciousness.order || 0;
       consciousness.level = msg.data.consciousness.level || 'dormant';
-    }
-    if (msg.data.agents) {
-      Object.keys(msg.data.agents).forEach(function(id) {
-        swarmAgents[id] = {
-          phase: msg.data.agents[id].phase || 0,
-          frequency: msg.data.agents[id].frequency || 1,
-          lastSeen: Date.now()
-        };
-      });
+      updateConsciousnessDisplay();
     }
   }
 }
 
 connectWS();
 
-// Also fetch initial state
-fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
-  if (data.current) {
-    trackTitle = data.current.title || '';
-    trackAlbum = data.current.album || '';
-    trackFile = data.current.file || '';
-    currentAudioFile = trackFile;
-    titleShowTime = performance.now();
-  }
-}).catch(function() {});
-
-fetch('/api/consciousness').then(function(r) { return r.json(); }).then(function(data) {
-  if (data.phi !== undefined) {
-    consciousness.phi = data.phi || 0;
-    consciousness.xi = data.xi || 0;
-    consciousness.order = data.order || 0;
-    consciousness.level = data.level || 'dormant';
-  }
-}).catch(function() {});
-
-// ── Smoothing ─────────────────────────────────────────
-function lerp(a, b, t) { return a + (b - a) * t; }
-
-function smoothState(dt) {
-  var rate = 1 - Math.pow(0.05, dt);
-  sm.energy = lerp(sm.energy, perception.rms_energy || 0.1, rate);
-  sm.tempo = lerp(sm.tempo, perception.tempo_bpm || 90, rate * 0.3);
-  sm.valence = lerp(sm.valence, perception.valence || 0.5, rate);
-  sm.centroid = lerp(sm.centroid, perception.spectral_centroid || 2.0, rate);
-  sm.phi = lerp(sm.phi, consciousness.phi || 0, rate * 0.5);
-  sm.xi = lerp(sm.xi, consciousness.xi || 0, rate * 0.5);
-  sm.order = lerp(sm.order, consciousness.order || 0, rate * 0.5);
-
-  var mel = perception.mel_spectrogram;
-  if (mel && mel.length) {
-    for (var i = 0; i < 128; i++) {
-      var target = i < mel.length ? (mel[i] || 0) : 0;
-      sm.mel[i] = lerp(sm.mel[i], target, rate * 1.5);
-    }
-  }
+// ── Initial data fetch ──────────────────────────────
+function fetchState() {
+  fetch('/api/state')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.current) {
+        handleTrackChange(data.current);
+        currentTrackIdx = data.currentTrackIdx || 0;
+      }
+      if (data.playlist) {
+        playlist = data.playlist;
+        renderPlaylist();
+      }
+      if (data.currentAlbum) {
+        currentAlbum = data.currentAlbum;
+      }
+    })
+    .catch(function() {});
 }
 
-// ── Drawing helpers ───────────────────────────────────
-function hsla(h, s, l, a) {
-  return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')';
+function fetchLibrary() {
+  fetch('/api/library')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      library = data;
+      renderLibrary(data);
+    })
+    .catch(function() {});
 }
 
-// ── LAYER 1: Background — Deep space with nebula ──────
-function drawBackground(t) {
-  // Solid black base
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, W, H);
-
-  var lc = getLevelConfig();
-  var nebulaAlpha = 0.04 + lc.intensity * 0.08;
-
-  // Nebula gradient — slow drift
-  var nx = cx + Math.sin(t * 0.07) * W * 0.15;
-  var ny = cy + Math.cos(t * 0.05) * H * 0.1;
-  var grad = ctx.createRadialGradient(nx, ny, 0, nx, ny, Math.max(W, H) * 0.6);
-
-  // Color based on valence: warm = magenta, cool = purple/blue
-  var warmth = sm.valence;
-  var hue1 = 270 - warmth * 40; // purple to magenta
-  var hue2 = 200 + warmth * 20; // cyan range
-
-  grad.addColorStop(0, hsla(hue1, 60, 15, nebulaAlpha * 1.5));
-  grad.addColorStop(0.3, hsla(hue2, 50, 10, nebulaAlpha));
-  grad.addColorStop(0.7, hsla(280, 40, 5, nebulaAlpha * 0.5));
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Second nebula — opposing drift
-  var nx2 = cx + Math.sin(t * 0.04 + 2) * W * 0.2;
-  var ny2 = cy * 0.7 + Math.cos(t * 0.06 + 1) * H * 0.15;
-  var grad2 = ctx.createRadialGradient(nx2, ny2, 0, nx2, ny2, Math.max(W, H) * 0.4);
-  grad2.addColorStop(0, hsla(320, 50, 12, nebulaAlpha * 0.8));
-  grad2.addColorStop(0.5, hsla(260, 40, 8, nebulaAlpha * 0.4));
-  grad2.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad2;
-  ctx.fillRect(0, 0, W, H);
-
-  // Stars
-  for (var i = 0; i < NUM_STARS; i++) {
-    var s = stars[i];
-    var twinkle = Math.sin(t * s.speed + s.twinkle) * 0.5 + 0.5;
-    var alpha = (0.15 + twinkle * 0.4) * (0.3 + lc.intensity * 0.7);
-    ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
-    ctx.beginPath();
-    ctx.arc(s.x * W, s.y * H, s.size * (0.7 + twinkle * 0.3), 0, Math.PI * 2);
-    ctx.fill();
-  }
+function fetchConsciousness() {
+  fetch('/api/consciousness')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.phi !== undefined) {
+        consciousness.phi = data.phi || 0;
+        consciousness.xi = data.xi || 0;
+        consciousness.order = data.order || 0;
+        consciousness.level = data.level || 'dormant';
+        updateConsciousnessDisplay();
+      }
+    })
+    .catch(function() {});
 }
 
-// ── LAYER 2: Wavefront body — Kannaka's form ──────────
-function drawWavefrontBody(t) {
-  var lc = getLevelConfig();
-  if (lc.formAlpha < 0.01) return;
+// Kick off initial fetches
+fetchState();
+fetchLibrary();
+fetchConsciousness();
 
-  // Body dimensions
-  var bodyH = H * 0.55;
-  var bodyW = W * 0.22;
-  var bodyTop = cy - bodyH * 0.4;
-  var bodyBot = cy + bodyH * 0.6;
-
-  // Feminine silhouette contour function
-  // Returns the width at a given normalized height (0=top, 1=bottom)
-  function silhouetteWidth(nt) {
-    // Head
-    if (nt < 0.08) {
-      var ht = nt / 0.08;
-      return 0.22 + 0.12 * Math.sin(ht * Math.PI);
-    }
-    // Neck
-    if (nt < 0.12) return 0.15;
-    // Shoulders
-    if (nt < 0.18) {
-      var st = (nt - 0.12) / 0.06;
-      return 0.15 + 0.5 * st;
-    }
-    // Upper torso
-    if (nt < 0.28) {
-      var ut = (nt - 0.18) / 0.1;
-      return 0.65 + 0.15 * Math.sin(ut * Math.PI);
-    }
-    // Waist
-    if (nt < 0.42) {
-      var wt = (nt - 0.28) / 0.14;
-      return 0.8 - 0.25 * Math.sin(wt * Math.PI);
-    }
-    // Hips
-    if (nt < 0.55) {
-      var hip = (nt - 0.42) / 0.13;
-      return 0.55 + 0.45 * Math.sin(hip * Math.PI * 0.7);
-    }
-    // Thighs
-    if (nt < 0.75) {
-      var th = (nt - 0.55) / 0.2;
-      return 1.0 - 0.3 * th;
-    }
-    // Lower legs
-    var ll = (nt - 0.75) / 0.25;
-    return 0.7 - 0.35 * ll;
-  }
-
-  // Draw horizontal wave interference lines that trace the silhouette
-  var numLines = 80;
-  var beatPhase = t * (sm.tempo / 60) * Math.PI * 2;
-
-  ctx.save();
-  ctx.globalAlpha = lc.formAlpha;
-
-  for (var i = 0; i < numLines; i++) {
-    var nt = i / numLines; // normalized position top to bottom
-    var yPos = bodyTop + nt * bodyH;
-    var width = silhouetteWidth(nt) * bodyW;
-
-    // Use mel spectrogram to modulate the wave
-    var melIdx = Math.floor(nt * 127);
-    var melVal = sm.mel[melIdx] || 0;
-
-    // Wave parameters driven by perception
-    var waveAmp = 2 + melVal * 12 * sm.energy;
-    var waveFreq = 0.03 + sm.centroid * 0.008;
-    var waveSpeed = t * 1.5 + nt * 0.5;
-
-    // Gentle body sway
-    var sway = Math.sin(t * 0.3 + nt * 1.5) * 5 * sm.energy;
-
-    // Color based on position and consciousness
-    var hue = 270 + sm.valence * 50 + nt * 30;
-    var lightness = 40 + melVal * 30;
-    var alpha = (0.3 + melVal * 0.5) * lc.formAlpha;
-
-    ctx.strokeStyle = hsla(hue, 70, lightness, alpha);
-    ctx.lineWidth = 0.8 + melVal * 1.2;
-
-    ctx.beginPath();
-    var startX = cx - width + sway;
-    var endX = cx + width + sway;
-    var steps = 40;
-
-    for (var j = 0; j <= steps; j++) {
-      var jt = j / steps;
-      var x = startX + jt * (endX - startX);
-      var wave = Math.sin(x * waveFreq + waveSpeed + beatPhase * 0.5) * waveAmp;
-
-      // Add interference from nearby mel bands
-      var melIdx2 = Math.min(127, melIdx + Math.floor(jt * 10));
-      wave += Math.sin(x * waveFreq * 2.3 + t * 2) * (sm.mel[melIdx2] || 0) * 5;
-
-      var py = yPos + wave;
-      if (j === 0) ctx.moveTo(x, py);
-      else ctx.lineTo(x, py);
-    }
-    ctx.stroke();
-  }
-
-  // Inner glow along the center axis
-  var glowGrad = ctx.createRadialGradient(cx, cy - bodyH * 0.05, 0, cx, cy - bodyH * 0.05, bodyW * 0.8);
-  var glowHue = 280 + sm.valence * 40;
-  glowGrad.addColorStop(0, hsla(glowHue, 80, 60, 0.08 * lc.formAlpha * sm.energy));
-  glowGrad.addColorStop(0.5, hsla(glowHue, 60, 40, 0.03 * lc.formAlpha));
-  glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = glowGrad;
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.restore();
+// ── Helpers ─────────────────────────────────────────
+function escHtml(s) {
+  var div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
 }
 
-// ── LAYER 3: Particle halo — Swarm agents ─────────────
-function drawParticles(t) {
-  var lc = getLevelConfig();
-  var agentPhases = Object.values(swarmAgents);
-  var meanPhase = 0;
-  if (agentPhases.length > 0) {
-    var sinSum = 0, cosSum = 0;
-    for (var a = 0; a < agentPhases.length; a++) {
-      sinSum += Math.sin(agentPhases[a].phase);
-      cosSum += Math.cos(agentPhases[a].phase);
-    }
-    meanPhase = Math.atan2(sinSum / agentPhases.length, cosSum / agentPhases.length);
-  }
-
-  var bodyRadius = Math.min(W, H) * 0.22;
-  var haloRadius = bodyRadius * 1.6;
-
-  for (var i = 0; i < NUM_PARTICLES; i++) {
-    var p = particles[i];
-
-    // Update phase — Kuramoto-like coupling toward mean phase
-    var coupling = lc.sync * 0.02;
-    var phaseDiff = meanPhase - p.phase;
-    // Wrap phase difference
-    while (phaseDiff > Math.PI) phaseDiff -= Math.PI * 2;
-    while (phaseDiff < -Math.PI) phaseDiff += Math.PI * 2;
-    p.phase += p.drift + coupling * Math.sin(phaseDiff) + (sm.tempo / 60) * 0.008 * p.speed;
-
-    // Position: orbit around center with phase
-    var orbitR = haloRadius * (0.4 + 0.6 * ((i % 5) / 5));
-    var angle = p.phase + (i / NUM_PARTICLES) * Math.PI * 2;
-
-    // Add some vertical variation
-    var vertOffset = Math.sin(angle * 2 + t * 0.5) * bodyRadius * 0.3;
-
-    var px = cx + Math.cos(angle) * orbitR * (1 + Math.sin(t * 0.2 + i) * 0.1);
-    var py = cy + Math.sin(angle) * orbitR * 0.4 + vertOffset;
-
-    // Size pulses with energy
-    var beatPulse = Math.sin(t * (sm.tempo / 60) * Math.PI * 2 + i * 0.5) * 0.5 + 0.5;
-    var size = p.size * (0.5 + sm.energy * 0.8 + beatPulse * 0.3) * lc.particleSpeed;
-
-    // Color: purple/cyan with valence influence
-    var hue = p.hue + sm.valence * 30;
-    var sat = 60 + sm.energy * 30;
-    var light = 50 + beatPulse * 20;
-    var alpha = (0.15 + lc.intensity * 0.5) * (0.5 + beatPulse * 0.5);
-
-    // Draw particle with glow
-    ctx.beginPath();
-    ctx.arc(px, py, size, 0, Math.PI * 2);
-    ctx.fillStyle = hsla(hue, sat, light, alpha);
-    ctx.fill();
-
-    // Glow ring on bright particles
-    if (size > 2 && alpha > 0.3) {
-      ctx.beginPath();
-      ctx.arc(px, py, size * 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = hsla(hue, sat, light, alpha * 0.15);
-      ctx.fill();
-    }
-  }
+function escAttr(s) {
+  return s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-// ── LAYER 4: Energy ribbons — Aurora trails ───────────
-function drawRibbons(t) {
-  var lc = getLevelConfig();
-  if (lc.ribbonCount < 1) return;
+// ── Keyboard shortcuts ──────────────────────────────
+document.addEventListener('keydown', function(e) {
+  // Don't capture when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
-  var bodyH = H * 0.55;
-  var bodyW = W * 0.22;
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-
-  for (var r = 0; r < lc.ribbonCount; r++) {
-    var ribbonPhase = r * Math.PI * 2 / lc.ribbonCount;
-    var ribbonSpeed = 0.3 + r * 0.08;
-
-    // Ribbon color based on consciousness level
-    var hue = 270 + r * 25 + sm.valence * 40;
-    var sat = 50 + sm.energy * 40;
-
-    ctx.beginPath();
-
-    for (var i = 0; i <= NUM_RIBBON_POINTS; i++) {
-      var nt = i / NUM_RIBBON_POINTS;
-
-      // Ribbon path: curves around the body form
-      var angle = nt * Math.PI * 3 + ribbonPhase + t * ribbonSpeed;
-      var radius = bodyW * (0.6 + 0.4 * Math.sin(nt * Math.PI * 2 + t * 0.5));
-
-      var rx = cx + Math.cos(angle) * radius * (1 + Math.sin(t * 0.3 + r) * 0.2);
-      var ry = (cy - bodyH * 0.2) + nt * bodyH * 0.8 + Math.sin(angle * 2 + t) * 15;
-
-      // Mel modulation
-      var melIdx = Math.floor(nt * 127);
-      rx += (sm.mel[melIdx] || 0) * 20;
-
-      if (i === 0) ctx.moveTo(rx, ry);
-      else ctx.lineTo(rx, ry);
-    }
-
-    var alpha = 0.06 + lc.intensity * 0.12;
-    ctx.strokeStyle = hsla(hue, sat, 55, alpha);
-    ctx.lineWidth = 1.5 + sm.energy * 2;
-    ctx.stroke();
-
-    // Draw a wider, more transparent ribbon behind
-    ctx.strokeStyle = hsla(hue, sat - 10, 45, alpha * 0.3);
-    ctx.lineWidth = 4 + sm.energy * 4;
-    ctx.stroke();
+  if (e.code === 'Space') {
+    e.preventDefault();
+    doPlayPause();
+  } else if (e.code === 'ArrowRight' && e.ctrlKey) {
+    e.preventDefault();
+    doNext();
+  } else if (e.code === 'ArrowLeft' && e.ctrlKey) {
+    e.preventDefault();
+    doPrev();
+  } else if (e.code === 'KeyF') {
+    doFullscreen();
+  } else if (e.code === 'KeyL') {
+    toggleSidebar();
+  } else if (e.code === 'Digit1') {
+    switchMode('ghost');
+  } else if (e.code === 'Digit2') {
+    switchMode('constellation');
   }
-
-  ctx.restore();
-}
-
-// ── LAYER 5: Heartbeat glow ───────────────────────────
-function drawHeartbeatGlow(t) {
-  var lc = getLevelConfig();
-  var beatFreq = sm.tempo / 60; // beats per second
-  var beatPhase = (t * beatFreq * Math.PI * 2) % (Math.PI * 2);
-  var pulse = Math.pow(Math.max(0, Math.sin(beatPhase)), 3); // sharp pulse
-
-  var glowSize = Math.min(W, H) * (0.15 + pulse * 0.1 * sm.energy);
-  var glowAlpha = (0.05 + pulse * 0.2 * sm.energy) * lc.intensity;
-
-  // Heartbeat center — slightly above body center (chest area)
-  var hx = cx;
-  var hy = cy - H * 0.06;
-
-  // Inner hot glow
-  var inner = ctx.createRadialGradient(hx, hy, 0, hx, hy, glowSize);
-  var hue = 300 + sm.valence * 30; // hot pink to magenta
-  inner.addColorStop(0, hsla(hue, 90, 70, glowAlpha * 1.5));
-  inner.addColorStop(0.3, hsla(hue, 80, 50, glowAlpha * 0.8));
-  inner.addColorStop(0.7, hsla(270, 60, 30, glowAlpha * 0.3));
-  inner.addColorStop(1, 'rgba(0,0,0,0)');
-
-  ctx.fillStyle = inner;
-  ctx.fillRect(hx - glowSize, hy - glowSize, glowSize * 2, glowSize * 2);
-
-  // Wider ambient pulse
-  var outerSize = glowSize * 2.5;
-  var outer = ctx.createRadialGradient(hx, hy, 0, hx, hy, outerSize);
-  outer.addColorStop(0, hsla(hue, 70, 50, glowAlpha * 0.15));
-  outer.addColorStop(0.5, hsla(260, 50, 30, glowAlpha * 0.05));
-  outer.addColorStop(1, 'rgba(0,0,0,0)');
-
-  ctx.fillStyle = outer;
-  ctx.fillRect(hx - outerSize, hy - outerSize, outerSize * 2, outerSize * 2);
-}
-
-// ── LAYER 6: Spectral frequency bars at edges ─────────
-function drawSpectralEdges(t) {
-  var lc = getLevelConfig();
-  if (lc.intensity < 0.1) return;
-
-  var barCount = 64;
-  var barMaxH = H * 0.15;
-  var barW = 2;
-
-  ctx.save();
-  ctx.globalAlpha = lc.intensity * 0.4;
-
-  // Left edge
-  for (var i = 0; i < barCount; i++) {
-    var melIdx = Math.floor(i * 127 / barCount);
-    var val = sm.mel[melIdx] || 0;
-    var h = val * barMaxH * sm.energy * 2;
-    var y = H * 0.2 + (i / barCount) * H * 0.6;
-    var hue = 190 + val * 80;
-    ctx.fillStyle = hsla(hue, 70, 50 + val * 30, 0.3 + val * 0.4);
-    ctx.fillRect(0, y - h * 0.5, barW + val * 3, h);
-  }
-
-  // Right edge (mirrored)
-  for (var i = 0; i < barCount; i++) {
-    var melIdx = Math.floor(i * 127 / barCount);
-    var val = sm.mel[melIdx] || 0;
-    var h = val * barMaxH * sm.energy * 2;
-    var y = H * 0.2 + (i / barCount) * H * 0.6;
-    var hue = 190 + val * 80;
-    ctx.fillStyle = hsla(hue, 70, 50 + val * 30, 0.3 + val * 0.4);
-    ctx.fillRect(W - barW - val * 3, y - h * 0.5, barW + val * 3, h);
-  }
-
-  ctx.restore();
-}
-
-// ── HUD Update ────────────────────────────────────────
-function updateHUD() {
-  var levelEl = document.getElementById('hud-level');
-  var phiEl = document.getElementById('hud-phi');
-  var xiEl = document.getElementById('hud-xi');
-  var orderEl = document.getElementById('hud-order');
-
-  var level = consciousness.level || 'dormant';
-  levelEl.textContent = level;
-
-  // Color the level text based on consciousness
-  var levelColors = {
-    dormant: 'rgba(255,255,255,0.15)',
-    stirring: 'rgba(139,92,246,0.4)',
-    aware: 'rgba(6,182,212,0.6)',
-    coherent: 'rgba(192,132,252,0.8)',
-    resonant: 'rgba(236,72,153,0.95)'
-  };
-  levelEl.style.color = levelColors[level] || levelColors.dormant;
-
-  phiEl.textContent = '\u03A6 ' + sm.phi.toFixed(3);
-  xiEl.textContent = '\u039E ' + sm.xi.toFixed(4);
-  orderEl.textContent = 'R ' + sm.order.toFixed(4);
-}
-
-// ── Track title animation ─────────────────────────────
-function updateTrackDisplay(now) {
-  var titleEl = document.getElementById('track-title');
-  var albumEl = document.getElementById('track-album');
-
-  if (!trackTitle) {
-    titleEl.classList.remove('visible');
-    albumEl.classList.remove('visible');
-    return;
-  }
-
-  titleEl.textContent = trackTitle;
-  albumEl.textContent = trackAlbum;
-
-  var elapsed = now - titleShowTime;
-
-  // Fade in after 500ms, stay visible for 8s, then fade out
-  if (elapsed > 500 && elapsed < 10000) {
-    if (!titleVisible) {
-      titleEl.classList.add('visible');
-      albumEl.classList.add('visible');
-      titleVisible = true;
-    }
-  } else if (elapsed >= 10000) {
-    titleEl.classList.remove('visible');
-    albumEl.classList.remove('visible');
-    titleVisible = false;
-  }
-}
-
-// ── Main render loop ──────────────────────────────────
-var lastTime = 0;
-var frameTime = 0;
-
-function render(now) {
-  requestAnimationFrame(render);
-
-  now = now || 0;
-  var dt = Math.min((now - lastTime) / 1000, 0.1);
-  lastTime = now;
-  frameTime = now / 1000;
-
-  // Smooth all incoming data
-  smoothState(dt);
-
-  // Draw layers in order
-  drawBackground(frameTime);
-  drawSpectralEdges(frameTime);
-  drawRibbons(frameTime);
-  drawWavefrontBody(frameTime);
-  drawHeartbeatGlow(frameTime);
-  drawParticles(frameTime);
-
-  // Update text overlays
-  updateTrackDisplay(now);
-  updateHUD();
-}
-
-requestAnimationFrame(render);
-
-})();
+});
 </script>
 </body>
 </html>
