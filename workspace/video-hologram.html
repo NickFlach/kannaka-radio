@@ -490,36 +490,35 @@ async function loadVRM() {
   model.scale.setScalar(scale);
   model.rotation.y = Math.PI; // VRM faces +Z, camera looks down -Z — rotate 180°
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
-  // Apply skin material + clip the triangle/cap from the head
-  // The model's head accessory is baked into the single mesh
-  // Use a clipping plane to cut off geometry above the head top
-  // Clip the VRM model's head — calculate world-space Y for the neck
-  // Model: 2.63 units tall, scaled by (4/2.63)≈1.52, bottom at -0.5
-  // Neck is at about model Y=2.2, world Y = 2.2 * scale + model.position.y
-  const neckModelY = 2.1; // model-space neck height
-  const neckWorldY = neckModelY * scale + (-box.min.y * scale - 0.5);
-  console.log('[hologram] clip at world Y:', neckWorldY);
-  const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), neckWorldY);
-  renderer.localClippingEnabled = true;
-
+  // Remove head geometry by collapsing vertices above neck height
+  // Model space: total height ~2.63, neck at ~2.05
+  const neckCutoff = 2.05; // model-space Y — everything above this gets hidden
   model.traverse((child) => {
-    if (child.isMesh) {
-      const mat = skinMat.clone();
-      mat.clippingPlanes = [clipPlane];
-      mat.clipShadows = true;
-      child.material = mat;
+    if (child.isMesh && child.geometry) {
+      const pos = child.geometry.attributes.position;
+      if (pos) {
+        const arr = pos.array;
+        for (let i = 0; i < pos.count; i++) {
+          const y = arr[i * 3 + 1]; // Y component
+          if (y > neckCutoff) {
+            // Collapse vertex to neck level (makes triangles degenerate = invisible)
+            arr[i * 3 + 1] = neckCutoff;
+            arr[i * 3] *= 0.3;     // also squeeze X toward center
+            arr[i * 3 + 2] *= 0.3; // and Z — hides the collapsed geometry
+          }
+        }
+        pos.needsUpdate = true;
+        child.geometry.computeVertexNormals();
+      }
+      child.material = skinMat.clone();
       child.castShadow = false;
       child.receiveShadow = false;
       // Add wireframe sibling that shares geometry and follows skeleton
-      const wm = wireMat.clone();
-      wm.clippingPlanes = [clipPlane];
-      const wire = new THREE.Mesh(child.geometry, wm);
+      const wire = new THREE.Mesh(child.geometry, wireMat.clone());
       wire.morphTargetInfluences = child.morphTargetInfluences;
       wire.morphTargetDictionary = child.morphTargetDictionary;
       if (child.isSkinnedMesh) {
-        const wsm = wireMat.clone();
-        wsm.clippingPlanes = [clipPlane];
-        const wSkinned = new THREE.SkinnedMesh(child.geometry, wsm);
+        const wSkinned = new THREE.SkinnedMesh(child.geometry, wireMat.clone());
         wSkinned.skeleton = child.skeleton;
         wSkinned.bindMatrix.copy(child.bindMatrix);
         wSkinned.bindMatrixInverse.copy(child.bindMatrixInverse);
