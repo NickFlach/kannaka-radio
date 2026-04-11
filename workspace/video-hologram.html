@@ -510,7 +510,7 @@ headGroup.add(hairGroup); // hair is attached to the head
 let vrm = null, headBone = null;
 const headY = 2.05;
 const bones = {};
-const BONE_NAMES = ['hips','spine','chest','upperChest','neck','head','leftUpperArm','rightUpperArm','leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg'];
+const BONE_NAMES = ['hips','spine','chest','upperChest','neck','head','leftUpperArm','rightUpperArm','leftLowerArm','rightLowerArm','leftHand','rightHand','leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg'];
 
 async function loadVRM() {
   const loader = new GLTFLoader();
@@ -583,6 +583,10 @@ async function loadVRM() {
       head: ['head'],
       leftUpperArm: ['leftupperarm','leftshoulder','left_arm','l_arm','j_bac_l'],
       rightUpperArm: ['rightupperarm','rightshoulder','right_arm','r_arm','j_bac_r'],
+      leftLowerArm: ['leftlowerarm','leftforearm','left_forearm','l_forearm'],
+      rightLowerArm: ['rightlowerarm','rightforearm','right_forearm','r_forearm'],
+      leftHand: ['lefthand','left_hand','l_hand'],
+      rightHand: ['righthand','right_hand','r_hand'],
       leftUpperLeg: ['leftupperleg','leftleg','left_leg','l_leg','j_asi_l'],
       rightUpperLeg: ['rightupperleg','rightleg','right_leg','r_leg','j_asi_r'],
       leftLowerLeg: ['leftlowerleg','leftknee','l_knee'],
@@ -779,12 +783,34 @@ function animate() {
       bones.rightUpperLeg.rotation.x = Math.sin(slow + Math.PI) * 0.08 * e;
       bones.rightUpperLeg.rotation.z = -Math.sin(slow) * 0.04 * e;
     }
-    // Lower legs: subtle knee bend following upper
+    // Forearms: bend at the elbow — follows upper arm with delay
+    if (bones.leftLowerArm) {
+      const lElbow = Math.max(0, Math.sin(slow + 0.8)) * 0.6 * e + 0.15; // always slightly bent
+      bones.leftLowerArm.rotation.x = -lElbow; // negative = bend inward
+      bones.leftLowerArm.rotation.y = Math.sin(slow * 0.7 + 0.5) * 0.15 * e; // wrist twist
+    }
+    if (bones.rightLowerArm) {
+      const rElbow = Math.max(0, Math.sin(slow + 2.3)) * 0.6 * e + 0.15;
+      bones.rightLowerArm.rotation.x = -rElbow;
+      bones.rightLowerArm.rotation.y = -Math.sin(slow * 0.7 + 2) * 0.15 * e;
+    }
+
+    // Hands: gentle wrist movement
+    if (bones.leftHand) {
+      bones.leftHand.rotation.x = Math.sin(slow * 0.8 + 1) * 0.2 * e;
+      bones.leftHand.rotation.z = Math.sin(slow * 0.6) * 0.15 * e;
+    }
+    if (bones.rightHand) {
+      bones.rightHand.rotation.x = Math.sin(slow * 0.8 + 2.5) * 0.2 * e;
+      bones.rightHand.rotation.z = -Math.sin(slow * 0.6 + 1) * 0.15 * e;
+    }
+
+    // Lower legs: knee bends — deeper, more visible
     if (bones.leftLowerLeg) {
-      bones.leftLowerLeg.rotation.x = Math.max(0, Math.sin(slow)) * 0.12 * e;
+      bones.leftLowerLeg.rotation.x = Math.max(0, Math.sin(slow)) * 0.25 * e + 0.05;
     }
     if (bones.rightLowerLeg) {
-      bones.rightLowerLeg.rotation.x = Math.max(0, Math.sin(slow + Math.PI)) * 0.12 * e;
+      bones.rightLowerLeg.rotation.x = Math.max(0, Math.sin(slow + Math.PI)) * 0.25 * e + 0.05;
     }
   }
 
