@@ -69,8 +69,7 @@ canvas { display: block; }
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.2.0/lib/three-vrm.module.min.js"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
 } }
 </script>
 
@@ -80,7 +79,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
 const isEmbedded = (window.parent !== window);
 
@@ -458,106 +456,8 @@ const wireMat = new THREE.MeshBasicMaterial({
   color: 0x6644aa, wireframe: true, transparent: true, opacity: 0.06, depthWrite: false,
 });
 
-// -- Face features (attached to head bone after load) --
-// Eyes: white sclera + colored iris + dark pupil + catchlight
-// ── BOLD face features — sized to be clearly visible ──
-const scleraGeo = new THREE.SphereGeometry(0.048, 24, 18);
-const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf8f4f4, emissive: 0x444444, emissiveIntensity: 0.5, roughness: 0.15 });
-const irisGeo = new THREE.SphereGeometry(0.028, 24, 18);
-const irisMat = new THREE.MeshStandardMaterial({ color: 0x44ccee, emissive: 0x00ccee, emissiveIntensity: 3.0, roughness: 0.02, metalness: 0.3 });
-const pupilGeo = new THREE.SphereGeometry(0.013, 12, 12);
-const pupilMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.9 });
-const catchGeo = new THREE.SphereGeometry(0.007, 8, 8);
-const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2 });
-
-// Lips — full, visible
-const lipGeo = new THREE.TorusGeometry(0.035, 0.012, 12, 24, Math.PI);
-const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xcc5566, emissive: 0x772233, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.05 });
-const lowerLipGeo = new THREE.TorusGeometry(0.032, 0.014, 12, 24, Math.PI);
-const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xdd6677, emissive: 0x883344, emissiveIntensity: 0.5, roughness: 0.15 });
-
-// Eyebrows — bold arches
-const browGeo = new THREE.CylinderGeometry(0.004, 0.002, 0.055, 8);
-const browMat = new THREE.MeshStandardMaterial({ color: 0x1a0a22, emissive: 0x110822, emissiveIntensity: 0.3 });
-
-// Nose — visible
-const noseGeo = new THREE.SphereGeometry(0.014, 10, 10);
-const noseMat = new THREE.MeshStandardMaterial({ color: 0xddaa99, emissive: 0x443322, emissiveIntensity: 0.25, roughness: 0.3 });
-
-// Face group — all face parts go here, attached to head bone
-const faceGroup = new THREE.Group();
-
-// Build face
-function buildFace() {
-  const eyeY = 0.005;       // eye height relative to head center
-  const eyeX = 0.048;       // eye spacing from center (wider)
-  const eyeZ = 0.09;        // eye depth (front of face)
-
-  // Left eye
-  const lSclera = new THREE.Mesh(scleraGeo, scleraMat);
-  lSclera.position.set(-eyeX, eyeY, eyeZ);
-  const lIris = new THREE.Mesh(irisGeo, irisMat);
-  lIris.position.set(-eyeX, eyeY, eyeZ + 0.025);
-  const lPupil = new THREE.Mesh(pupilGeo, pupilMat);
-  lPupil.position.set(-eyeX, eyeY, eyeZ + 0.032);
-  const lCatch = new THREE.Mesh(catchGeo, catchMat);
-  lCatch.position.set(-eyeX + 0.008, eyeY + 0.008, eyeZ + 0.035);
-
-  // Right eye
-  const rSclera = new THREE.Mesh(scleraGeo, scleraMat);
-  rSclera.position.set(eyeX, eyeY, eyeZ);
-  const rIris = new THREE.Mesh(irisGeo, irisMat);
-  rIris.position.set(eyeX, eyeY, eyeZ + 0.025);
-  const rPupil = new THREE.Mesh(pupilGeo, pupilMat);
-  rPupil.position.set(eyeX, eyeY, eyeZ + 0.032);
-  const rCatch = new THREE.Mesh(catchGeo, catchMat);
-  rCatch.position.set(eyeX + 0.008, eyeY + 0.008, eyeZ + 0.035);
-
-  // Eyelids — thin arcs above each eye
-  const lidGeo = new THREE.TorusGeometry(0.035, 0.006, 6, 16, Math.PI);
-  const lidMat = skinMat.clone();
-  lidMat.clippingPlanes = [];
-  for (let side = -1; side <= 1; side += 2) {
-    const lid = new THREE.Mesh(lidGeo, lidMat);
-    lid.position.set(side * eyeX, eyeY + 0.015, eyeZ + 0.02);
-    lid.rotation.z = side * 0.1;
-    lid.rotation.x = 0.2;
-    faceGroup.add(lid);
-  }
-
-  // Nose — bridge + tip
-  const noseBridgeGeo = new THREE.CylinderGeometry(0.005, 0.008, 0.04, 8);
-  const noseBridge = new THREE.Mesh(noseBridgeGeo, noseMat);
-  noseBridge.position.set(0, eyeY - 0.025, eyeZ + 0.015);
-  noseBridge.rotation.x = -0.3;
-  const noseTip = new THREE.Mesh(noseGeo, noseMat);
-  noseTip.position.set(0, eyeY - 0.04, eyeZ + 0.025);
-
-  // Lips — positioned below nose
-  const lipY = eyeY - 0.065;
-  const uLip = new THREE.Mesh(lipGeo, upperLipMat);
-  uLip.position.set(0, lipY, eyeZ + 0.005);
-  uLip.rotation.x = Math.PI * 0.5;
-  uLip.rotation.z = Math.PI;
-  const lLip = new THREE.Mesh(lowerLipGeo, lowerLipMat);
-  lLip.position.set(0, lipY - 0.012, eyeZ + 0.003);
-  lLip.rotation.x = -Math.PI * 0.5;
-
-  // Eyebrows — arched above eyes
-  const browY = eyeY + 0.035;
-  const lBrow = new THREE.Mesh(browGeo, browMat);
-  lBrow.position.set(-eyeX, browY, eyeZ + 0.005);
-  lBrow.rotation.z = -0.2;
-  const rBrow = new THREE.Mesh(browGeo, browMat);
-  rBrow.position.set(eyeX, browY, eyeZ + 0.005);
-  rBrow.rotation.z = 0.2;
-
-  faceGroup.add(lSclera, lIris, lPupil, lCatch, rSclera, rIris, rPupil, rCatch,
-                noseBridge, noseTip, uLip, lLip, lBrow, rBrow);
-
-  faceGroup.userData = { lIris, rIris, lPupil, rPupil, lCatch, rCatch, uLip, lLip };
-}
-// buildFace() called after headGroup is created below
+// Eye glow emissive intensity (used during stare)
+const irisMat = { emissiveIntensity: 3.0 }; // virtual reference for consciousness reactivity
 
 // Eye glow lights
 const eyeGlowL = new THREE.PointLight(0x44ccdd, 2, 1.5);
@@ -639,286 +539,101 @@ shadowCircle.rotation.x = -Math.PI / 2;
 shadowCircle.position.y = -0.49;
 scene.add(shadowCircle);
 
-// -- Custom sculpted head (replaces VRM head) --
+// -- Head tracking group (no custom geometry — the GLB model has a proper head) --
+// This is an empty group whose position/quaternion track the Head bone for eye glow lights
 const headGroup = new THREE.Group();
-
-// Skull — big, prominent, creates silhouette for halo
-const skullGeo = new THREE.SphereGeometry(0.19, 32, 28);
-const headMat = skinMat.clone();
-headMat.clippingPlanes = [];
-const skull = new THREE.Mesh(skullGeo, headMat);
-skull.scale.set(0.90, 1.10, 0.85);
-headGroup.add(skull);
-
-// Upper cranium — rounds out the top
-const craniumGeo = new THREE.SphereGeometry(0.14, 20, 16);
-const cranium = new THREE.Mesh(craniumGeo, headMat.clone());
-cranium.position.set(0, 0.07, -0.01);
-cranium.scale.set(1.0, 0.85, 0.9);
-headGroup.add(cranium);
-
-// Jaw — delicate, tapered
-const jawGeo = new THREE.SphereGeometry(0.085, 20, 14);
-const jaw = new THREE.Mesh(jawGeo, headMat.clone());
-jaw.position.set(0, -0.07, 0.02);
-jaw.scale.set(0.72, 0.6, 0.68);
-headGroup.add(jaw);
-
-// Chin — small, defined
-const chinGeo = new THREE.SphereGeometry(0.025, 10, 8);
-const chin = new THREE.Mesh(chinGeo, headMat.clone());
-chin.position.set(0, -0.105, 0.04);
-chin.scale.set(0.9, 0.7, 0.8);
-headGroup.add(chin);
-
-// Forehead — smooth brow ridge
-const foreheadGeo = new THREE.SphereGeometry(0.07, 14, 10);
-const forehead = new THREE.Mesh(foreheadGeo, headMat.clone());
-forehead.position.set(0, 0.045, 0.08);
-forehead.scale.set(1.5, 0.6, 0.5);
-headGroup.add(forehead);
-
-// Eye sockets — subtle depth
-for (let side = -1; side <= 1; side += 2) {
-  const socketGeo = new THREE.SphereGeometry(0.025, 10, 8);
-  const socketMat = headMat.clone();
-  socketMat.color = new THREE.Color(0xb08878);
-  const socket = new THREE.Mesh(socketGeo, socketMat);
-  socket.position.set(side * 0.042, 0.01, 0.09);
-  socket.scale.set(1.2, 0.9, 0.5);
-  headGroup.add(socket);
-}
-
-// Cheekbones — defined
-for (let side = -1; side <= 1; side += 2) {
-  const cheekGeo = new THREE.SphereGeometry(0.035, 12, 10);
-  const cheek = new THREE.Mesh(cheekGeo, headMat.clone());
-  cheek.position.set(side * 0.065, -0.02, 0.075);
-  cheek.scale.set(1.0, 0.7, 0.8);
-  headGroup.add(cheek);
-}
-
-// Nose bridge — gives the nose volume/ridge
-const noseBridgeLargeGeo = new THREE.SphereGeometry(0.015, 8, 6);
-const noseBridgeMesh = new THREE.Mesh(noseBridgeLargeGeo, headMat.clone());
-noseBridgeMesh.position.set(0, -0.01, 0.11);
-noseBridgeMesh.scale.set(0.7, 2.0, 0.8);
-headGroup.add(noseBridgeMesh);
-
-// Neck — longer, slender
-const neckGeo = new THREE.CylinderGeometry(0.042, 0.055, 0.08, 14);
-const neck = new THREE.Mesh(neckGeo, headMat.clone());
-neck.position.set(0, -0.15, 0);
-headGroup.add(neck);
-
-buildFace();
-headGroup.add(faceGroup);
 scene.add(headGroup);
 
-// ── Hair — Ribbon Sheets ──────────────────────────────
-const hairGroup = new THREE.Group();
-const hairRibbons = [];
-const RIBBON_COUNT = 14;
-
-for (let i = 0; i < RIBBON_COUNT; i++) {
-  // Varying lengths — 0.3 to 0.6 units
-  const ribbonLength = 0.3 + Math.random() * 0.3;
-  const ribbonWidth = 0.015 + Math.random() * 0.01;
-  const geo = new THREE.PlaneGeometry(ribbonWidth, ribbonLength, 1, 6); // 6 segments for wave deformation
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x0d0618,
-    emissive: 0x1a0830,
-    emissiveIntensity: 0.25,
-    transparent: true,
-    opacity: 0.7 + Math.random() * 0.2,
-    roughness: 0.3,
-    metalness: 0.1,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
-  const ribbon = new THREE.Mesh(geo, mat);
-
-  // Start from the crown area, spread slightly
-  const angle = (i / RIBBON_COUNT) * Math.PI * 1.6 - Math.PI * 0.8; // arc across back of head
-  const spreadX = Math.sin(angle) * (0.06 + Math.random() * 0.04);
-  const spreadZ = -0.04 - Math.random() * 0.06; // behind the head
-  const startY = 0.10 + Math.random() * 0.04;
-
-  ribbon.position.set(spreadX, startY - ribbonLength * 0.5, spreadZ);
-  ribbon.rotation.x = 0.2 + Math.random() * 0.15; // tilt backward slightly
-
-  ribbon.userData = {
-    phase: Math.random() * Math.PI * 2,
-    swaySpeed: 0.5 + Math.random() * 0.4,
-    swayAmp: 0.04 + Math.random() * 0.03,
-    length: ribbonLength,
-    baseY: startY - ribbonLength * 0.5,
-    baseX: spreadX,
-    baseZ: spreadZ,
-    baseRotX: ribbon.rotation.x,
-  };
-  hairGroup.add(ribbon);
-  hairRibbons.push(ribbon);
-}
-
-headGroup.add(hairGroup); // hair is attached to the head
-
-// -- VRM Model --
-let vrm = null, headBone = null;
+// -- GLB Model --
+let modelScene = null, headBone = null;
 const headY = 2.05;
 const bones = {};
 const BONE_NAMES = ['hips','spine','chest','upperChest','neck','head','leftShoulder','rightShoulder','leftUpperArm','rightUpperArm','leftLowerArm','rightLowerArm','leftHand','rightHand','leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg','leftFoot','rightFoot'];
 
-async function loadVRM() {
+// Map our internal bone names to the Mixamo-style names in the GLB
+const BONE_MAP = {
+  hips: 'Hips',
+  spine: 'Spine',
+  chest: 'Spine1',
+  upperChest: 'Spine2',
+  neck: 'Neck',
+  head: 'Head',
+  leftShoulder: 'LeftShoulder',
+  leftUpperArm: 'LeftArm',
+  leftLowerArm: 'LeftForeArm',
+  leftHand: 'LeftHand',
+  rightShoulder: 'RightShoulder',
+  rightUpperArm: 'RightArm',
+  rightLowerArm: 'RightForeArm',
+  rightHand: 'RightHand',
+  leftUpperLeg: 'LeftUpLeg',
+  leftLowerLeg: 'LeftLeg',
+  leftFoot: 'LeftFoot',
+  rightUpperLeg: 'RightUpLeg',
+  rightLowerLeg: 'RightLeg',
+  rightFoot: 'RightFoot',
+};
+
+async function loadModel() {
   const loader = new GLTFLoader();
-  let model;
-  try {
-    loader.register((parser) => new VRMLoaderPlugin(parser));
-    const gltf = await loader.loadAsync('/models/kannaka.vrm');
-    vrm = gltf.userData.vrm;
-    if (vrm) {
-      VRMUtils.removeUnnecessaryJoints(vrm.scene);
-      model = vrm.scene;
-      console.log('[hologram] VRM loaded via plugin');
-    } else {
-      model = gltf.scene;
-      console.log('[hologram] VRM plugin returned null, using GLTF scene');
-    }
-  } catch(e) {
-    console.warn('[hologram] VRM plugin failed, loading as plain GLTF:', e.message);
-    const loader2 = new GLTFLoader();
-    const gltf = await loader2.loadAsync('/models/kannaka.vrm');
-    model = gltf.scene;
-  }
+  const gltf = await loader.loadAsync('/models/kannaka-v2.glb');
+  const model = gltf.scene;
+  console.log('[hologram] GLB model loaded');
+
   // Scale to ~4 units tall
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   const scale = 4 / size.y;
   model.scale.setScalar(scale);
-  model.rotation.y = Math.PI; // VRM faces +Z, camera looks down -Z — rotate 180°
+  model.rotation.y = Math.PI; // face camera
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
-  // Remove head geometry by collapsing vertices above neck height
-  // Model space: total height ~2.63, neck at ~2.05
-  // Head bone is scaled to 0.001 after bone setup — hides VRM head + triangle
-  // Just apply materials here
+
+  // Apply skin material to body mesh only; keep original materials for eyes, teeth, hair
+  const bodyMeshName = 'H_DDS_HighRes';
   model.traverse((child) => {
     if (child.isMesh) {
-      child.material = skinMat.clone();
       child.castShadow = false;
       child.receiveShadow = false;
-      // Add wireframe sibling that shares geometry and follows skeleton
-      const wire = new THREE.Mesh(child.geometry, wireMat.clone());
-      wire.morphTargetInfluences = child.morphTargetInfluences;
-      wire.morphTargetDictionary = child.morphTargetDictionary;
-      if (child.isSkinnedMesh) {
-        const wSkinned = new THREE.SkinnedMesh(child.geometry, wireMat.clone());
-        wSkinned.skeleton = child.skeleton;
-        wSkinned.bindMatrix.copy(child.bindMatrix);
-        wSkinned.bindMatrixInverse.copy(child.bindMatrixInverse);
-        child.parent.add(wSkinned);
-      } else {
-        child.parent.add(wire);
+      if (child.name === bodyMeshName) {
+        // Apply holographic skin material to body
+        child.material = skinMat.clone();
+        // Add wireframe overlay for body only
+        if (child.isSkinnedMesh) {
+          const wSkinned = new THREE.SkinnedMesh(child.geometry, wireMat.clone());
+          wSkinned.skeleton = child.skeleton;
+          wSkinned.bindMatrix.copy(child.bindMatrix);
+          wSkinned.bindMatrixInverse.copy(child.bindMatrixInverse);
+          child.parent.add(wSkinned);
+        } else {
+          const wire = new THREE.Mesh(child.geometry, wireMat.clone());
+          child.parent.add(wire);
+        }
       }
+      // All other meshes (eyes, teeth, hair/wig) keep their original textured materials
     }
   });
   scene.add(model);
-  // Get bone references — try VRM humanoid first, then search by name
-  if (vrm && vrm.humanoid) {
-    for (const name of BONE_NAMES) {
-      const node = vrm.humanoid.getRawBoneNode(name);
-      if (node) bones[name] = node;
-    }
-  } else {
-    // Fallback: search the model's skeleton by common VRM/mixamo bone names
-    const boneAliases = {
-      hips: ['hips','hip','pelvis','root'],
-      spine: ['spine','spine1'],
-      chest: ['chest','spine2','upper_body'],
-      upperChest: ['upperchest','spine3'],
-      neck: ['neck'],
-      head: ['head'],
-      leftUpperArm: ['leftupperarm','leftshoulder','left_arm','l_arm','j_bac_l'],
-      rightUpperArm: ['rightupperarm','rightshoulder','right_arm','r_arm','j_bac_r'],
-      leftLowerArm: ['leftlowerarm','leftforearm','left_forearm','l_forearm'],
-      rightLowerArm: ['rightlowerarm','rightforearm','right_forearm','r_forearm'],
-      leftHand: ['lefthand','left_hand','l_hand'],
-      rightHand: ['righthand','right_hand','r_hand'],
-      leftUpperLeg: ['leftupperleg','leftleg','left_leg','l_leg','j_asi_l'],
-      rightUpperLeg: ['rightupperleg','rightleg','right_leg','r_leg','j_asi_r'],
-      leftLowerLeg: ['leftlowerleg','leftknee','l_knee'],
-      rightLowerLeg: ['rightlowerleg','rightknee','r_knee'],
-    };
-    const allBones = [];
-    model.traverse((child) => {
-      if (child.isBone) allBones.push(child);
-    });
-    console.log('[hologram] All bones:', allBones.map(b => b.name).join(', '));
-    for (const [name, aliases] of Object.entries(boneAliases)) {
-      for (const bone of allBones) {
-        const bn = bone.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (aliases.some(a => bn.includes(a.replace(/[^a-z0-9]/g, '')))) {
-          bones[name] = bone;
-          break;
-        }
-      }
+  modelScene = model;
+
+  // Find bones by exact name match against the scene nodes
+  const allBoneNodes = [];
+  model.traverse((child) => {
+    if (child.isBone) allBoneNodes.push(child);
+  });
+  console.log('[hologram] All bones:', allBoneNodes.map(b => b.name).join(', '));
+
+  for (const [internalName, glbName] of Object.entries(BONE_MAP)) {
+    const found = allBoneNodes.find(b => b.name === glbName);
+    if (found) {
+      bones[internalName] = found;
     }
   }
   headBone = bones.head || null;
 
-  // ── Shape Kannaka — ideal feminine proportions ──────
-  // Scale individual bones to sculpt the body
-  if (bones.hips) bones.hips.scale.set(1.25, 1.0, 1.1);           // wider hips
-  if (bones.spine) bones.spine.scale.set(0.85, 1.05, 0.9);        // narrow waist, slightly taller torso
-  if (bones.chest) bones.chest.scale.set(1.15, 1.0, 1.15);        // fuller chest/bust
-  if (bones.upperChest) bones.upperChest.scale.set(1.05, 1.0, 1.05); // slight upper chest
-  if (bones.neck) bones.neck.scale.set(0.85, 1.1, 0.85);          // slender neck, slightly longer
-  if (bones.head) bones.head.scale.set(0.001, 0.001, 0.001);      // collapse VRM head to nothing — our custom head replaces it
-  if (bones.leftUpperArm) bones.leftUpperArm.scale.set(0.88, 1.0, 0.88);  // slimmer arms
-  if (bones.rightUpperArm) bones.rightUpperArm.scale.set(0.88, 1.0, 0.88);
-  if (bones.leftUpperLeg) bones.leftUpperLeg.scale.set(1.05, 1.08, 1.0);  // slightly longer, fuller thighs
-  if (bones.rightUpperLeg) bones.rightUpperLeg.scale.set(1.05, 1.08, 1.0);
-  if (bones.leftLowerLeg) bones.leftLowerLeg.scale.set(0.92, 1.05, 0.92); // slender calves, longer
-  if (bones.rightLowerLeg) bones.rightLowerLeg.scale.set(0.92, 1.05, 0.92);
-
-  // Also try to find bones by traversing the scene directly
-  const allBoneNames = [];
-  model.traverse((child) => { if (child.isBone) allBoneNames.push(child.name); });
-  console.log('[hologram] All skeleton bones:', allBoneNames.join(', '));
-
-  // Fill in any missing bones by direct name search
-  const missingBones = BONE_NAMES.filter(n => !bones[n]);
-  if (missingBones.length > 0) {
-    console.log('[hologram] Missing from humanoid API:', missingBones.join(', '));
-    model.traverse((child) => {
-      if (child.isBone) {
-        const bn = child.name.toLowerCase();
-        for (const name of missingBones) {
-          if (bn.includes(name.toLowerCase()) && !bones[name]) {
-            bones[name] = child;
-            console.log('[hologram] Found', name, 'via skeleton:', child.name);
-          }
-        }
-      }
-    });
-  }
-
-  // Try VRM humanoid with additional bone names that might exist
-  if (vrm && vrm.humanoid) {
-    const extraNames = ['leftShoulder','rightShoulder','leftLowerArm','rightLowerArm','leftHand','rightHand','leftLowerLeg','rightLowerLeg','leftFoot','rightFoot'];
-    for (const name of extraNames) {
-      if (!bones[name]) {
-        try {
-          const node = vrm.humanoid.getRawBoneNode(name);
-          if (node) { bones[name] = node; console.log('[hologram] Found extra bone:', name); }
-        } catch(e) {}
-      }
-    }
-  }
-
   console.log('[hologram] Final bones:', Object.keys(bones).join(', '));
 }
-loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
+loadModel().catch((err) => console.error('[hologram] Model load failed:', err));
 
 // -- Camera --
 let orbitAngle = 0;
@@ -995,9 +710,9 @@ function animate() {
     };
   }
   const w = window._wander;
-  if (!w.init && vrm) {
-    w.baseX = vrm.scene.position.x;
-    w.baseZ = vrm.scene.position.z;
+  if (!w.init && modelScene) {
+    w.baseX = modelScene.position.x;
+    w.baseZ = modelScene.position.z;
     w.init = true;
   }
 
@@ -1015,16 +730,16 @@ function animate() {
   w.currentZ += (w.targetZ - w.currentZ) * dt * 0.6;
 
   // Apply to model position
-  if (vrm) {
-    vrm.scene.position.x = w.baseX + w.currentX;
-    vrm.scene.position.z = w.baseZ + w.currentZ;
+  if (modelScene) {
+    modelScene.position.x = w.baseX + w.currentX;
+    modelScene.position.z = w.baseZ + w.currentZ;
     // Face the direction she's moving (subtle turn)
     const dx = w.targetX - w.currentX;
     const dz = w.targetZ - w.currentZ;
     if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
       const targetAngle = Math.atan2(dx, dz) * 0.3 + Math.PI; // partial turn toward movement
-      const currentAngle = vrm.scene.rotation.y;
-      vrm.scene.rotation.y += (targetAngle - currentAngle) * dt * 0.5;
+      const currentAngle = modelScene.rotation.y;
+      modelScene.rotation.y += (targetAngle - currentAngle) * dt * 0.5;
     }
   }
 
@@ -1149,9 +864,7 @@ function animate() {
   // Particles color shifts with the music — bass=warm, highs=cool
   particleMat.color.setHSL(0.75 - audio.bass * 0.15 + audio.high * 0.1, 0.6, 0.5 + audio.overall * 0.2);
 
-  // VRM bone animation
-  // Update VRM FIRST (resets pose), then apply our dance on top
-  if (vrm && vrm.update) vrm.update(dt);
+  // Bone animation — apply dance poses
 
   let hipSway = 0;
   if (bones.hips) {
@@ -1356,16 +1069,13 @@ function animate() {
     bodyEnergy.position.y -= 0.3;
   }
 
-  // Head group follows neck bone (head bone is scaled to 0, so use neck)
-  const trackBone = bones.neck || headBone;
+  // Head tracking — follow the Head bone for eye glow lights and stare target
+  const trackBone = headBone || bones.neck;
   if (trackBone) {
     trackBone.getWorldPosition(_headWorldPos);
     trackBone.getWorldQuaternion(_headWorldQuat);
-    // Offset up from neck to head position
-    _headWorldPos.y += 0.15;
 
     headGroup.position.copy(_headWorldPos);
-    headGroup.position.y += 0.02;
     headGroup.quaternion.copy(_headWorldQuat);
 
     // Eye glow lights track face
@@ -1375,29 +1085,7 @@ function animate() {
     eyeGlowR.position.copy(rEyeWorld);
     stareLookTarget.copy(_headWorldPos);
 
-    // Pupil dilation with energy
-    const fd = faceGroup.userData;
-    if (fd.lPupil) {
-      const pupilScale = 0.8 + energy * 0.5;
-      fd.lPupil.scale.setScalar(pupilScale);
-      fd.rPupil.scale.setScalar(pupilScale);
-    }
-
-    // ── Lip sync — mouth opens with vocal amplitude ────
     const vocalAmp = getVocalAmplitude();
-    const lipBaseY = 0.005 - 0.065; // eyeY - lip offset from buildFace
-    if (fd.uLip && fd.lLip) {
-      fd.uLip.position.y = lipBaseY + vocalAmp * 0.010;
-      fd.uLip.scale.x = 1 + vocalAmp * 0.15;
-      fd.lLip.position.y = (lipBaseY - 0.012) - vocalAmp * 0.030;
-      fd.lLip.scale.x = 1 + vocalAmp * 0.2;
-    }
-    // Jaw mesh drops with vocals
-    const jawMesh = headGroup.children.find(c => c.geometry === jawGeo);
-    if (jawMesh) {
-      jawMesh.position.y = -0.07 - vocalAmp * 0.025;
-      jawMesh.rotation.x = vocalAmp * 0.18;
-    }
 
     // ── Voice energy — her singing creates visible energy ────
 
@@ -1495,23 +1183,6 @@ function animate() {
       }
     }
 
-    // ── Hair ribbons — sine wave sway, reacting to audio.mid ──
-    for (const ribbon of hairRibbons) {
-      const u = ribbon.userData;
-      const midReact = 1.0 + audio.mid * 2.0;
-      ribbon.rotation.x = u.baseRotX + Math.sin(t * u.swaySpeed + u.phase) * u.swayAmp * midReact;
-      ribbon.rotation.z = Math.sin(t * u.swaySpeed * 0.7 + u.phase * 1.3) * u.swayAmp * 0.8 * midReact;
-      ribbon.rotation.y = Math.sin(t * u.swaySpeed * 0.4 + u.phase * 0.7) * u.swayAmp * 0.5;
-      // Vertex deformation for flowing wave effect
-      const posAttr = ribbon.geometry.attributes.position;
-      for (let vi = 0; vi < posAttr.count; vi++) {
-        const vy = posAttr.getY(vi); // local Y along the ribbon
-        const wave = Math.sin(t * u.swaySpeed * 1.5 + u.phase + vy * 8) * 0.005 * midReact;
-        posAttr.setX(vi, posAttr.getX(vi) * 0.97 + (ribbon.userData['origX_' + vi] || posAttr.getX(vi)) * 0.03 + wave);
-        if (!ribbon.userData['origX_' + vi]) ribbon.userData['origX_' + vi] = posAttr.getX(vi);
-      }
-      posAttr.needsUpdate = true;
-    }
   }
 
   // Particles
