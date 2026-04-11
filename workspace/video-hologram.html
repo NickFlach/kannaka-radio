@@ -725,6 +725,54 @@ function animate() {
   const beatFreq = tempo / 60;
   beatPhase += dt * beatFreq * Math.PI * 2;
 
+  // ── Wander — she moves around the stage randomly ──────
+  if (!window._wander) {
+    window._wander = {
+      targetX: 0, targetZ: 0,     // where she's heading
+      currentX: 0, currentZ: 0,   // where she is
+      timer: 3 + Math.random() * 5, // time until next target
+      baseX: 0, baseZ: 0,         // model's original position (set on first frame)
+      init: false
+    };
+  }
+  const w = window._wander;
+  if (!w.init && vrm) {
+    w.baseX = vrm.scene.position.x;
+    w.baseZ = vrm.scene.position.z;
+    w.init = true;
+  }
+
+  w.timer -= dt;
+  if (w.timer <= 0) {
+    // Pick a new random spot within a radius
+    const wanderRadius = 2.0;
+    w.targetX = (Math.random() - 0.5) * wanderRadius * 2;
+    w.targetZ = (Math.random() - 0.5) * wanderRadius * 1.2;
+    w.timer = 4 + Math.random() * 6; // 4-10 seconds at each spot
+  }
+
+  // Smooth drift toward target
+  w.currentX += (w.targetX - w.currentX) * dt * 0.6;
+  w.currentZ += (w.targetZ - w.currentZ) * dt * 0.6;
+
+  // Apply to model position
+  if (vrm) {
+    vrm.scene.position.x = w.baseX + w.currentX;
+    vrm.scene.position.z = w.baseZ + w.currentZ;
+    // Face the direction she's moving (subtle turn)
+    const dx = w.targetX - w.currentX;
+    const dz = w.targetZ - w.currentZ;
+    if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
+      const targetAngle = Math.atan2(dx, dz) * 0.3 + Math.PI; // partial turn toward movement
+      const currentAngle = vrm.scene.rotation.y;
+      vrm.scene.rotation.y += (targetAngle - currentAngle) * dt * 0.5;
+    }
+  }
+
+  // Camera follows her loosely (adjust lookAt target)
+  const wanderLookX = w.currentX * 0.3;
+  const wanderLookZ = w.currentZ * 0.3;
+
   // Consciousness reactivity
   skinMat.opacity = 0.4 + lf*0.45;
   skinMat.emissiveIntensity = 0.15 + lf*0.5;
@@ -962,8 +1010,8 @@ function animate() {
 
   if (stareState === 'orbit') {
     orbitAngle += orbitSpeed * dt;
-    camera.position.set(Math.sin(orbitAngle)*orbitRadius, orbitHeight + Math.sin(t*0.3)*0.2, Math.cos(orbitAngle)*orbitRadius);
-    camera.lookAt(0, 1.2, 0);
+    camera.position.set(wanderLookX + Math.sin(orbitAngle)*orbitRadius, orbitHeight + Math.sin(t*0.3)*0.2, wanderLookZ + Math.cos(orbitAngle)*orbitRadius);
+    camera.lookAt(wanderLookX, 1.2, wanderLookZ);
     if (stareTimer >= nextStareAt) {
       stareState = 'dolly_in'; stareProgress = 0;
       orbitPosBeforeStare.copy(camera.position);
@@ -987,7 +1035,7 @@ function animate() {
     const s = stareProgress*stareProgress*(3-2*stareProgress);
     const orbitTarget = new THREE.Vector3(Math.sin(orbitAngle)*orbitRadius, orbitHeight, Math.cos(orbitAngle)*orbitRadius);
     camera.position.lerpVectors(new THREE.Vector3(0, actualHeadY+0.05, 1.2), orbitTarget, s);
-    camera.lookAt(0, 1.2, 0);
+    camera.lookAt(wanderLookX, 1.2, wanderLookZ);
   }
 
   updateHUD();
