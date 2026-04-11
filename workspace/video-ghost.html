@@ -460,6 +460,123 @@ function drawBackground(t) {
   }
 }
 
+// ── LAYER 1b: Backlight + silhouette ─────────────────
+function drawBacklight(t) {
+  var lc = getLevelConfig();
+  var bodyH = H * 0.72;
+  var bodyW = W * 0.28;
+  var bounce = getDanceBounce(t);
+  var bodyTop = cy - bodyH * 0.38 + bounce;
+
+  // Reuse silhouetteWidth from body (defined below, but it's deterministic)
+  function silW(nt) {
+    if (nt < 0.06) { var ht = nt / 0.06; return 0.24 + 0.14 * Math.sin(ht * Math.PI); }
+    if (nt < 0.09) return 0.20 - (nt - 0.06) / 0.03 * 0.06;
+    if (nt < 0.12) return 0.14;
+    if (nt < 0.18) { var st = (nt - 0.12) / 0.06; return 0.14 + 0.58 * Math.pow(st, 0.6); }
+    if (nt < 0.22) return 0.72 + (nt - 0.18) / 0.04 * 0.10;
+    if (nt < 0.29) { var bt = (nt - 0.22) / 0.07; return 0.82 + 0.20 * Math.sin(bt * Math.PI); }
+    if (nt < 0.33) { var ub = (nt - 0.29) / 0.04; return 0.82 - 0.26 * ub; }
+    if (nt < 0.40) { var wt = (nt - 0.33) / 0.07; return 0.56 - 0.04 * Math.sin(wt * Math.PI); }
+    if (nt < 0.46) { var wh = (nt - 0.40) / 0.06; return 0.52 + 0.56 * Math.pow(wh, 0.5); }
+    if (nt < 0.54) { var hp = (nt - 0.46) / 0.08; return 1.08 + 0.04 * Math.sin(hp * Math.PI); }
+    if (nt < 0.64) { var ut = (nt - 0.54) / 0.10; return 1.08 - 0.30 * ut; }
+    if (nt < 0.74) { var mt = (nt - 0.64) / 0.10; return 0.78 - 0.14 * mt; }
+    if (nt < 0.84) { var cv = (nt - 0.74) / 0.10; return 0.64 - 0.06 * cv + 0.05 * Math.sin(cv * Math.PI); }
+    var ak = (nt - 0.84) / 0.16; return 0.58 - 0.28 * ak;
+  }
+
+  // ── 1. Bright backlight — a glowing light source behind her ──
+  var lightX = cx + Math.sin(t * 0.03) * W * 0.05;
+  var lightY = cy * 0.7 + Math.cos(t * 0.02) * H * 0.03;
+  var lightR = Math.max(W, H) * 0.45;
+  var lightIntensity = 0.12 + lc.intensity * 0.18 + sm.energy * 0.08;
+  var lightHue = 220 + sm.valence * 40;
+
+  var lg = ctx.createRadialGradient(lightX, lightY, 0, lightX, lightY, lightR);
+  lg.addColorStop(0, hsla(lightHue, 40, 65, lightIntensity));
+  lg.addColorStop(0.2, hsla(lightHue + 20, 35, 45, lightIntensity * 0.6));
+  lg.addColorStop(0.5, hsla(lightHue + 40, 30, 25, lightIntensity * 0.2));
+  lg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = lg;
+  ctx.fillRect(0, 0, W, H);
+
+  // ── 2. Dark silhouette cutout — she blocks the light ──
+  // Build silhouette path with dance sway
+  var numSlices = 50;
+  ctx.save();
+  ctx.beginPath();
+  // Left edge top to bottom
+  for (var i = 0; i <= numSlices; i++) {
+    var nt = i / numSlices;
+    var yy = bodyTop + nt * bodyH;
+    var w = silW(nt) * bodyW;
+    var sway = getDanceSway(t, nt);
+    ctx.lineTo(cx - w + sway, yy);
+  }
+  // Right edge bottom to top
+  for (var i = numSlices; i >= 0; i--) {
+    var nt = i / numSlices;
+    var yy = bodyTop + nt * bodyH;
+    var w = silW(nt) * bodyW;
+    var sway = getDanceSway(t, nt);
+    ctx.lineTo(cx + w + sway, yy);
+  }
+  ctx.closePath();
+
+  // Fill the silhouette with near-black — she's a shadow against the light
+  ctx.fillStyle = 'rgba(0,0,0,' + (0.5 + lc.intensity * 0.3) + ')';
+  ctx.fill();
+
+  // ── 3. Rim light — bright edge where the backlight wraps around her ──
+  // Redraw the contour edges with a bright glow
+  ctx.globalCompositeOperation = 'screen';
+  var rimAlpha = (0.15 + sm.energy * 0.15) * lc.intensity;
+  var rimHue = lightHue - 10;
+
+  // Left rim (light wraps around left edge)
+  ctx.strokeStyle = hsla(rimHue, 50, 65, rimAlpha * 0.5);
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (var i = 0; i <= numSlices; i++) {
+    var nt = i / numSlices;
+    var yy = bodyTop + nt * bodyH;
+    var w = silW(nt) * bodyW;
+    var sway = getDanceSway(t, nt);
+    ctx.lineTo(cx - w + sway, yy);
+  }
+  ctx.stroke();
+
+  // Right rim (brighter — light source is roughly centered behind)
+  ctx.strokeStyle = hsla(rimHue, 55, 70, rimAlpha);
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  for (var i = 0; i <= numSlices; i++) {
+    var nt = i / numSlices;
+    var yy = bodyTop + nt * bodyH;
+    var w = silW(nt) * bodyW;
+    var sway = getDanceSway(t, nt);
+    ctx.lineTo(cx + w + sway, yy);
+  }
+  ctx.stroke();
+
+  // Wider soft rim glow
+  ctx.strokeStyle = hsla(rimHue, 40, 55, rimAlpha * 0.2);
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  for (var i = 0; i <= numSlices; i++) {
+    var nt = i / numSlices;
+    var yy = bodyTop + nt * bodyH;
+    var w = silW(nt) * bodyW;
+    var sway = getDanceSway(t, nt);
+    ctx.lineTo(cx + w + sway, yy);
+  }
+  ctx.stroke();
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
+}
+
 // ── Dance motion ─────────────────────────────────────
 function getDanceSway(t, nt) {
   var bps = sm.tempo / 60;
@@ -898,6 +1015,7 @@ function render(now) {
 
   // Draw layers in order
   drawBackground(frameTime);
+  drawBacklight(frameTime);
   drawSpectralEdges(frameTime);
   drawRibbons(frameTime);
   drawWavefrontBody(frameTime);
