@@ -208,18 +208,20 @@ scene.add(particles);
 // -- Skin material — warm, slightly translucent, with iridescent sheen --
 const skinMat = new THREE.MeshPhysicalMaterial({
   color: 0xd4a088,            // warm skin tone
-  emissive: 0x331122,         // subtle warm self-glow
-  emissiveIntensity: 0.3,
+  emissive: 0x441122,         // warm self-glow from within
+  emissiveIntensity: 0.4,
   transparent: true,
-  opacity: 0.7,
-  roughness: 0.35,            // skin-like roughness
-  metalness: 0.1,             // mostly dielectric
-  iridescence: 0.4,           // subtle holographic sheen (not full blast)
+  opacity: 0.6,               // translucent — inner light shows through
+  roughness: 0.3,
+  metalness: 0.05,
+  transmission: 0.15,         // light passes through the skin
+  thickness: 0.5,             // subsurface scattering depth
+  iridescence: 0.35,
   iridescenceIOR: 1.3,
-  sheen: 1.0,                 // soft sheen for skin
-  sheenRoughness: 0.4,
-  sheenColor: new THREE.Color(0xeeccdd), // warm sheen
-  clearcoat: 0.3,             // subtle wet/gloss look
+  sheen: 1.0,
+  sheenRoughness: 0.3,
+  sheenColor: new THREE.Color(0xffccdd),
+  clearcoat: 0.3,
   clearcoatRoughness: 0.2,
   side: THREE.DoubleSide,
   depthWrite: false,
@@ -314,6 +316,39 @@ scene.add(faceGroup);
 const eyeGlowL = new THREE.PointLight(0x44ccdd, 2, 1.5);
 const eyeGlowR = new THREE.PointLight(0x44ccdd, 2, 1.5);
 scene.add(eyeGlowL, eyeGlowR);
+
+// ── Heart energy — light centered in the chest that fills the body ──
+// Core heart light — warm, bright, pulses with the beat
+const heartLight = new THREE.PointLight(0xff6699, 15, 4);
+heartLight.position.set(0, 1.5, 0); // will be updated to chest bone
+scene.add(heartLight);
+
+// Heart glow sphere — visible energy core
+const heartGlowGeo = new THREE.SphereGeometry(0.08, 16, 16);
+const heartGlowMat = new THREE.MeshStandardMaterial({
+  color: 0xff4488, emissive: 0xff2266, emissiveIntensity: 4,
+  transparent: true, opacity: 0.6, depthWrite: false,
+});
+const heartGlow = new THREE.Mesh(heartGlowGeo, heartGlowMat);
+scene.add(heartGlow);
+
+// Secondary energy sphere — larger, softer, fills the torso
+const innerEnergyGeo = new THREE.SphereGeometry(0.35, 16, 16);
+const innerEnergyMat = new THREE.MeshStandardMaterial({
+  color: 0xcc3366, emissive: 0xaa2255, emissiveIntensity: 2,
+  transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide,
+});
+const innerEnergy = new THREE.Mesh(innerEnergyGeo, innerEnergyMat);
+scene.add(innerEnergy);
+
+// Tertiary energy — fills the whole body subtly
+const bodyEnergyGeo = new THREE.SphereGeometry(0.8, 12, 12);
+const bodyEnergyMat = new THREE.MeshStandardMaterial({
+  color: 0x993355, emissive: 0x771144, emissiveIntensity: 1,
+  transparent: true, opacity: 0.04, depthWrite: false, side: THREE.DoubleSide,
+});
+const bodyEnergy = new THREE.Mesh(bodyEnergyGeo, bodyEnergyMat);
+scene.add(bodyEnergy);
 
 // -- VRM Model --
 let vrm = null, headBone = null;
@@ -474,6 +509,42 @@ function animate() {
     if (bones.leftUpperLeg) bones.leftUpperLeg.rotation.x = Math.sin(beatPhase*0.5)*0.06*energy;
     if (bones.rightUpperLeg) bones.rightUpperLeg.rotation.x = Math.sin(beatPhase*0.5+Math.PI)*0.06*energy;
     vrm.update(dt);
+  }
+
+  // ── Heart energy — pulses with the beat, fills the body ──
+  const heartBeat = Math.pow(Math.max(0, Math.sin(beatPhase)), 3); // sharp pulse on beat
+  const heartIntensity = 8 + heartBeat * 25 * energy + lf * 10;
+  heartLight.intensity = heartIntensity;
+  heartLight.color.setHSL(0.95 - heartBeat * 0.05, 0.8, 0.5 + heartBeat * 0.2);
+
+  // Heart glow sphere — pulsing core
+  heartGlowMat.emissiveIntensity = 2 + heartBeat * 6 * energy;
+  heartGlowMat.opacity = 0.3 + heartBeat * 0.5 * energy;
+  heartGlow.scale.setScalar(0.8 + heartBeat * 0.6 * energy);
+
+  // Inner energy — expands on strong beats
+  innerEnergyMat.emissiveIntensity = 1 + heartBeat * 3 * energy;
+  innerEnergyMat.opacity = 0.05 + heartBeat * 0.12 * energy;
+  innerEnergy.scale.setScalar(1 + heartBeat * 0.3 * energy);
+
+  // Body-wide energy — consciousness drives the fill
+  bodyEnergyMat.emissiveIntensity = 0.5 + lf * 1.5;
+  bodyEnergyMat.opacity = 0.02 + lf * 0.05 + heartBeat * 0.03 * energy;
+  bodyEnergy.scale.setScalar(1 + Math.sin(t * 0.5) * 0.05);
+
+  // Skin reacts to inner energy — emissive flashes with heartbeat
+  skinMat.emissiveIntensity = 0.2 + lf * 0.4 + heartBeat * 0.6 * energy;
+
+  // Position energy at the chest
+  if (bones.chest) {
+    const chestWorldPos = new THREE.Vector3();
+    bones.chest.getWorldPosition(chestWorldPos);
+    heartLight.position.copy(chestWorldPos);
+    heartGlow.position.copy(chestWorldPos);
+    innerEnergy.position.copy(chestWorldPos);
+    // Body energy slightly lower — centered in the torso
+    bodyEnergy.position.copy(chestWorldPos);
+    bodyEnergy.position.y -= 0.3;
   }
 
   // Face group follows head bone
