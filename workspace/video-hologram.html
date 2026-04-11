@@ -137,6 +137,43 @@ function loadAndPlay(file) {
 window.setVolume = (val) => { audioEl.volume = val / 100; };
 audioEl.addEventListener('ended', () => fetch('/api/next', { method: 'POST' }).catch(() => {}));
 
+// ── Audio analyser for lip sync ──────────────────────
+let audioCtx = null, analyser = null, freqData = null, audioSourceConnected = false;
+
+function initAudioAnalyser() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.7;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+  } catch(e) { console.warn('[hologram] Audio analyser failed:', e); }
+}
+
+function connectAudioSource() {
+  if (audioSourceConnected || !audioCtx || !analyser) return;
+  try {
+    const source = audioCtx.createMediaElementSource(audioEl);
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    audioSourceConnected = true;
+    console.log('[hologram] Audio analyser connected — lip sync active');
+  } catch(e) { console.warn('[hologram] Audio source connect failed:', e); }
+}
+
+function getVocalAmplitude() {
+  if (!analyser || !freqData) return 0;
+  analyser.getByteFrequencyData(freqData);
+  // Vocal range roughly bins 4-20 (300Hz-3kHz in a 256-FFT at 44100Hz)
+  let sum = 0;
+  for (let i = 4; i < 20; i++) sum += freqData[i];
+  return sum / (16 * 255); // normalize 0-1
+}
+
+// Connect analyser when audio first plays
+audioEl.addEventListener('play', () => { initAudioAnalyser(); connectAudioSource(); });
+
 // -- Three.js --
 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 const scene = new THREE.Scene();
@@ -494,7 +531,7 @@ function buildFace() {
   faceGroup.add(lSclera, lIris, lPupil, lCatch, rSclera, rIris, rPupil, rCatch,
                 noseBridge, noseTip, uLip, lLip, lBrow, rBrow);
 
-  faceGroup.userData = { lIris, rIris, lPupil, rPupil, lCatch, rCatch };
+  faceGroup.userData = { lIris, rIris, lPupil, rPupil, lCatch, rCatch, uLip, lLip };
 }
 // buildFace() called after headGroup is created below
 
@@ -1175,6 +1212,22 @@ function animate() {
       const pupilScale = 0.8 + energy * 0.5;
       fd.lPupil.scale.setScalar(pupilScale);
       fd.rPupil.scale.setScalar(pupilScale);
+    }
+
+    // ── Lip sync — mouth opens with vocal amplitude ────
+    const vocalAmp = getVocalAmplitude();
+    const lipBaseY = 0.005 - 0.065; // eyeY - lip offset from buildFace
+    if (fd.uLip && fd.lLip) {
+      fd.uLip.position.y = lipBaseY + vocalAmp * 0.010;
+      fd.uLip.scale.x = 1 + vocalAmp * 0.15;
+      fd.lLip.position.y = (lipBaseY - 0.012) - vocalAmp * 0.030;
+      fd.lLip.scale.x = 1 + vocalAmp * 0.2;
+    }
+    // Jaw mesh drops with vocals
+    const jawMesh = headGroup.children.find(c => c.geometry === jawGeo);
+    if (jawMesh) {
+      jawMesh.position.y = -0.07 - vocalAmp * 0.025;
+      jawMesh.rotation.x = vocalAmp * 0.18;
     }
 
     // Hair sway — strands swing relative to head
