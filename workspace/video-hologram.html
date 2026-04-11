@@ -1008,7 +1008,9 @@ function animate() {
   eyeGlowL.intensity = 0.5 + lf*2;
   eyeGlowR.intensity = 0.5 + lf*2;
   if (useBloom) bloomPass.strength = 0.6 + lf*1.2;
-  particleMat.opacity = 0.2 + lf*0.6;
+  const va = getVocalAmplitude();
+  particleMat.opacity = 0.2 + lf*0.6 + va * 0.3;
+  particleMat.size = (isMobile ? 0.04 : 0.03) + va * 0.03; // particles swell when she sings
 
   // VRM bone animation
   // Update VRM FIRST (resets pose), then apply our dance on top
@@ -1228,6 +1230,102 @@ function animate() {
     if (jawMesh) {
       jawMesh.position.y = -0.07 - vocalAmp * 0.025;
       jawMesh.rotation.x = vocalAmp * 0.18;
+    }
+
+    // ── Voice energy — her singing creates visible energy ────
+
+    // Voice particles: spawn from her mouth when singing
+    if (!window._voiceParticles) {
+      const vpGeo = new THREE.BufferGeometry();
+      const vpMax = 200;
+      const vpPos = new Float32Array(vpMax * 3);
+      const vpVel = new Float32Array(vpMax * 3); // velocity
+      const vpLife = new Float32Array(vpMax);     // lifetime 0-1
+      vpGeo.setAttribute('position', new THREE.BufferAttribute(vpPos, 3));
+      const vpMat = new THREE.PointsMaterial({
+        color: 0xff66aa, size: 0.04, transparent: true, opacity: 0.8,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const vpMesh = new THREE.Points(vpGeo, vpMat);
+      scene.add(vpMesh);
+      window._voiceParticles = { geo: vpGeo, mat: vpMat, mesh: vpMesh, pos: vpPos, vel: vpVel, life: vpLife, max: vpMax, spawnIdx: 0 };
+    }
+    const vp = window._voiceParticles;
+
+    // Spawn new particles when vocal amplitude is strong
+    if (vocalAmp > 0.15) {
+      const spawnCount = Math.floor(vocalAmp * 5); // 0-5 per frame
+      for (let sp = 0; sp < spawnCount; sp++) {
+        const idx = vp.spawnIdx;
+        // Spawn at mouth position (head world pos, slightly forward and down)
+        const mouthOff = new THREE.Vector3(
+          (Math.random() - 0.5) * 0.03,
+          -0.05,
+          0.10
+        ).applyQuaternion(_headWorldQuat).add(_headWorldPos);
+        vp.pos[idx * 3] = mouthOff.x;
+        vp.pos[idx * 3 + 1] = mouthOff.y;
+        vp.pos[idx * 3 + 2] = mouthOff.z;
+        // Velocity: outward from mouth, upward and spread
+        const speed = 0.5 + vocalAmp * 2;
+        vp.vel[idx * 3] = (Math.random() - 0.5) * speed;
+        vp.vel[idx * 3 + 1] = (Math.random() * 0.5 + 0.3) * speed;
+        vp.vel[idx * 3 + 2] = (Math.random() - 0.5) * speed;
+        vp.life[idx] = 1.0;
+        vp.spawnIdx = (idx + 1) % vp.max;
+      }
+    }
+
+    // Update voice particles — drift outward, fade, fall gently
+    for (let i = 0; i < vp.max; i++) {
+      if (vp.life[i] <= 0) continue;
+      vp.life[i] -= dt * 0.4; // fade over ~2.5 seconds
+      vp.pos[i * 3] += vp.vel[i * 3] * dt;
+      vp.pos[i * 3 + 1] += vp.vel[i * 3 + 1] * dt;
+      vp.pos[i * 3 + 2] += vp.vel[i * 3 + 2] * dt;
+      // Slow down and drift upward
+      vp.vel[i * 3] *= 0.98;
+      vp.vel[i * 3 + 1] *= 0.99;
+      vp.vel[i * 3 + 2] *= 0.98;
+      // Fade out dead particles by moving offscreen
+      if (vp.life[i] <= 0) { vp.pos[i*3+1] = -100; }
+    }
+    vp.geo.attributes.position.needsUpdate = true;
+    vp.mat.opacity = 0.6 + vocalAmp * 0.4;
+    // Color shifts with vocal intensity — pink when soft, white-gold when strong
+    vp.mat.color.setHSL(0.9 - vocalAmp * 0.15, 0.7, 0.5 + vocalAmp * 0.3);
+
+    // Energy rings: expand from her chest when singing strongly
+    if (!window._voiceRings) window._voiceRings = [];
+    const vr = window._voiceRings;
+    if (vocalAmp > 0.3 && Math.random() < vocalAmp * 0.3) {
+      const ringGeo = new THREE.RingGeometry(0.05, 0.08, 32);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL(0.85 + Math.random() * 0.1, 0.7, 0.6),
+        transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.copy(_headWorldPos);
+      ring.position.y -= 0.3; // chest level
+      ring.lookAt(camera.position);
+      ring.userData = { life: 1.0, speed: 1.5 + vocalAmp * 2 };
+      scene.add(ring);
+      vr.push(ring);
+    }
+    // Update rings — expand and fade
+    for (let i = vr.length - 1; i >= 0; i--) {
+      const ring = vr[i];
+      ring.userData.life -= dt * 0.5;
+      const scale = 1 + (1 - ring.userData.life) * ring.userData.speed * 3;
+      ring.scale.set(scale, scale, scale);
+      ring.material.opacity = ring.userData.life * 0.4;
+      ring.lookAt(camera.position);
+      if (ring.userData.life <= 0) {
+        scene.remove(ring);
+        ring.geometry.dispose();
+        ring.material.dispose();
+        vr.splice(i, 1);
+      }
     }
 
     // Hair sway — strands swing relative to head
