@@ -568,28 +568,10 @@ async function loadVRM() {
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
   // Remove head geometry by collapsing vertices above neck height
   // Model space: total height ~2.63, neck at ~2.05
-  // Remove everything above the neck — both the VRM head AND the triangle
-  // Our custom sculpted head replaces all of it
-  const neckCutoff = 1.95; // model-space neck base
+  // Head bone is scaled to 0.001 after bone setup — hides VRM head + triangle
+  // Just apply materials here
   model.traverse((child) => {
-    if (child.isMesh && child.geometry) {
-      const geo = child.geometry.clone(); // clone so we can modify
-      child.geometry = geo;
-      const pos = geo.attributes.position;
-      if (pos) {
-        const arr = pos.array;
-        for (let i = 0; i < pos.count; i++) {
-          if (arr[i * 3 + 1] > neckCutoff) {
-            // Collapse ALL head+triangle verts to a single point at neck
-            arr[i * 3] = 0;           // X = center
-            arr[i * 3 + 1] = neckCutoff; // Y = neck
-            arr[i * 3 + 2] = 0;       // Z = center
-          }
-        }
-        pos.needsUpdate = true;
-        geo.computeVertexNormals();
-        geo.computeBoundingSphere();
-      }
+    if (child.isMesh) {
       child.material = skinMat.clone();
       child.castShadow = false;
       child.receiveShadow = false;
