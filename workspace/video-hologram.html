@@ -158,8 +158,8 @@ if (useBloom) composer.addPass(bloomPass);
 // -- Lighting --
 const ambientLight = new THREE.AmbientLight(0x220033, 0.4);
 scene.add(ambientLight);
-const backLight = new THREE.PointLight(0x8899ff, 30, 20);
-backLight.position.set(0, 2, -3);
+const backLight = new THREE.PointLight(0x8899ff, 50, 25);
+backLight.position.set(0, 2.5, -2.5); // higher and closer for stronger rim/halo
 scene.add(backLight);
 const spotLight = new THREE.SpotLight(0xffeedd, 15, 15, Math.PI / 6, 0.5);
 spotLight.position.set(3, 4, 2);
@@ -372,19 +372,19 @@ scene.add(bodyEnergy);
 // -- Custom sculpted head (replaces VRM head) --
 const headGroup = new THREE.Group();
 
-// Skull — larger, feminine oval
-const skullGeo = new THREE.SphereGeometry(0.13, 32, 28);
+// Skull — big, prominent, creates silhouette for halo
+const skullGeo = new THREE.SphereGeometry(0.16, 32, 28);
 const headMat = skinMat.clone();
 headMat.clippingPlanes = [];
 const skull = new THREE.Mesh(skullGeo, headMat);
-skull.scale.set(0.92, 1.15, 0.88);
+skull.scale.set(0.90, 1.10, 0.85);
 headGroup.add(skull);
 
-// Upper cranium — adds volume to top of head
-const craniumGeo = new THREE.SphereGeometry(0.10, 20, 16);
+// Upper cranium — rounds out the top
+const craniumGeo = new THREE.SphereGeometry(0.12, 20, 16);
 const cranium = new THREE.Mesh(craniumGeo, headMat.clone());
-cranium.position.set(0, 0.06, -0.01);
-cranium.scale.set(1.0, 0.8, 0.9);
+cranium.position.set(0, 0.07, -0.01);
+cranium.scale.set(1.0, 0.85, 0.9);
 headGroup.add(cranium);
 
 // Jaw — delicate, tapered
@@ -510,7 +510,7 @@ headGroup.add(hairGroup); // hair is attached to the head
 let vrm = null, headBone = null;
 const headY = 2.05;
 const bones = {};
-const BONE_NAMES = ['hips','spine','chest','upperChest','neck','head','leftUpperArm','rightUpperArm','leftLowerArm','rightLowerArm','leftHand','rightHand','leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg'];
+const BONE_NAMES = ['hips','spine','chest','upperChest','neck','head','leftShoulder','rightShoulder','leftUpperArm','rightUpperArm','leftLowerArm','rightLowerArm','leftHand','rightHand','leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg','leftFoot','rightFoot'];
 
 async function loadVRM() {
   const loader = new GLTFLoader();
@@ -624,7 +624,42 @@ async function loadVRM() {
   if (bones.leftLowerLeg) bones.leftLowerLeg.scale.set(0.92, 1.05, 0.92); // slender calves, longer
   if (bones.rightLowerLeg) bones.rightLowerLeg.scale.set(0.92, 1.05, 0.92);
 
-  console.log('[hologram] VRM loaded + shaped, bones:', Object.keys(bones).join(', '));
+  // Also try to find bones by traversing the scene directly
+  const allBoneNames = [];
+  model.traverse((child) => { if (child.isBone) allBoneNames.push(child.name); });
+  console.log('[hologram] All skeleton bones:', allBoneNames.join(', '));
+
+  // Fill in any missing bones by direct name search
+  const missingBones = BONE_NAMES.filter(n => !bones[n]);
+  if (missingBones.length > 0) {
+    console.log('[hologram] Missing from humanoid API:', missingBones.join(', '));
+    model.traverse((child) => {
+      if (child.isBone) {
+        const bn = child.name.toLowerCase();
+        for (const name of missingBones) {
+          if (bn.includes(name.toLowerCase()) && !bones[name]) {
+            bones[name] = child;
+            console.log('[hologram] Found', name, 'via skeleton:', child.name);
+          }
+        }
+      }
+    });
+  }
+
+  // Try VRM humanoid with additional bone names that might exist
+  if (vrm && vrm.humanoid) {
+    const extraNames = ['leftShoulder','rightShoulder','leftLowerArm','rightLowerArm','leftHand','rightHand','leftLowerLeg','rightLowerLeg','leftFoot','rightFoot'];
+    for (const name of extraNames) {
+      if (!bones[name]) {
+        try {
+          const node = vrm.humanoid.getRawBoneNode(name);
+          if (node) { bones[name] = node; console.log('[hologram] Found extra bone:', name); }
+        } catch(e) {}
+      }
+    }
+  }
+
+  console.log('[hologram] Final bones:', Object.keys(bones).join(', '));
 }
 loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
 
@@ -760,6 +795,16 @@ function animate() {
       bones.head.rotation.y = Math.sin(t2 * 0.7) * 0.10 * e;             // slow head turns
     }
 
+    // Shoulders: rise and roll
+    if (bones.leftShoulder) {
+      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * 0.08 * e;
+      bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.05 * e;
+    }
+    if (bones.rightShoulder) {
+      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * 0.08 * e;
+      bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.05 * e;
+    }
+
     // Arms: graceful, flowing — like she's feeling the music
     if (bones.leftUpperArm) {
       const lArmPhase = slow + 0.5;
@@ -811,6 +856,14 @@ function animate() {
     }
     if (bones.rightLowerLeg) {
       bones.rightLowerLeg.rotation.x = Math.max(0, Math.sin(slow + Math.PI)) * 0.25 * e + 0.05;
+    }
+
+    // Feet/ankles: point and flex
+    if (bones.leftFoot) {
+      bones.leftFoot.rotation.x = Math.sin(slow + 0.5) * 0.1 * e;
+    }
+    if (bones.rightFoot) {
+      bones.rightFoot.rotation.x = Math.sin(slow + Math.PI + 0.5) * 0.1 * e;
     }
   }
 
