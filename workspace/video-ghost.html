@@ -513,9 +513,9 @@ function drawWavefrontBody(t) {
   // Breathing: gentle scale, 4 second cycle
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
 
-  var bodyH = H * 0.68 * breathCycle;
-  var bodyW = W * 0.28 * breathCycle;
-  var bodyTop = cy - bodyH * 0.36 + dance.bounce * 18;
+  var bodyH = H * 0.82 * breathCycle;
+  var bodyW = W * 0.34 * breathCycle;
+  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22;
 
   var de = dance.energy;
 
@@ -652,13 +652,13 @@ function drawWavefrontBody(t) {
   // ── DEPTH LAYER 2: Warm subsurface (body volume) ──────
   buildSilhouettePath();
   var skinGrad = ctx.createLinearGradient(cx - bodyW, bodyTop, cx + bodyW, bodyTop + bodyH);
-  var eg = 0.5 + sm.energy * 0.5; // energy glow factor
-  skinGrad.addColorStop(0, hsla(280, 55, 22, 0.20 * lc.formAlpha));
-  skinGrad.addColorStop(0.2, hsla(310, 70, 32, 0.32 * lc.formAlpha * eg));
-  skinGrad.addColorStop(0.35, hsla(320, 75, 40, 0.38 * lc.formAlpha * eg));
-  skinGrad.addColorStop(0.5, hsla(300, 65, 34, 0.28 * lc.formAlpha * eg));
-  skinGrad.addColorStop(0.7, hsla(270, 60, 26, 0.20 * lc.formAlpha));
-  skinGrad.addColorStop(1, hsla(260, 45, 18, 0.12 * lc.formAlpha));
+  var eg = 0.5 + sm.energy * 0.5;
+  skinGrad.addColorStop(0, hsla(280, 60, 25, 0.25 * lc.formAlpha));
+  skinGrad.addColorStop(0.15, hsla(310, 75, 35, 0.40 * lc.formAlpha * eg));
+  skinGrad.addColorStop(0.3, hsla(320, 80, 42, 0.45 * lc.formAlpha * eg));
+  skinGrad.addColorStop(0.5, hsla(300, 70, 38, 0.35 * lc.formAlpha * eg));
+  skinGrad.addColorStop(0.7, hsla(270, 65, 30, 0.25 * lc.formAlpha));
+  skinGrad.addColorStop(1, hsla(260, 50, 20, 0.15 * lc.formAlpha));
   ctx.fillStyle = skinGrad;
   ctx.fill();
 
@@ -746,13 +746,13 @@ function drawWavefrontBody(t) {
     var waveSpeed = t * 1.5 + nt * 0.5;
 
     // Iridescent color shift — changes across the body for holographic effect
-    var iridescence = Math.sin(nt * 8 + t * 0.5) * 30;
-    var hue = 270 + sm.valence * 40 + nt * 25 + iridescence;
-    var lightness = 50 + melVal * 30;
-    var alpha = (0.25 + melVal * 0.5) * lc.formAlpha;
+    var iridescence = Math.sin(nt * 10 + t * 0.7) * 40;
+    var hue = 270 + sm.valence * 40 + nt * 30 + iridescence;
+    var lightness = 50 + melVal * 35;
+    var alpha = (0.30 + melVal * 0.55) * lc.formAlpha;
 
-    ctx.strokeStyle = hsla(hue, 80, lightness, alpha);
-    ctx.lineWidth = 0.6 + melVal * 1.2;
+    ctx.strokeStyle = hsla(hue, 85, lightness, alpha);
+    ctx.lineWidth = 0.8 + melVal * 1.5;
 
     ctx.beginPath();
     var startX = cx - width + sway;
@@ -771,24 +771,53 @@ function drawWavefrontBody(t) {
     ctx.stroke();
   }
 
-  // Pass B: Broad holographic shimmer (mid-depth, slower, wider)
+  // Pass B: HOLOGRAPHIC SHIMMER — vivid prismatic rainbow across body
   ctx.globalCompositeOperation = 'screen';
-  var shimmerLines = 30;
+  var shimmerLines = 50;
   for (var i = 0; i < shimmerLines; i++) {
     var nt = i / shimmerLines;
     var yPos = bodyTop + nt * bodyH;
-    var width = silhouetteWidth(nt) * bodyW * 0.85;
+    var width = silhouetteWidth(nt) * bodyW * 0.9;
     var sway = danceSway(nt);
 
     var melIdx = Math.floor(nt * 127);
     var melVal = sm.mel[melIdx] || 0;
 
-    // Prismatic rainbow shift for holographic effect
-    var prismHue = (nt * 360 + t * 40) % 360;
-    var prismAlpha = (0.03 + melVal * 0.08) * lc.formAlpha;
+    // Fast-cycling prismatic rainbow — the holographic magic
+    var prismHue = (nt * 540 + t * 80) % 360;
+    var prismAlpha = (0.06 + melVal * 0.14) * lc.formAlpha;
 
-    ctx.strokeStyle = hsla(prismHue, 90, 65, prismAlpha);
-    ctx.lineWidth = 2 + melVal * 3;
+    ctx.strokeStyle = hsla(prismHue, 100, 65, prismAlpha);
+    ctx.lineWidth = 2.5 + melVal * 4;
+
+    ctx.beginPath();
+    var startX = cx - width + sway;
+    var endX = cx + width + sway;
+    for (var j = 0; j <= 35; j++) {
+      var jt = j / 35;
+      var x = startX + jt * (endX - startX);
+      var wave = Math.sin(x * 0.025 + t * 1.2 + nt * 3) * (4 + melVal * 8);
+      if (j === 0) ctx.moveTo(x, yPos + wave);
+      else ctx.lineTo(x, yPos + wave);
+    }
+    ctx.stroke();
+  }
+
+  // Pass C: Secondary holographic pass — offset hue for depth interference
+  for (var i = 0; i < 25; i++) {
+    var nt = i / 25;
+    var yPos = bodyTop + nt * bodyH;
+    var width = silhouetteWidth(nt) * bodyW * 0.75;
+    var sway = danceSway(nt);
+
+    var melIdx = Math.floor(nt * 127);
+    var melVal = sm.mel[melIdx] || 0;
+
+    var prismHue2 = (nt * 360 + t * 120 + 180) % 360; // offset phase
+    var prismAlpha2 = (0.03 + melVal * 0.08) * lc.formAlpha;
+
+    ctx.strokeStyle = hsla(prismHue2, 95, 60, prismAlpha2);
+    ctx.lineWidth = 1.5 + melVal * 2;
 
     ctx.beginPath();
     var startX = cx - width + sway;
@@ -796,7 +825,7 @@ function drawWavefrontBody(t) {
     for (var j = 0; j <= 30; j++) {
       var jt = j / 30;
       var x = startX + jt * (endX - startX);
-      var wave = Math.sin(x * 0.02 + t * 0.8 + nt * 3) * (3 + melVal * 6);
+      var wave = Math.sin(x * 0.04 + t * 1.8 + nt * 5) * (3 + melVal * 5);
       if (j === 0) ctx.moveTo(x, yPos + wave);
       else ctx.lineTo(x, yPos + wave);
     }
@@ -804,24 +833,23 @@ function drawWavefrontBody(t) {
   }
   ctx.globalCompositeOperation = 'source-over';
 
-  // ── DEPTH LAYER 6: Edge iridescence ───────────────────
-  // Prismatic rainbow shimmer along the silhouette edges
+  // ── DEPTH LAYER 6: Edge iridescence — VIVID rainbow outline ──
   for (var side = 0; side < 2; side++) {
     var edge = side === 0 ? leftEdge : rightEdge;
     var dir = side === 0 ? -1 : 1;
 
-    // Draw 3 offset edge lines for prismatic spread
-    for (var p = 0; p < 3; p++) {
-      var offset = (p - 1) * 1.5 * dir;
-      var edgeHue = (glowHue + p * 40 + t * 30) % 360;
-      var edgeAlpha = (0.12 + sm.energy * 0.18) * lc.formAlpha;
+    // 5 prismatic edge passes for strong rainbow spread
+    for (var p = 0; p < 5; p++) {
+      var offset = (p - 2) * 2.0 * dir;
+      var edgeHue = (glowHue + p * 55 + t * 50) % 360;
+      var edgeAlpha = (0.10 + sm.energy * 0.15) * lc.formAlpha;
 
       ctx.beginPath();
       for (var i = 0; i <= numSlices; i++) {
         ctx.lineTo(edge[i].x + offset, edge[i].y);
       }
-      ctx.strokeStyle = hsla(edgeHue, 90, 65, edgeAlpha);
-      ctx.lineWidth = 1 + p * 0.3;
+      ctx.strokeStyle = hsla(edgeHue, 100, 65, edgeAlpha);
+      ctx.lineWidth = 1.2 + p * 0.2;
       ctx.stroke();
     }
   }
@@ -850,8 +878,8 @@ function drawWavefrontBody(t) {
     var sparkleY = c.y;
 
     var twinkle = Math.sin(t * 3 + s * 1.7) * 0.5 + 0.5;
-    var sparkleSize = (1.5 + twinkle * 2) * (0.5 + sm.energy);
-    var sparkleAlpha = twinkle * 0.4 * lc.formAlpha;
+    var sparkleSize = (2 + twinkle * 3.5) * (0.5 + sm.energy);
+    var sparkleAlpha = twinkle * 0.55 * lc.formAlpha;
 
     // Bright core
     ctx.fillStyle = 'rgba(255,255,255,' + sparkleAlpha + ')';
@@ -1303,9 +1331,9 @@ function drawFace(t) {
   if (lc.formAlpha < 0.08) return;
 
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-  var bodyH = H * 0.68 * breathCycle;
-  var bodyW = W * 0.28 * breathCycle;
-  var bodyTop = cy - bodyH * 0.36 + dance.bounce * 18;
+  var bodyH = H * 0.82 * breathCycle;
+  var bodyW = W * 0.34 * breathCycle;
+  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22;
 
   var headSway = dance.headPhase * bodyW * 0.15;
   var headCx = cx + headSway;
@@ -1530,9 +1558,9 @@ function drawHairFlow(t) {
   if (lc.formAlpha < 0.1) return;
 
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-  var bodyH = H * 0.68 * breathCycle;
-  var bodyW = W * 0.28 * breathCycle;
-  var bodyTop = cy - bodyH * 0.36 + dance.bounce * 18;
+  var bodyH = H * 0.82 * breathCycle;
+  var bodyW = W * 0.34 * breathCycle;
+  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22;
   var headSway = dance.headPhase * bodyW * 0.15;
   var headTop = bodyTop;
 
