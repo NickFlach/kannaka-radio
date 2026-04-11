@@ -807,10 +807,13 @@ function animate() {
     bodyEnergy.position.y -= 0.3;
   }
 
-  // Head group (with face + hair as children) follows head bone
-  if (headBone) {
-    headBone.getWorldPosition(_headWorldPos);
-    headBone.getWorldQuaternion(_headWorldQuat);
+  // Head group follows neck bone (head bone is scaled to 0, so use neck)
+  const trackBone = bones.neck || headBone;
+  if (trackBone) {
+    trackBone.getWorldPosition(_headWorldPos);
+    trackBone.getWorldQuaternion(_headWorldQuat);
+    // Offset up from neck to head position
+    _headWorldPos.y += 0.15;
 
     headGroup.position.copy(_headWorldPos);
     headGroup.position.y += 0.02;
