@@ -847,9 +847,9 @@ function animate() {
     const centroidNorm = Math.min((perception.spectral_centroid || 2000) / 5000, 1);
     for (const strand of hairStrands) {
       const { phase } = strand.userData;
-      strand.rotation.x = Math.sin(t * 0.7 + phase) * 0.12 * (centroidNorm + 0.3);
-      strand.rotation.z = Math.sin(t * 0.5 + phase) * 0.08 + hipSway * 0.8;
-      strand.rotation.y = Math.sin(t * 0.3 + phase * 1.5) * 0.06;
+      strand.rotation.x = Math.sin(t * 0.7 + phase) * 0.06 * (centroidNorm + 0.3);
+      strand.rotation.z = Math.sin(t * 0.5 + phase) * 0.04;
+      strand.rotation.y = Math.sin(t * 0.3 + phase * 1.5) * 0.03;
     }
   }
 
