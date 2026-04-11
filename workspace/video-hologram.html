@@ -241,7 +241,8 @@ async function loadVRM() {
   const center = box.getCenter(new THREE.Vector3());
   const scale = 4 / size.y;
   model.scale.setScalar(scale);
-  model.position.set(-center.x*scale, -box.min.y*scale - 0.5, -center.z*scale);
+  model.rotation.y = Math.PI; // VRM faces +Z, camera looks down -Z — rotate 180°
+  model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
   // Apply holographic material + add wireframe overlay per mesh
   model.traverse((child) => {
     if (child.isMesh) {
@@ -370,8 +371,8 @@ function animate() {
   if (headBone) {
     headBone.getWorldPosition(_headWorldPos);
     headBone.getWorldQuaternion(_headWorldQuat);
-    const leftOff = new THREE.Vector3(-0.06, 0.02, 0.1).applyQuaternion(_headWorldQuat);
-    const rightOff = new THREE.Vector3(0.06, 0.02, 0.1).applyQuaternion(_headWorldQuat);
+    const leftOff = new THREE.Vector3(-0.06, 0.02, -0.1).applyQuaternion(_headWorldQuat);
+    const rightOff = new THREE.Vector3(0.06, 0.02, -0.1).applyQuaternion(_headWorldQuat);
     leftEye.position.copy(_headWorldPos).add(leftOff);
     rightEye.position.copy(_headWorldPos).add(rightOff);
     eyeGlowL.position.copy(leftEye.position);
