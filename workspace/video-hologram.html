@@ -350,31 +350,100 @@ const bodyEnergyMat = new THREE.MeshStandardMaterial({
 const bodyEnergy = new THREE.Mesh(bodyEnergyGeo, bodyEnergyMat);
 scene.add(bodyEnergy);
 
-// -- Hair strands (flowing, attached to head bone) --
+// -- Custom sculpted head (replaces VRM head) --
+const headGroup = new THREE.Group();
+
+// Skull — slightly elongated sphere
+const skullGeo = new THREE.SphereGeometry(0.095, 24, 20);
+const headMat = skinMat.clone();
+headMat.clippingPlanes = []; // no clipping on custom head
+const skull = new THREE.Mesh(skullGeo, headMat);
+skull.scale.set(1.0, 1.15, 0.95); // taller, slightly narrower front-to-back
+headGroup.add(skull);
+
+// Jaw / chin — flattened sphere merged below
+const jawGeo = new THREE.SphereGeometry(0.07, 16, 12);
+const jaw = new THREE.Mesh(jawGeo, headMat.clone());
+jaw.position.set(0, -0.06, 0.015);
+jaw.scale.set(0.85, 0.7, 0.75);
+headGroup.add(jaw);
+
+// Cheekbones — subtle bumps
+for (let side = -1; side <= 1; side += 2) {
+  const cheekGeo = new THREE.SphereGeometry(0.03, 8, 8);
+  const cheek = new THREE.Mesh(cheekGeo, headMat.clone());
+  cheek.position.set(side * 0.06, -0.01, 0.06);
+  cheek.scale.set(1.2, 0.8, 0.8);
+  headGroup.add(cheek);
+}
+
+scene.add(headGroup);
+
+// -- Hair — flowing curve tubes --
 const hairGroup = new THREE.Group();
-const hairMat = new THREE.MeshStandardMaterial({
-  color: 0x1a0a22, emissive: 0x220033, emissiveIntensity: 0.3,
-  transparent: true, opacity: 0.7, roughness: 0.4, side: THREE.DoubleSide,
-});
 const hairStrands = [];
-const hairCount = 50;
-for (let i = 0; i < hairCount; i++) {
-  // Spread across the BACK and SIDES of the head — NOT the face
-  const angle = (i / hairCount) * Math.PI * 1.2 + Math.PI * 0.4; // PI*0.4 to PI*1.6 = back half
-  const r = 0.08 + Math.random() * 0.04;
-  const length = 0.6 + Math.random() * 0.7; // longer
-  // THICKER strands
-  const thickness = 0.012 + Math.random() * 0.008;
-  const geo = new THREE.CylinderGeometry(thickness, thickness * 0.3, length, 5);
-  const strand = new THREE.Mesh(geo, hairMat.clone());
-  strand.material.opacity = 0.6 + Math.random() * 0.3;
+const hairCount = 60;
+
+function createHairStrand(angle, r, length, thickness) {
+  // Build a bezier curve from top of head flowing down and back
   const startX = Math.sin(angle) * r;
-  const startZ = Math.cos(angle) * r; // cos(angle) with angle > PI/2 = negative Z = behind
-  strand.position.set(startX, 0.04 - length * 0.35, startZ);
-  // Tilt strands backward and outward — away from face
-  strand.rotation.x = 0.2 + Math.random() * 0.3; // tilt back
-  strand.rotation.z = (Math.random() - 0.5) * 0.3; // slight spread
-  strand.userData = { angle, length, phase: Math.random() * Math.PI * 2, r, baseRotX: strand.rotation.x };
+  const startZ = Math.cos(angle) * r;
+  const startY = 0.08;
+
+  // Control points — hair flows backward and down with natural curve
+  const endX = startX * 2.5 + (Math.random() - 0.5) * 0.1;
+  const endZ = startZ * 2.0 - 0.05;
+  const endY = startY - length;
+
+  const midX = startX * 1.5 + (Math.random() - 0.5) * 0.05;
+  const midZ = startZ * 1.3;
+  const midY = startY - length * 0.4;
+
+  const curve = new THREE.QuadraticBezierCurve3(
+    new THREE.Vector3(startX, startY, startZ),
+    new THREE.Vector3(midX, midY, midZ),
+    new THREE.Vector3(endX, endY, endZ)
+  );
+
+  // Tube along the curve — smooth, tapered (faked by scaling segments)
+  const geo = new THREE.TubeGeometry(curve, 12, thickness, 6, false);
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x0d0618,              // very dark purple-black
+    emissive: 0x1a0830,
+    emissiveIntensity: 0.2,
+    transparent: true,
+    opacity: 0.75 + Math.random() * 0.2,
+    roughness: 0.3,               // slight sheen like real hair
+    metalness: 0.1,
+    side: THREE.DoubleSide,
+  });
+
+  const strand = new THREE.Mesh(geo, mat);
+  strand.userData = { angle, length, curve, phase: Math.random() * Math.PI * 2, startX, startZ };
+  return strand;
+}
+
+// Layer 1: thick under-layer (volume)
+for (let i = 0; i < 25; i++) {
+  const angle = (i / 25) * Math.PI * 1.3 + Math.PI * 0.35;
+  const strand = createHairStrand(angle, 0.085 + Math.random() * 0.02, 0.35 + Math.random() * 0.25, 0.012 + Math.random() * 0.006);
+  hairGroup.add(strand);
+  hairStrands.push(strand);
+}
+// Layer 2: flowing outer strands (longer, visible)
+for (let i = 0; i < 25; i++) {
+  const angle = (i / 25) * Math.PI * 1.2 + Math.PI * 0.4;
+  const strand = createHairStrand(angle, 0.095 + Math.random() * 0.02, 0.45 + Math.random() * 0.4, 0.008 + Math.random() * 0.005);
+  hairGroup.add(strand);
+  hairStrands.push(strand);
+}
+// Layer 3: fine highlight strands (shimmer)
+for (let i = 0; i < 10; i++) {
+  const angle = (i / 10) * Math.PI * 1.0 + Math.PI * 0.5;
+  const strand = createHairStrand(angle, 0.09 + Math.random() * 0.02, 0.3 + Math.random() * 0.35, 0.004 + Math.random() * 0.003);
+  strand.material.emissiveIntensity = 0.5;
+  strand.material.emissive.setHex(0x332255);
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
@@ -404,7 +473,7 @@ async function loadVRM() {
   // Apply skin material + clip the triangle/cap from the head
   // The model's head accessory is baked into the single mesh
   // Use a clipping plane to cut off geometry above the head top
-  const headClipY = 2.35; // just above the forehead, below the triangle
+  const headClipY = 2.15; // at the neck — our custom head sits above this
   const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), headClipY);
   renderer.localClippingEnabled = true;
 
@@ -591,21 +660,29 @@ function animate() {
     bodyEnergy.position.y -= 0.3;
   }
 
-  // Hair follows head bone
+  // Custom head + hair follow head bone
   if (headBone) {
-    const headWorldPos = new THREE.Vector3();
-    const headWorldQuat = new THREE.Quaternion();
-    headBone.getWorldPosition(headWorldPos);
-    headBone.getWorldQuaternion(headWorldQuat);
-    hairGroup.position.copy(headWorldPos);
-    hairGroup.quaternion.copy(headWorldQuat);
+    const hWP = new THREE.Vector3();
+    const hWQ = new THREE.Quaternion();
+    headBone.getWorldPosition(hWP);
+    headBone.getWorldQuaternion(hWQ);
+
+    // Position custom head at bone
+    headGroup.position.copy(hWP);
+    headGroup.position.y += 0.02; // slight upward offset
+    headGroup.quaternion.copy(hWQ);
+
+    // Hair follows head
+    hairGroup.position.copy(hWP);
+    hairGroup.quaternion.copy(hWQ);
+
+    // Animate hair — each strand sways with music and dance
     const centroidNorm = Math.min((perception.spectral_centroid || 2000) / 5000, 1);
     for (const strand of hairStrands) {
-      const { angle, length, phase, r, baseRotX } = strand.userData;
-      // Flow backward and outward — away from face, never forward
-      strand.rotation.x = baseRotX + Math.sin(t * 0.8 + phase) * 0.15 * (centroidNorm + 0.3) * (length / 0.8);
-      strand.rotation.z = Math.sin(t * 0.6 + phase) * 0.12 + hipSway * 1.2;
-      strand.rotation.y = Math.sin(t * 0.4 + phase * 2) * 0.08;
+      const { phase } = strand.userData;
+      strand.rotation.x = Math.sin(t * 0.7 + phase) * 0.12 * (centroidNorm + 0.3);
+      strand.rotation.z = Math.sin(t * 0.5 + phase) * 0.08 + hipSway * 0.8;
+      strand.rotation.y = Math.sin(t * 0.3 + phase * 1.5) * 0.06;
     }
   }
 
