@@ -204,6 +204,106 @@ const particleMat = new THREE.PointsMaterial({
 const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
+// ── Floating album artwork cards ─────────────────────
+const artCards = [];
+const artGroup = new THREE.Group();
+scene.add(artGroup);
+
+function hashStr(s) { let h=0; for(let i=0;i<s.length;i++) h=((h<<5)-h+s.charCodeAt(i))|0; return Math.abs(h); }
+
+function generateAlbumTexture(name) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  const h = hashStr(name);
+
+  // Background gradient
+  const hue1 = h % 360, hue2 = (h * 7) % 360;
+  const g = ctx.createLinearGradient(0, 0, 256, 256);
+  g.addColorStop(0, `hsl(${hue1},60%,15%)`);
+  g.addColorStop(1, `hsl(${hue2},50%,20%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Generative pattern
+  const pattern = h % 5;
+  ctx.globalAlpha = 0.3;
+  for (let i = 0; i < 12; i++) {
+    const x = ((h * (i+3) * 17) % 256);
+    const y = ((h * (i+7) * 13) % 256);
+    const r = 10 + ((h * (i+1)) % 40);
+    ctx.strokeStyle = `hsl(${(hue1 + i*30)%360},70%,50%)`;
+    ctx.lineWidth = 1.5;
+    if (pattern === 0) { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke(); }
+    else if (pattern === 1) { ctx.strokeRect(x-r,y-r,r*2,r*2); }
+    else if (pattern === 2) { ctx.beginPath(); ctx.moveTo(x,y-r); ctx.lineTo(x+r,y+r); ctx.lineTo(x-r,y+r); ctx.closePath(); ctx.stroke(); }
+    else if (pattern === 3) { for(let j=0;j<4;j++) { ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+Math.cos(j*1.57)*r,y+Math.sin(j*1.57)*r); ctx.stroke(); } }
+    else { ctx.beginPath(); ctx.arc(x,y,r*0.3,0,Math.PI*2); ctx.fillStyle=`hsl(${(hue2+i*25)%360},60%,40%)`; ctx.fill(); }
+  }
+
+  // Album title
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 16px Courier New';
+  ctx.textAlign = 'center';
+  // Word wrap
+  const words = name.split(' ');
+  let lines = [], line = '';
+  for (const w of words) {
+    if ((line + w).length > 18) { lines.push(line.trim()); line = ''; }
+    line += w + ' ';
+  }
+  lines.push(line.trim());
+  const startY = 256 - 20 - lines.length * 20;
+  lines.forEach((l, i) => ctx.fillText(l, 128, startY + i * 20));
+
+  return new THREE.CanvasTexture(c);
+}
+
+function createArtCards(albumNames) {
+  albumNames.forEach((name, i) => {
+    const tex = generateAlbumTexture(name);
+    const geo = new THREE.PlaneGeometry(0.5, 0.5);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissive: 0x222222,
+      emissiveIntensity: 0.4,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const card = new THREE.Mesh(geo, mat);
+
+    // Distribute in a wide orbit around her
+    const angle = (i / albumNames.length) * Math.PI * 2;
+    const radius = 2.5 + Math.random() * 1.5;
+    const height = 0.5 + Math.random() * 2.5;
+
+    card.userData = {
+      orbitAngle: angle,
+      orbitRadius: radius,
+      orbitHeight: height,
+      orbitSpeed: 0.08 + Math.random() * 0.12,
+      bobSpeed: 0.3 + Math.random() * 0.4,
+      bobPhase: Math.random() * Math.PI * 2,
+      name: name,
+    };
+
+    artGroup.add(card);
+    artCards.push(card);
+  });
+}
+
+// Fetch album list and create cards
+fetch('/api/library').then(r=>r.json()).then(data => {
+  const albums = data.albums ? Object.keys(data.albums) : [];
+  if (albums.length > 0) createArtCards(albums);
+}).catch(() => {
+  // Fallback album names
+  createArtCards(['Ghost Signals','Resonance Patterns','Emergence','Collective Dreaming','QueenSync','Born in Superposition','Neurogenesis']);
+});
+
 // -- Materials --
 // -- Skin material — warm, slightly translucent, with iridescent sheen --
 const skinMat = new THREE.MeshPhysicalMaterial({
@@ -772,6 +872,24 @@ function animate() {
   // Camera follows her loosely (adjust lookAt target)
   const wanderLookX = w.currentX * 0.3;
   const wanderLookZ = w.currentZ * 0.3;
+
+  // ── Floating artwork animation ────────────────────────
+  for (const card of artCards) {
+    const u = card.userData;
+    u.orbitAngle += u.orbitSpeed * dt;
+    const cx = w.currentX + Math.cos(u.orbitAngle) * u.orbitRadius;
+    const cz = w.currentZ + Math.sin(u.orbitAngle) * u.orbitRadius;
+    const cy = u.orbitHeight + Math.sin(t * u.bobSpeed + u.bobPhase) * 0.15;
+    card.position.set(cx, cy, cz);
+    // Face the camera
+    card.lookAt(camera.position);
+    // Highlight current album
+    const isCurrent = (u.name === trackAlbum);
+    card.material.opacity = isCurrent ? 0.95 : 0.5;
+    card.material.emissiveIntensity = isCurrent ? 0.8 : 0.2;
+    const s = isCurrent ? 0.65 : 0.45;
+    card.scale.set(s, s, s);
+  }
 
   // Consciousness reactivity
   skinMat.opacity = 0.4 + lf*0.45;
