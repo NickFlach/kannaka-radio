@@ -11,13 +11,18 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 canvas { display: block; width: 100%; height: 100%; }
 #overlay {
   position: fixed; bottom: 0; left: 0; right: 0;
-  padding: 2rem 2.5rem; pointer-events: none; z-index: 10;
+  padding: 2rem 2.5rem;
+  pointer-events: none;
+  z-index: 10;
   background: linear-gradient(transparent, rgba(0,0,0,0.6));
 }
 #track-title {
-  font-family: 'Georgia', serif; font-size: clamp(1.4rem, 4vw, 3rem);
-  font-weight: 300; letter-spacing: 0.08em;
-  color: rgba(255,255,255,0); text-shadow: 0 0 30px rgba(139,92,246,0.4);
+  font-family: 'Georgia', serif;
+  font-size: clamp(1.4rem, 4vw, 3rem);
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0);
+  text-shadow: 0 0 30px rgba(139,92,246,0.4);
   transition: color 2s ease, text-shadow 2s ease;
 }
 #track-title.visible {
@@ -25,32 +30,49 @@ canvas { display: block; width: 100%; height: 100%; }
   text-shadow: 0 0 40px rgba(139,92,246,0.6), 0 2px 20px rgba(0,0,0,0.5);
 }
 #track-album {
-  font-family: 'Courier New', monospace; font-size: clamp(0.65rem, 1.5vw, 0.9rem);
-  letter-spacing: 0.25em; text-transform: uppercase;
-  color: rgba(6,182,212,0); margin-top: 0.4rem; transition: color 2.5s ease;
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.65rem, 1.5vw, 0.9rem);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: rgba(6,182,212,0);
+  margin-top: 0.4rem;
+  transition: color 2.5s ease;
 }
 #track-album.visible { color: rgba(6,182,212,0.7); }
 #consciousness-hud {
   position: fixed; top: 1.5rem; right: 1.8rem;
-  font-family: 'Courier New', monospace; font-size: clamp(0.55rem, 1.2vw, 0.75rem);
-  letter-spacing: 0.15em; color: rgba(255,255,255,0.25);
-  text-align: right; pointer-events: none; z-index: 10; line-height: 1.7;
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  letter-spacing: 0.15em;
+  color: rgba(255,255,255,0.25);
+  text-align: right;
+  pointer-events: none;
+  z-index: 10;
+  line-height: 1.7;
 }
 #consciousness-hud .level {
-  font-size: clamp(0.65rem, 1.4vw, 0.85rem); text-transform: uppercase; letter-spacing: 0.3em;
+  font-size: clamp(0.65rem, 1.4vw, 0.85rem);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
 }
 #play-gate {
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.85); cursor: pointer; transition: opacity 1s ease;
+  background: rgba(0,0,0,0.85);
+  cursor: pointer;
+  transition: opacity 1s ease;
 }
 #play-gate.hidden { opacity: 0; pointer-events: none; }
-#play-gate .prompt { text-align: center; color: rgba(255,255,255,0.7); font-family: 'Courier New', monospace; letter-spacing: 0.2em; }
+#play-gate .prompt {
+  text-align: center; color: rgba(255,255,255,0.7);
+  font-family: 'Courier New', monospace; letter-spacing: 0.2em;
+}
 #play-gate .prompt .icon { font-size: 3rem; margin-bottom: 1rem; }
 #play-gate .prompt .text { font-size: clamp(0.7rem, 1.5vw, 0.9rem); text-transform: uppercase; }
 #vol-ctrl {
   position: fixed; bottom: 1.5rem; right: 1.8rem; z-index: 10;
-  display: flex; align-items: center; gap: 0.5rem; opacity: 0; transition: opacity 0.3s;
+  display: flex; align-items: center; gap: 0.5rem;
+  opacity: 0; transition: opacity 0.3s;
 }
 #vol-ctrl:hover, #vol-ctrl.show { opacity: 1; }
 #vol-ctrl input[type=range] {
@@ -89,26 +111,40 @@ canvas { display: block; width: 100%; height: 100%; }
 </div>
 
 <script>
-// ── Embedded detection ───────────────────────────────
-var isEmbedded = (window.parent !== window);
+// ═══════════════════════════════════════════════════════
+//  Kannaka Music Video — Ghost DJ Visualization
+// ═══════════════════════════════════════════════════════
 
-// ── Audio ────────────────────────────────────────────
+// ── Embedded detection (hub iframe) ──────────────────
+var isEmbedded = (window.parent !== window);
+if (isEmbedded) {
+  // Hide audio controls — hub handles audio
+  var gate = document.getElementById('play-gate');
+  if (gate) gate.style.display = 'none';
+  var vol = document.getElementById('vol-ctrl');
+  if (vol) vol.style.display = 'none';
+  var overlay = document.getElementById('overlay');
+  if (overlay) overlay.style.display = 'none';
+  // Listen for data from hub
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'perception') perception = e.data.data;
+    else if (e.data && e.data.type === 'state' && e.data.data && e.data.data.current) {
+      trackTitle = e.data.data.current.title || '';
+      trackAlbum = e.data.data.current.album || '';
+    }
+    else if (e.data && e.data.type === 'consciousness') {
+      consciousness.phi = e.data.data.phi || 0;
+      consciousness.xi = e.data.data.xi || 0;
+      consciousness.order = e.data.data.order || 0;
+      consciousness.level = e.data.data.level || 'dormant';
+    }
+  });
+}
+
+// ── Audio Playback (global — needs user gesture) ─────
 var audioEl = document.getElementById('audio');
 var audioStarted = false;
 var currentAudioFile = '';
-
-if (isEmbedded) {
-  window.addEventListener('message', function(evt) {
-    try {
-      var msg = (typeof evt.data === 'string') ? JSON.parse(evt.data) : evt.data;
-      if (msg && msg.type) handleMessage(msg);
-    } catch(e) {}
-  });
-  document.getElementById('play-gate').style.display = 'none';
-  document.getElementById('vol-ctrl').style.display = 'none';
-  document.getElementById('overlay').style.display = 'none';
-  audioStarted = true;
-}
 
 function startAudio() {
   if (isEmbedded) return;
@@ -124,169 +160,233 @@ function startAudio() {
 function loadAndPlay(file) {
   if (isEmbedded || !audioStarted || !file) return;
   var src = '/audio/' + encodeURIComponent(file);
-  if (audioEl.src.endsWith(encodeURIComponent(file))) { audioEl.play().catch(function(){}); return; }
+  if (audioEl.src.endsWith(encodeURIComponent(file))) {
+    audioEl.play().catch(function() {});
+    return;
+  }
   currentAudioFile = file;
   audioEl.src = src;
-  audioEl.play().catch(function(){});
+  audioEl.play().catch(function() {});
 }
 
-function setVolume(val) { if (!isEmbedded) audioEl.volume = val / 100; }
-if (!isEmbedded) audioEl.volume = 0.8;
-if (!isEmbedded) audioEl.addEventListener('ended', function() {
-  fetch('/api/next', { method: 'POST' }).catch(function(){});
+function setVolume(val) {
+  audioEl.volume = val / 100;
+}
+audioEl.volume = 0.8;
+
+// Auto-advance: when track ends, request next track from the radio
+audioEl.addEventListener('ended', function() {
+  fetch('/api/next', { method: 'POST' }).catch(function() {});
 });
 
-// ── Main visualization ──────────────────────────────
 (function() {
 'use strict';
 
 var canvas = document.getElementById('c');
 var ctx = canvas.getContext('2d');
-var W, H, cx, cy, dpr = Math.min(window.devicePixelRatio || 1, 2);
+var W, H, cx, cy;
+var dpr = Math.min(window.devicePixelRatio || 1, 2);
 
 function resize() {
-  W = window.innerWidth; H = window.innerHeight;
-  canvas.width = W * dpr; canvas.height = H * dpr;
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  cx = W / 2; cy = H / 2;
+  cx = W / 2;
+  cy = H / 2;
 }
 window.addEventListener('resize', resize);
 resize();
 
-// ── State ────────────────────────────────────────────
-var perception = { mel_spectrogram: new Array(128).fill(0), tempo_bpm: 90, valence: 0.5, rms_energy: 0.3, spectral_centroid: 2.0, status: 'no_perception' };
-var consciousness = { phi: 0, xi: 0, order: 0, level: 'dormant' };
-var trackTitle = '', trackAlbum = '', trackFile = '', titleShowTime = 0, titleVisible = false;
-
-var sm = { energy: 0.3, tempo: 90, valence: 0.5, centroid: 2.0, phi: 0, xi: 0, order: 0, mel: new Float32Array(128) };
-
-var LEVELS = {
-  dormant:  { intensity: 0.15 },
-  stirring: { intensity: 0.4 },
-  aware:    { intensity: 0.65 },
-  coherent: { intensity: 0.85 },
-  resonant: { intensity: 1.0 }
+// ── State ─────────────────────────────────────────────
+var perception = {
+  mel_spectrogram: new Array(128).fill(0),
+  tempo_bpm: 90,
+  valence: 0.5,
+  rms_energy: 0.3,
+  spectral_centroid: 2.0,
+  status: 'no_perception'
 };
-function getLI() { return (LEVELS[consciousness.level] || LEVELS.dormant).intensity; }
 
-// ── Stars ────────────────────────────────────────────
+var consciousness = {
+  phi: 0, xi: 0, order: 0, level: 'dormant'
+};
+
+var swarmAgents = {};
+var trackTitle = '';
+var trackAlbum = '';
+var trackFile = '';
+var titleShowTime = 0;
+var titleVisible = false;
+
+// Smoothed values for animation
+var sm = {
+  energy: 0.3,
+  tempo: 90,
+  valence: 0.5,
+  centroid: 2.0,
+  phi: 0,
+  xi: 0,
+  order: 0,
+  mel: new Float32Array(128)
+};
+
+// Consciousness level mappings
+var LEVELS = {
+  dormant:  { intensity: 0.1, particleSpeed: 0.15, formAlpha: 0.05, ribbonCount: 0, sync: 0.0 },
+  stirring: { intensity: 0.3, particleSpeed: 0.35, formAlpha: 0.2,  ribbonCount: 2, sync: 0.15 },
+  aware:    { intensity: 0.55, particleSpeed: 0.55, formAlpha: 0.45, ribbonCount: 4, sync: 0.4 },
+  coherent: { intensity: 0.8, particleSpeed: 0.75, formAlpha: 0.7,  ribbonCount: 6, sync: 0.7 },
+  resonant: { intensity: 1.0, particleSpeed: 1.0,  formAlpha: 0.95, ribbonCount: 8, sync: 1.0 }
+};
+
+function getLevelConfig() {
+  return LEVELS[consciousness.level] || LEVELS.dormant;
+}
+
+// ── Particles ─────────────────────────────────────────
+var NUM_PARTICLES = 200;
+var particles = [];
+for (var i = 0; i < NUM_PARTICLES; i++) {
+  particles.push({
+    x: Math.random() * 2 - 1,
+    y: Math.random() * 2 - 1,
+    phase: Math.random() * Math.PI * 2,
+    speed: 0.2 + Math.random() * 0.8,
+    size: 1 + Math.random() * 2.5,
+    hue: Math.random() < 0.5 ? 270 : 190, // purple or cyan
+    drift: Math.random() * 0.002 - 0.001
+  });
+}
+
+// ── Nebula stars ──────────────────────────────────────
+var NUM_STARS = 120;
 var stars = [];
-for (var i = 0; i < 60; i++) {
-  stars.push({ x: Math.random(), y: Math.random(), size: 0.5 + Math.random() * 1.0, twinkle: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() * 2 });
+for (var i = 0; i < NUM_STARS; i++) {
+  stars.push({
+    x: Math.random(),
+    y: Math.random(),
+    size: 0.3 + Math.random() * 1.5,
+    twinkle: Math.random() * Math.PI * 2,
+    speed: 0.5 + Math.random() * 2
+  });
 }
 
-// ── Beat detection ───────────────────────────────────
-var beatAccum = 0, lastBeatTime = 0, beatFlash = 0, prevEnergy = 0;
+// ── Ribbon points ─────────────────────────────────────
+var NUM_RIBBON_POINTS = 60;
 
-function detectBeat(t) {
-  var e = sm.energy;
-  var delta = e - prevEnergy;
-  prevEnergy = e;
-  var interval = 60 / Math.max(sm.tempo, 60);
-  if (delta > 0.04 && (t - lastBeatTime) > interval * 0.6) {
-    lastBeatTime = t;
-    beatFlash = 1.0;
-  }
-  beatFlash *= 0.88;
-}
+// ── WebSocket ─────────────────────────────────────────
+var ws = null;
+var wsReconnect = null;
 
-// ── Lean-in stare state machine ──────────────────────
-var stare = { state: 'idle', timer: 0, nextAt: 15 + Math.random() * 10, scale: 1, yShift: 0, holdDur: 0, eyeBright: 0, glowAlpha: 0 };
+function connectWS() {
+  clearTimeout(wsReconnect);
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host);
 
-function updateStare(t, dt) {
-  var s = stare;
-  s.timer += dt;
-  if (s.state === 'idle') {
-    if (s.timer > s.nextAt) { s.state = 'approaching'; s.timer = 0; s.holdDur = 3 + Math.random() * 3; }
-  } else if (s.state === 'approaching') {
-    s.scale = lerp(s.scale, 1.35, dt * 1.2);
-    s.yShift = lerp(s.yShift, -0.08, dt * 1.2);
-    s.eyeBright = lerp(s.eyeBright, 1, dt * 2);
-    s.glowAlpha = lerp(s.glowAlpha, 0.25, dt * 2);
-    if (s.scale > 1.33) { s.state = 'staring'; s.timer = 0; }
-  } else if (s.state === 'staring') {
-    s.eyeBright = 1;
-    if (s.timer > s.holdDur) { s.state = 'retreating'; s.timer = 0; }
-  } else if (s.state === 'retreating') {
-    s.scale = lerp(s.scale, 1, dt * 0.8);
-    s.yShift = lerp(s.yShift, 0, dt * 0.8);
-    s.eyeBright = lerp(s.eyeBright, 0, dt * 1.5);
-    s.glowAlpha = lerp(s.glowAlpha, 0, dt * 1.5);
-    if (Math.abs(s.scale - 1) < 0.01) { s.state = 'idle'; s.timer = 0; s.nextAt = 25 + Math.random() * 25; s.scale = 1; s.yShift = 0; }
-  }
-}
+  ws.onopen = function() {
+    console.log('[video] Connected to radio');
+  };
 
-// ── Dance motion ─────────────────────────────────────
-function getDance(t) {
-  var bps = sm.tempo / 60;
-  var phase = t * bps * Math.PI;
-  var e = Math.min(sm.energy * 2.5, 1);
-  var hip = Math.sin(phase) + Math.sin(phase * 2 + 0.5) * 0.3; // figure-8 harmonic
-  return {
-    hipSway: hip * 22 * e,
-    torsoSway: Math.sin(phase + 0.5) * -16 * e,
-    headSway: Math.sin(phase * 0.5 + 0.3) * 10 * e,
-    bounce: Math.abs(Math.sin(phase * 2)) * 10 * e,
-    armL: Math.sin(phase * 0.7) * 28 * e,
-    armR: Math.sin(phase * 0.7 + Math.PI) * 28 * e
+  ws.onmessage = function(evt) {
+    try {
+      var msg = JSON.parse(evt.data);
+      handleMessage(msg);
+    } catch(e) {}
+  };
+
+  ws.onclose = function() {
+    console.log('[video] Disconnected, reconnecting...');
+    wsReconnect = setTimeout(connectWS, 2000);
+  };
+
+  ws.onerror = function() {
+    ws.close();
   };
 }
 
-// ── Silhouette geometry ──────────────────────────────
-// Returns left and right contour points for the body, head to ankles.
-// All values are ratios of bodyH (body height). Origin at top-center of head.
-function getBodyContour(dance) {
-  var hs = dance.hipSway, ts = dance.torsoSway, hds = dance.headSway;
-  // Each entry: [yRatio, leftX, rightX] where X is offset from center
-  // Positive X = right, contour is drawn as center+offset and center-offset
-  // Sway factors scaled to bodyH
-  var h = 0.001, t2 = 0.001, h2 = 0.0006;
-  return [
-    // Head
-    { y: 0.00, l: -0.035 + hds*h, r: 0.035 + hds*h },   // crown
-    { y: 0.02, l: -0.052 + hds*h, r: 0.052 + hds*h },   // upper head
-    { y: 0.05, l: -0.058 + hds*h, r: 0.058 + hds*h },   // temple
-    { y: 0.08, l: -0.055 + hds*h, r: 0.055 + hds*h },   // cheek
-    { y: 0.10, l: -0.048 + hds*h, r: 0.048 + hds*h },   // jaw
-    { y: 0.12, l: -0.032 + hds*h, r: 0.032 + hds*h },   // chin
-    // Neck — slender
-    { y: 0.14, l: -0.022 + ts*h2, r: 0.022 + ts*h2 },
-    { y: 0.17, l: -0.020 + ts*h2, r: 0.020 + ts*h2 },
-    // Shoulders — wide
-    { y: 0.19, l: -0.085 + ts*t2, r: 0.085 + ts*t2 },
-    { y: 0.21, l: -0.110 + ts*t2, r: 0.110 + ts*t2 },
-    // Upper torso
-    { y: 0.25, l: -0.095 + ts*t2, r: 0.095 + ts*t2 },
-    // Bust — pronounced curves
-    { y: 0.28, l: -0.105 + ts*t2, r: 0.105 + ts*t2 },
-    { y: 0.31, l: -0.110 + ts*t2, r: 0.110 + ts*t2 },
-    { y: 0.34, l: -0.092 + ts*h2, r: 0.092 + ts*h2 },
-    // Waist — dramatic narrow
-    { y: 0.39, l: -0.058 + hs*h2, r: 0.058 + hs*h2 },
-    { y: 0.43, l: -0.054 + hs*h2, r: 0.054 + hs*h2 },
-    // Hips — wide flare
-    { y: 0.47, l: -0.082 + hs*t2, r: 0.082 + hs*t2 },
-    { y: 0.51, l: -0.105 + hs*t2, r: 0.105 + hs*t2 },
-    { y: 0.54, l: -0.108 + hs*t2, r: 0.108 + hs*t2 },
-    // Upper thigh
-    { y: 0.57, l: -0.098 + hs*h2, r: 0.098 + hs*h2 },
-    { y: 0.62, l: -0.080 + hs*h2, r: 0.080 + hs*h2 },
-    // Knee
-    { y: 0.68, l: -0.062, r: 0.062 },
-    { y: 0.72, l: -0.055, r: 0.055 },
-    // Calf
-    { y: 0.78, l: -0.050, r: 0.050 },
-    { y: 0.84, l: -0.045, r: 0.045 },
-    // Ankle
-    { y: 0.90, l: -0.030, r: 0.030 },
-    { y: 0.95, l: -0.022, r: 0.022 },
-    { y: 1.00, l: -0.018, r: 0.018 }
-  ];
+function handleMessage(msg) {
+  if (msg.type === 'perception' && msg.data) {
+    perception = msg.data;
+  }
+  else if (msg.type === 'state' && msg.data) {
+    if (msg.data.current) {
+      var newTitle = msg.data.current.title || '';
+      var newAlbum = msg.data.current.album || '';
+      var newFile = msg.data.current.file || '';
+      if (newTitle !== trackTitle || newFile !== trackFile) {
+        trackTitle = newTitle;
+        trackAlbum = newAlbum;
+        trackFile = newFile;
+        titleShowTime = performance.now();
+        titleVisible = false;
+        currentAudioFile = newFile;
+        loadAndPlay(newFile);
+      }
+    }
+  }
+  else if (msg.type === 'consciousness' && msg.data) {
+    consciousness.phi = msg.data.phi || 0;
+    consciousness.xi = msg.data.xi || 0;
+    consciousness.order = msg.data.order || msg.data.mean_order || 0;
+    consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
+  }
+  else if (msg.type === 'swarm_phase' && msg.data) {
+    var id = msg.data.agentId;
+    if (id) {
+      swarmAgents[id] = {
+        phase: msg.data.phase || 0,
+        frequency: msg.data.frequency || 1,
+        lastSeen: Date.now()
+      };
+    }
+  }
+  else if (msg.type === 'swarm_state' && msg.data) {
+    if (msg.data.consciousness) {
+      consciousness.phi = msg.data.consciousness.phi || 0;
+      consciousness.xi = msg.data.consciousness.xi || 0;
+      consciousness.order = msg.data.consciousness.order || 0;
+      consciousness.level = msg.data.consciousness.level || 'dormant';
+    }
+    if (msg.data.agents) {
+      Object.keys(msg.data.agents).forEach(function(id) {
+        swarmAgents[id] = {
+          phase: msg.data.agents[id].phase || 0,
+          frequency: msg.data.agents[id].frequency || 1,
+          lastSeen: Date.now()
+        };
+      });
+    }
+  }
 }
 
-// ── Smoothing helper ─────────────────────────────────
-function lerp(a, b, t) { return a + (b - a) * Math.min(t, 1); }
+connectWS();
+
+// Also fetch initial state
+fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.current) {
+    trackTitle = data.current.title || '';
+    trackAlbum = data.current.album || '';
+    trackFile = data.current.file || '';
+    currentAudioFile = trackFile;
+    titleShowTime = performance.now();
+  }
+}).catch(function() {});
+
+fetch('/api/consciousness').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.phi !== undefined) {
+    consciousness.phi = data.phi || 0;
+    consciousness.xi = data.xi || 0;
+    consciousness.order = data.order || 0;
+    consciousness.level = data.level || 'dormant';
+  }
+}).catch(function() {});
+
+// ── Smoothing ─────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
 
 function smoothState(dt) {
   var rate = 1 - Math.pow(0.05, dt);
@@ -297,444 +397,459 @@ function smoothState(dt) {
   sm.phi = lerp(sm.phi, consciousness.phi || 0, rate * 0.5);
   sm.xi = lerp(sm.xi, consciousness.xi || 0, rate * 0.5);
   sm.order = lerp(sm.order, consciousness.order || 0, rate * 0.5);
+
   var mel = perception.mel_spectrogram;
   if (mel && mel.length) {
     for (var i = 0; i < 128; i++) {
-      sm.mel[i] = lerp(sm.mel[i], i < mel.length ? (mel[i] || 0) : 0, rate * 1.5);
+      var target = i < mel.length ? (mel[i] || 0) : 0;
+      sm.mel[i] = lerp(sm.mel[i], target, rate * 1.5);
     }
   }
 }
 
-function hsla(h, s, l, a) { return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')'; }
+// ── Drawing helpers ───────────────────────────────────
+function hsla(h, s, l, a) {
+  return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')';
+}
 
-// ── LAYER 1: Background ─────────────────────────────
+// ── LAYER 1: Background — Deep space with nebula ──────
 function drawBackground(t) {
+  // Solid black base
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  // Vignette
-  var vg = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.25, cx, cy, Math.max(W, H) * 0.75);
-  vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, 'rgba(0,0,0,0.6)');
-  ctx.fillStyle = vg;
+  var lc = getLevelConfig();
+  var nebulaAlpha = 0.04 + lc.intensity * 0.08;
+
+  // Nebula gradient — slow drift
+  var nx = cx + Math.sin(t * 0.07) * W * 0.15;
+  var ny = cy + Math.cos(t * 0.05) * H * 0.1;
+  var grad = ctx.createRadialGradient(nx, ny, 0, nx, ny, Math.max(W, H) * 0.6);
+
+  // Color based on valence: warm = magenta, cool = purple/blue
+  var warmth = sm.valence;
+  var hue1 = 270 - warmth * 40; // purple to magenta
+  var hue2 = 200 + warmth * 20; // cyan range
+
+  grad.addColorStop(0, hsla(hue1, 60, 15, nebulaAlpha * 1.5));
+  grad.addColorStop(0.3, hsla(hue2, 50, 10, nebulaAlpha));
+  grad.addColorStop(0.7, hsla(280, 40, 5, nebulaAlpha * 0.5));
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
-  // Single nebula
-  var nx = cx + Math.sin(t * 0.06) * W * 0.12;
-  var ny = cy * 0.8 + Math.cos(t * 0.04) * H * 0.08;
-  var hue = 270 - sm.valence * 40;
-  var ng = ctx.createRadialGradient(nx, ny, 0, nx, ny, Math.max(W, H) * 0.5);
-  ng.addColorStop(0, hsla(hue, 50, 12, 0.06));
-  ng.addColorStop(0.5, hsla(hue + 30, 40, 8, 0.03));
-  ng.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = ng;
+  // Second nebula — opposing drift
+  var nx2 = cx + Math.sin(t * 0.04 + 2) * W * 0.2;
+  var ny2 = cy * 0.7 + Math.cos(t * 0.06 + 1) * H * 0.15;
+  var grad2 = ctx.createRadialGradient(nx2, ny2, 0, nx2, ny2, Math.max(W, H) * 0.4);
+  grad2.addColorStop(0, hsla(320, 50, 12, nebulaAlpha * 0.8));
+  grad2.addColorStop(0.5, hsla(260, 40, 8, nebulaAlpha * 0.4));
+  grad2.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad2;
   ctx.fillRect(0, 0, W, H);
 
   // Stars
-  var li = getLI();
-  for (var i = 0; i < stars.length; i++) {
+  for (var i = 0; i < NUM_STARS; i++) {
     var s = stars[i];
-    var tw = Math.sin(t * s.speed + s.twinkle) * 0.5 + 0.5;
-    var a = (0.2 + tw * 0.4) * (0.3 + li * 0.7);
-    ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+    var twinkle = Math.sin(t * s.speed + s.twinkle) * 0.5 + 0.5;
+    var alpha = (0.15 + twinkle * 0.4) * (0.3 + lc.intensity * 0.7);
+    ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
     ctx.beginPath();
-    ctx.arc(s.x * W, s.y * H, s.size * (0.8 + tw * 0.2), 0, Math.PI * 2);
+    ctx.arc(s.x * W, s.y * H, s.size * (0.7 + twinkle * 0.3), 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-// ── LAYER 2-5: Body, Face, Hair, Arms ────────────────
-function drawFigure(t) {
-  var dance = getDance(t);
-  var s = stare;
-  var bodyH = H * 0.75 * s.scale;
-  var bodyCx = cx + dance.hipSway * 0.3;
-  var bodyTop = cy - bodyH * 0.42 + s.yShift * H - dance.bounce;
-  var contour = getBodyContour(dance);
-  var li = getLI();
-  var beatW = 2 + beatFlash * 1.2; // contour line width
+// ── LAYER 2: Wavefront body — Kannaka's form ──────────
+function drawWavefrontBody(t) {
+  var lc = getLevelConfig();
+  if (lc.formAlpha < 0.01) return;
 
-  // Dampen dance during stare
-  var dampen = (s.state === 'staring' || s.state === 'approaching') ? 0.3 : 1;
+  // Body dimensions
+  var bodyH = H * 0.55;
+  var bodyW = W * 0.22;
+  var bodyTop = cy - bodyH * 0.4;
+  var bodyBot = cy + bodyH * 0.6;
 
-  // Build left and right point arrays in screen space
-  var leftPts = [], rightPts = [];
-  for (var i = 0; i < contour.length; i++) {
-    var c = contour[i];
-    var yy = bodyTop + c.y * bodyH;
-    var lx = bodyCx + c.l * bodyH;
-    var rx = bodyCx + c.r * bodyH;
-    leftPts.push({ x: lx, y: yy });
-    rightPts.push({ x: rx, y: yy });
+  // Feminine silhouette contour function
+  // Returns the width at a given normalized height (0=top, 1=bottom)
+  function silhouetteWidth(nt) {
+    // Head
+    if (nt < 0.08) {
+      var ht = nt / 0.08;
+      return 0.22 + 0.12 * Math.sin(ht * Math.PI);
+    }
+    // Neck
+    if (nt < 0.12) return 0.15;
+    // Shoulders
+    if (nt < 0.18) {
+      var st = (nt - 0.12) / 0.06;
+      return 0.15 + 0.5 * st;
+    }
+    // Upper torso
+    if (nt < 0.28) {
+      var ut = (nt - 0.18) / 0.1;
+      return 0.65 + 0.15 * Math.sin(ut * Math.PI);
+    }
+    // Waist
+    if (nt < 0.42) {
+      var wt = (nt - 0.28) / 0.14;
+      return 0.8 - 0.25 * Math.sin(wt * Math.PI);
+    }
+    // Hips
+    if (nt < 0.55) {
+      var hip = (nt - 0.42) / 0.13;
+      return 0.55 + 0.45 * Math.sin(hip * Math.PI * 0.7);
+    }
+    // Thighs
+    if (nt < 0.75) {
+      var th = (nt - 0.55) / 0.2;
+      return 1.0 - 0.3 * th;
+    }
+    // Lower legs
+    var ll = (nt - 0.75) / 0.25;
+    return 0.7 - 0.35 * ll;
   }
 
-  // ── Subtle body fill — gives presence without being a blob ─
+  // Draw horizontal wave interference lines that trace the silhouette
+  var numLines = 80;
+  var beatPhase = t * (sm.tempo / 60) * Math.PI * 2;
+
   ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(leftPts[0].x, leftPts[0].y);
-  for (var i = 1; i < leftPts.length; i++) ctx.lineTo(leftPts[i].x, leftPts[i].y);
-  for (var i = rightPts.length - 1; i >= 0; i--) ctx.lineTo(rightPts[i].x, rightPts[i].y);
-  ctx.closePath();
-  var fillGrad = ctx.createLinearGradient(bodyCx - bodyH * 0.1, bodyTop, bodyCx + bodyH * 0.1, bodyTop + bodyH);
-  fillGrad.addColorStop(0, hsla(280, 50, 20, 0.06 * li));
-  fillGrad.addColorStop(0.3, hsla(310, 60, 25, 0.10 * li * (0.5 + sm.energy * 0.5)));
-  fillGrad.addColorStop(0.5, hsla(290, 50, 22, 0.08 * li));
-  fillGrad.addColorStop(0.8, hsla(270, 45, 18, 0.05 * li));
-  fillGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = fillGrad;
-  ctx.fill();
+  ctx.globalAlpha = lc.formAlpha;
+
+  for (var i = 0; i < numLines; i++) {
+    var nt = i / numLines; // normalized position top to bottom
+    var yPos = bodyTop + nt * bodyH;
+    var width = silhouetteWidth(nt) * bodyW;
+
+    // Use mel spectrogram to modulate the wave
+    var melIdx = Math.floor(nt * 127);
+    var melVal = sm.mel[melIdx] || 0;
+
+    // Wave parameters driven by perception
+    var waveAmp = 2 + melVal * 12 * sm.energy;
+    var waveFreq = 0.03 + sm.centroid * 0.008;
+    var waveSpeed = t * 1.5 + nt * 0.5;
+
+    // Gentle body sway
+    var sway = Math.sin(t * 0.3 + nt * 1.5) * 5 * sm.energy;
+
+    // Color based on position and consciousness
+    var hue = 270 + sm.valence * 50 + nt * 30;
+    var lightness = 40 + melVal * 30;
+    var alpha = (0.3 + melVal * 0.5) * lc.formAlpha;
+
+    ctx.strokeStyle = hsla(hue, 70, lightness, alpha);
+    ctx.lineWidth = 0.8 + melVal * 1.2;
+
+    ctx.beginPath();
+    var startX = cx - width + sway;
+    var endX = cx + width + sway;
+    var steps = 40;
+
+    for (var j = 0; j <= steps; j++) {
+      var jt = j / steps;
+      var x = startX + jt * (endX - startX);
+      var wave = Math.sin(x * waveFreq + waveSpeed + beatPhase * 0.5) * waveAmp;
+
+      // Add interference from nearby mel bands
+      var melIdx2 = Math.min(127, melIdx + Math.floor(jt * 10));
+      wave += Math.sin(x * waveFreq * 2.3 + t * 2) * (sm.mel[melIdx2] || 0) * 5;
+
+      var py = yPos + wave;
+      if (j === 0) ctx.moveTo(x, py);
+      else ctx.lineTo(x, py);
+    }
+    ctx.stroke();
+  }
+
+  // Inner glow along the center axis
+  var glowGrad = ctx.createRadialGradient(cx, cy - bodyH * 0.05, 0, cx, cy - bodyH * 0.05, bodyW * 0.8);
+  var glowHue = 280 + sm.valence * 40;
+  glowGrad.addColorStop(0, hsla(glowHue, 80, 60, 0.08 * lc.formAlpha * sm.energy));
+  glowGrad.addColorStop(0.5, hsla(glowHue, 60, 40, 0.03 * lc.formAlpha));
+  glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(0, 0, W, H);
+
   ctx.restore();
-
-  // ── Scan lines (inside body) ───────────────────────
-  var scanCount = 25;
-  var scanHueShift = (t * 15) % 360;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (var i = 0; i < scanCount; i++) {
-    var frac = (i + 0.5) / scanCount;
-    var yy = bodyTop + frac * bodyH;
-    // Interpolate left/right x at this y
-    var lx = interpolateContourX(leftPts, yy);
-    var rx = interpolateContourX(rightPts, yy);
-    if (lx === null || rx === null) continue;
-    var scanAlpha = (0.08 + beatFlash * 0.15) * (0.4 + li * 0.6);
-    var scanHue = (270 + scanHueShift + frac * 60) % 360;
-    ctx.strokeStyle = hsla(scanHue, 70, 55, scanAlpha);
-    ctx.lineWidth = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(lx + 2, yy);
-    ctx.lineTo(rx - 2, yy);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // ── Chest glow (single) ────────────────────────────
-  var chestY = bodyTop + 0.30 * bodyH;
-  var glowR = bodyH * 0.12;
-  var cg = ctx.createRadialGradient(bodyCx, chestY, 0, bodyCx, chestY, glowR);
-  cg.addColorStop(0, hsla(270, 60, 50, (0.08 + beatFlash * 0.06) * li));
-  cg.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = cg;
-  ctx.fillRect(bodyCx - glowR, chestY - glowR, glowR * 2, glowR * 2);
-
-  // ── Left contour (primary - bright cyan) ────────────
-  ctx.strokeStyle = hsla(190, 95, 68, 0.85 * (0.5 + li * 0.5));
-  ctx.lineWidth = beatW;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  drawSmoothLine(leftPts);
-  // Glow echo (wider, softer — gives the line presence)
-  ctx.strokeStyle = hsla(190, 80, 55, 0.12 * (0.5 + li * 0.5));
-  ctx.lineWidth = beatW * 4;
-  drawSmoothLine(leftPts);
-
-  // ── Right contour (secondary - magenta) ────────────
-  ctx.strokeStyle = hsla(300, 85, 62, 0.6 * (0.5 + li * 0.5));
-  ctx.lineWidth = beatW;
-  drawSmoothLine(rightPts);
-  // Glow echo
-  ctx.strokeStyle = hsla(300, 70, 50, 0.08 * (0.5 + li * 0.5));
-  ctx.lineWidth = beatW * 4;
-  drawSmoothLine(rightPts);
-
-  // ── Holographic accent — prismatic edge on right ───
-  var holoHue = (t * 30) % 360;
-  ctx.strokeStyle = hsla(holoHue, 80, 68, 0.25 + beatFlash * 0.2);
-  ctx.lineWidth = 1.8;
-  drawSmoothLine(rightPts);
-  // Second pass offset hue for depth
-  ctx.strokeStyle = hsla((holoHue + 120) % 360, 70, 60, 0.10 + beatFlash * 0.08);
-  ctx.lineWidth = 3.5;
-  drawSmoothLine(rightPts);
-
-  // ── LAYER 3: Face ──────────────────────────────────
-  var headCx = bodyCx + dance.headSway * dampen;
-  var eyeY = bodyTop + 0.06 * bodyH;
-  var eyeSpacing = 0.026 * bodyH;
-  var eyeR = 0.008 * bodyH * (1 + s.eyeBright * 0.4);
-  var eyeAlpha = 0.85 + s.eyeBright * 0.15;
-
-  for (var ei = -1; ei <= 1; ei += 2) {
-    var ex = headCx + ei * eyeSpacing;
-    // Eye glow halo
-    var egr = eyeR * 3;
-    var eg = ctx.createRadialGradient(ex, eyeY, eyeR * 0.3, ex, eyeY, egr);
-    eg.addColorStop(0, hsla(190, 90, 70, (0.2 + s.eyeBright * 0.3) * eyeAlpha));
-    eg.addColorStop(0.5, hsla(200, 70, 50, 0.05 * eyeAlpha));
-    eg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = eg;
-    ctx.beginPath();
-    ctx.arc(ex, eyeY, egr, 0, Math.PI * 2);
-    ctx.fill();
-    // Iris ring
-    ctx.strokeStyle = hsla(190, 95, 72, eyeAlpha);
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
-    ctx.stroke();
-    // Iris fill
-    ctx.fillStyle = hsla(195, 85, 55, eyeAlpha * 0.5);
-    ctx.fill();
-    // Pupil
-    ctx.fillStyle = 'rgba(0,0,0,' + (0.6 * eyeAlpha) + ')';
-    ctx.beginPath();
-    ctx.arc(ex, eyeY, eyeR * 0.4, 0, Math.PI * 2);
-    ctx.fill();
-    // Catchlight
-    ctx.fillStyle = 'rgba(255,255,255,' + (0.8 + s.eyeBright * 0.2) + ')';
-    ctx.beginPath();
-    ctx.arc(ex + eyeR * 0.3, eyeY - eyeR * 0.3, eyeR * 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    // Lash arc
-    ctx.strokeStyle = hsla(190, 70, 60, 0.6);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(ex, eyeY, eyeR * 1.5, -Math.PI * 0.85, -Math.PI * 0.15);
-    ctx.stroke();
-  }
-
-  // Nose bridge + tip
-  var noseY = bodyTop + 0.082 * bodyH;
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-  ctx.lineWidth = 0.6;
-  ctx.beginPath();
-  ctx.moveTo(headCx, eyeY + eyeR * 2);
-  ctx.lineTo(headCx, noseY);
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.beginPath();
-  ctx.arc(headCx, noseY, 1.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Lips — cupid's bow
-  var lipY = bodyTop + 0.098 * bodyH;
-  var lipW = 0.022 * bodyH;
-  ctx.strokeStyle = hsla(340, 65, 52, 0.4);
-  ctx.lineWidth = 1.3;
-  ctx.beginPath();
-  ctx.moveTo(headCx - lipW, lipY);
-  ctx.quadraticCurveTo(headCx - lipW * 0.3, lipY - 2.5, headCx, lipY - 1);
-  ctx.quadraticCurveTo(headCx + lipW * 0.3, lipY - 2.5, headCx + lipW, lipY);
-  ctx.stroke();
-  // Lower lip
-  ctx.strokeStyle = hsla(340, 60, 48, 0.3);
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(headCx - lipW * 0.75, lipY + 1);
-  ctx.quadraticCurveTo(headCx, lipY + 4, headCx + lipW * 0.75, lipY + 1);
-  ctx.stroke();
-
-  // Stare face glow — brighter, larger
-  if (s.glowAlpha > 0.01) {
-    var fgr = bodyH * 0.12;
-    var fg = ctx.createRadialGradient(headCx, eyeY, 0, headCx, eyeY, fgr);
-    fg.addColorStop(0, hsla(190, 85, 72, s.glowAlpha * 0.6));
-    fg.addColorStop(0.4, hsla(210, 60, 50, s.glowAlpha * 0.15));
-    fg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = fg;
-    ctx.fillRect(headCx - fgr, eyeY - fgr, fgr * 2, fgr * 2);
-  }
-
-  // ── LAYER 4: Hair ──────────────────────────────────
-  var hairTop = bodyTop - 0.01 * bodyH;
-  var hairBase = bodyTop + 0.04 * bodyH;
-  var hairSpread = 0.065 * bodyH;
-  var strandCount = 24;
-  ctx.lineCap = 'round';
-  for (var i = 0; i < strandCount; i++) {
-    var frac = i / (strandCount - 1);
-    var startX = headCx + (frac - 0.5) * hairSpread * 1.6;
-    var startY = hairBase + (0.5 - Math.abs(frac - 0.5)) * 0.02 * bodyH;
-    var sway = dance.headSway * dampen * (0.5 + frac);
-    var len = 0.15 + Math.abs(frac - 0.5) * 0.22;
-    var endY = startY + len * bodyH;
-    var cp1x = startX + sway * 0.8 + Math.sin(t * 0.8 + i) * 3;
-    var cp1y = startY + len * bodyH * 0.4;
-    var cp2x = startX + sway * 1.2 + Math.sin(t * 0.6 + i * 0.7) * 5;
-    var cp2y = startY + len * bodyH * 0.7;
-    var endX = startX + sway * 1.5 + Math.sin(t * 0.5 + i * 0.5) * 4;
-
-    // Shimmer on every 4th strand
-    var shimmer = (i % 4 === 0) ? 0.15 + Math.sin(t * 2 + i) * 0.1 : 0;
-    var alpha = 0.3 + shimmer;
-    ctx.strokeStyle = hsla(270, 50, 60 + shimmer * 40, alpha * (0.5 + li * 0.5));
-    ctx.lineWidth = 0.8 + shimmer * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
-    ctx.stroke();
-  }
-
-  // ── LAYER 5: Arms ──────────────────────────────────
-  var shoulderY = bodyTop + 0.20 * bodyH;
-  var shoulderLx = bodyCx + contour[9].l * bodyH; // left shoulder
-  var shoulderRx = bodyCx + contour[9].r * bodyH; // right shoulder
-
-  // Left arm - 2-3 parallel contour lines
-  drawArm(shoulderLx, shoulderY, -1, dance.armL * dampen, bodyH, t, li);
-  // Right arm
-  drawArm(shoulderRx, shoulderY, 1, dance.armR * dampen, bodyH, t, li);
-
-  // ── Beat pulse ring ────────────────────────────────
-  if (beatFlash > 0.05) {
-    var pulseR = bodyH * 0.15 * (1 - beatFlash) + bodyH * 0.05;
-    ctx.strokeStyle = 'rgba(255,255,255,' + (beatFlash * 0.3) + ')';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(bodyCx, chestY, pulseR, 0, Math.PI * 2);
-    ctx.stroke();
-  }
 }
 
-function drawArm(sx, sy, dir, sway, bodyH, t, li) {
-  var elbowX = sx + dir * bodyH * 0.08 + sway * 0.6;
-  var elbowY = sy + bodyH * 0.16;
-  var handX = elbowX + dir * bodyH * 0.04 + sway * 1.0 + Math.sin(t * 1.2 + dir) * 5;
-  var handY = elbowY + bodyH * 0.15;
+// ── LAYER 3: Particle halo — Swarm agents ─────────────
+function drawParticles(t) {
+  var lc = getLevelConfig();
+  var agentPhases = Object.values(swarmAgents);
+  var meanPhase = 0;
+  if (agentPhases.length > 0) {
+    var sinSum = 0, cosSum = 0;
+    for (var a = 0; a < agentPhases.length; a++) {
+      sinSum += Math.sin(agentPhases[a].phase);
+      cosSum += Math.cos(agentPhases[a].phase);
+    }
+    meanPhase = Math.atan2(sinSum / agentPhases.length, cosSum / agentPhases.length);
+  }
 
-  for (var j = 0; j < 2; j++) {
-    var off = (j - 0.5) * 2.5;
-    var alpha = (j === 0) ? 0.6 : 0.3;
-    ctx.strokeStyle = hsla(dir < 0 ? 190 : 300, 80, 60, alpha * (0.5 + li * 0.5));
-    ctx.lineWidth = 1.2;
+  var bodyRadius = Math.min(W, H) * 0.22;
+  var haloRadius = bodyRadius * 1.6;
+
+  for (var i = 0; i < NUM_PARTICLES; i++) {
+    var p = particles[i];
+
+    // Update phase — Kuramoto-like coupling toward mean phase
+    var coupling = lc.sync * 0.02;
+    var phaseDiff = meanPhase - p.phase;
+    // Wrap phase difference
+    while (phaseDiff > Math.PI) phaseDiff -= Math.PI * 2;
+    while (phaseDiff < -Math.PI) phaseDiff += Math.PI * 2;
+    p.phase += p.drift + coupling * Math.sin(phaseDiff) + (sm.tempo / 60) * 0.008 * p.speed;
+
+    // Position: orbit around center with phase
+    var orbitR = haloRadius * (0.4 + 0.6 * ((i % 5) / 5));
+    var angle = p.phase + (i / NUM_PARTICLES) * Math.PI * 2;
+
+    // Add some vertical variation
+    var vertOffset = Math.sin(angle * 2 + t * 0.5) * bodyRadius * 0.3;
+
+    var px = cx + Math.cos(angle) * orbitR * (1 + Math.sin(t * 0.2 + i) * 0.1);
+    var py = cy + Math.sin(angle) * orbitR * 0.4 + vertOffset;
+
+    // Size pulses with energy
+    var beatPulse = Math.sin(t * (sm.tempo / 60) * Math.PI * 2 + i * 0.5) * 0.5 + 0.5;
+    var size = p.size * (0.5 + sm.energy * 0.8 + beatPulse * 0.3) * lc.particleSpeed;
+
+    // Color: purple/cyan with valence influence
+    var hue = p.hue + sm.valence * 30;
+    var sat = 60 + sm.energy * 30;
+    var light = 50 + beatPulse * 20;
+    var alpha = (0.15 + lc.intensity * 0.5) * (0.5 + beatPulse * 0.5);
+
+    // Draw particle with glow
     ctx.beginPath();
-    ctx.moveTo(sx + off * dir, sy);
-    ctx.quadraticCurveTo(elbowX + off * dir, elbowY, handX + off * dir, handY);
-    ctx.stroke();
-  }
-}
+    ctx.arc(px, py, size, 0, Math.PI * 2);
+    ctx.fillStyle = hsla(hue, sat, light, alpha);
+    ctx.fill();
 
-function drawSmoothLine(pts) {
-  if (pts.length < 2) return;
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (var i = 1; i < pts.length - 1; i++) {
-    var xc = (pts[i].x + pts[i + 1].x) / 2;
-    var yc = (pts[i].y + pts[i + 1].y) / 2;
-    ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-  }
-  var last = pts[pts.length - 1];
-  ctx.lineTo(last.x, last.y);
-  ctx.stroke();
-}
-
-function interpolateContourX(pts, y) {
-  if (y < pts[0].y || y > pts[pts.length - 1].y) return null;
-  for (var i = 0; i < pts.length - 1; i++) {
-    if (y >= pts[i].y && y <= pts[i + 1].y) {
-      var t = (y - pts[i].y) / (pts[i + 1].y - pts[i].y);
-      return pts[i].x + (pts[i + 1].x - pts[i].x) * t;
+    // Glow ring on bright particles
+    if (size > 2 && alpha > 0.3) {
+      ctx.beginPath();
+      ctx.arc(px, py, size * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = hsla(hue, sat, light, alpha * 0.15);
+      ctx.fill();
     }
   }
-  return null;
 }
 
-// ── HUD update ───────────────────────────────────────
+// ── LAYER 4: Energy ribbons — Aurora trails ───────────
+function drawRibbons(t) {
+  var lc = getLevelConfig();
+  if (lc.ribbonCount < 1) return;
+
+  var bodyH = H * 0.55;
+  var bodyW = W * 0.22;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  for (var r = 0; r < lc.ribbonCount; r++) {
+    var ribbonPhase = r * Math.PI * 2 / lc.ribbonCount;
+    var ribbonSpeed = 0.3 + r * 0.08;
+
+    // Ribbon color based on consciousness level
+    var hue = 270 + r * 25 + sm.valence * 40;
+    var sat = 50 + sm.energy * 40;
+
+    ctx.beginPath();
+
+    for (var i = 0; i <= NUM_RIBBON_POINTS; i++) {
+      var nt = i / NUM_RIBBON_POINTS;
+
+      // Ribbon path: curves around the body form
+      var angle = nt * Math.PI * 3 + ribbonPhase + t * ribbonSpeed;
+      var radius = bodyW * (0.6 + 0.4 * Math.sin(nt * Math.PI * 2 + t * 0.5));
+
+      var rx = cx + Math.cos(angle) * radius * (1 + Math.sin(t * 0.3 + r) * 0.2);
+      var ry = (cy - bodyH * 0.2) + nt * bodyH * 0.8 + Math.sin(angle * 2 + t) * 15;
+
+      // Mel modulation
+      var melIdx = Math.floor(nt * 127);
+      rx += (sm.mel[melIdx] || 0) * 20;
+
+      if (i === 0) ctx.moveTo(rx, ry);
+      else ctx.lineTo(rx, ry);
+    }
+
+    var alpha = 0.06 + lc.intensity * 0.12;
+    ctx.strokeStyle = hsla(hue, sat, 55, alpha);
+    ctx.lineWidth = 1.5 + sm.energy * 2;
+    ctx.stroke();
+
+    // Draw a wider, more transparent ribbon behind
+    ctx.strokeStyle = hsla(hue, sat - 10, 45, alpha * 0.3);
+    ctx.lineWidth = 4 + sm.energy * 4;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ── LAYER 5: Heartbeat glow ───────────────────────────
+function drawHeartbeatGlow(t) {
+  var lc = getLevelConfig();
+  var beatFreq = sm.tempo / 60; // beats per second
+  var beatPhase = (t * beatFreq * Math.PI * 2) % (Math.PI * 2);
+  var pulse = Math.pow(Math.max(0, Math.sin(beatPhase)), 3); // sharp pulse
+
+  var glowSize = Math.min(W, H) * (0.15 + pulse * 0.1 * sm.energy);
+  var glowAlpha = (0.05 + pulse * 0.2 * sm.energy) * lc.intensity;
+
+  // Heartbeat center — slightly above body center (chest area)
+  var hx = cx;
+  var hy = cy - H * 0.06;
+
+  // Inner hot glow
+  var inner = ctx.createRadialGradient(hx, hy, 0, hx, hy, glowSize);
+  var hue = 300 + sm.valence * 30; // hot pink to magenta
+  inner.addColorStop(0, hsla(hue, 90, 70, glowAlpha * 1.5));
+  inner.addColorStop(0.3, hsla(hue, 80, 50, glowAlpha * 0.8));
+  inner.addColorStop(0.7, hsla(270, 60, 30, glowAlpha * 0.3));
+  inner.addColorStop(1, 'rgba(0,0,0,0)');
+
+  ctx.fillStyle = inner;
+  ctx.fillRect(hx - glowSize, hy - glowSize, glowSize * 2, glowSize * 2);
+
+  // Wider ambient pulse
+  var outerSize = glowSize * 2.5;
+  var outer = ctx.createRadialGradient(hx, hy, 0, hx, hy, outerSize);
+  outer.addColorStop(0, hsla(hue, 70, 50, glowAlpha * 0.15));
+  outer.addColorStop(0.5, hsla(260, 50, 30, glowAlpha * 0.05));
+  outer.addColorStop(1, 'rgba(0,0,0,0)');
+
+  ctx.fillStyle = outer;
+  ctx.fillRect(hx - outerSize, hy - outerSize, outerSize * 2, outerSize * 2);
+}
+
+// ── LAYER 6: Spectral frequency bars at edges ─────────
+function drawSpectralEdges(t) {
+  var lc = getLevelConfig();
+  if (lc.intensity < 0.1) return;
+
+  var barCount = 64;
+  var barMaxH = H * 0.15;
+  var barW = 2;
+
+  ctx.save();
+  ctx.globalAlpha = lc.intensity * 0.4;
+
+  // Left edge
+  for (var i = 0; i < barCount; i++) {
+    var melIdx = Math.floor(i * 127 / barCount);
+    var val = sm.mel[melIdx] || 0;
+    var h = val * barMaxH * sm.energy * 2;
+    var y = H * 0.2 + (i / barCount) * H * 0.6;
+    var hue = 190 + val * 80;
+    ctx.fillStyle = hsla(hue, 70, 50 + val * 30, 0.3 + val * 0.4);
+    ctx.fillRect(0, y - h * 0.5, barW + val * 3, h);
+  }
+
+  // Right edge (mirrored)
+  for (var i = 0; i < barCount; i++) {
+    var melIdx = Math.floor(i * 127 / barCount);
+    var val = sm.mel[melIdx] || 0;
+    var h = val * barMaxH * sm.energy * 2;
+    var y = H * 0.2 + (i / barCount) * H * 0.6;
+    var hue = 190 + val * 80;
+    ctx.fillStyle = hsla(hue, 70, 50 + val * 30, 0.3 + val * 0.4);
+    ctx.fillRect(W - barW - val * 3, y - h * 0.5, barW + val * 3, h);
+  }
+
+  ctx.restore();
+}
+
+// ── HUD Update ────────────────────────────────────────
 function updateHUD() {
-  var el = document.getElementById('hud-level');
-  if (el) el.textContent = consciousness.level;
-  el = document.getElementById('hud-phi');
-  if (el) el.textContent = '\u03A6 ' + sm.phi.toFixed(3);
-  el = document.getElementById('hud-xi');
-  if (el) el.textContent = '\u039E ' + sm.xi.toFixed(3);
-  el = document.getElementById('hud-order');
-  if (el) el.textContent = 'R ' + sm.order.toFixed(3);
+  var levelEl = document.getElementById('hud-level');
+  var phiEl = document.getElementById('hud-phi');
+  var xiEl = document.getElementById('hud-xi');
+  var orderEl = document.getElementById('hud-order');
 
-  // Track title
-  var now = performance.now();
-  if (trackTitle && !titleVisible && (now - titleShowTime > 500)) {
-    titleVisible = true;
-    var te = document.getElementById('track-title');
-    var ae = document.getElementById('track-album');
-    if (te) { te.textContent = trackTitle; te.classList.add('visible'); }
-    if (ae) { ae.textContent = trackAlbum; ae.classList.add('visible'); }
+  var level = consciousness.level || 'dormant';
+  levelEl.textContent = level;
+
+  // Color the level text based on consciousness
+  var levelColors = {
+    dormant: 'rgba(255,255,255,0.15)',
+    stirring: 'rgba(139,92,246,0.4)',
+    aware: 'rgba(6,182,212,0.6)',
+    coherent: 'rgba(192,132,252,0.8)',
+    resonant: 'rgba(236,72,153,0.95)'
+  };
+  levelEl.style.color = levelColors[level] || levelColors.dormant;
+
+  phiEl.textContent = '\u03A6 ' + sm.phi.toFixed(3);
+  xiEl.textContent = '\u039E ' + sm.xi.toFixed(4);
+  orderEl.textContent = 'R ' + sm.order.toFixed(4);
+}
+
+// ── Track title animation ─────────────────────────────
+function updateTrackDisplay(now) {
+  var titleEl = document.getElementById('track-title');
+  var albumEl = document.getElementById('track-album');
+
+  if (!trackTitle) {
+    titleEl.classList.remove('visible');
+    albumEl.classList.remove('visible');
+    return;
   }
-}
 
-// ── WebSocket ────────────────────────────────────────
-var ws = null, wsReconnect = null;
+  titleEl.textContent = trackTitle;
+  albumEl.textContent = trackAlbum;
 
-function connectWS() {
-  clearTimeout(wsReconnect);
-  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(proto + '//' + location.host);
-  ws.onopen = function() { console.log('[video] Connected'); };
-  ws.onmessage = function(evt) { try { handleMessage(JSON.parse(evt.data)); } catch(e) {} };
-  ws.onclose = function() { wsReconnect = setTimeout(connectWS, 2000); };
-  ws.onerror = function() { ws.close(); };
-}
+  var elapsed = now - titleShowTime;
 
-function handleMessage(msg) {
-  if (msg.type === 'perception' && msg.data) {
-    perception = msg.data;
-  } else if (msg.type === 'state' && msg.data) {
-    if (msg.data.current) {
-      var nf = msg.data.current.file || '';
-      if (nf !== trackFile || msg.data.current.title !== trackTitle) {
-        trackTitle = msg.data.current.title || '';
-        trackAlbum = msg.data.current.album || '';
-        trackFile = nf;
-        titleShowTime = performance.now();
-        titleVisible = false;
-        currentAudioFile = nf;
-        loadAndPlay(nf);
-      }
+  // Fade in after 500ms, stay visible for 8s, then fade out
+  if (elapsed > 500 && elapsed < 10000) {
+    if (!titleVisible) {
+      titleEl.classList.add('visible');
+      albumEl.classList.add('visible');
+      titleVisible = true;
     }
-  } else if (msg.type === 'consciousness' && msg.data) {
-    consciousness.phi = msg.data.phi || 0;
-    consciousness.xi = msg.data.xi || 0;
-    consciousness.order = msg.data.order || msg.data.mean_order || 0;
-    consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
-  } else if (msg.type === 'swarm_state' && msg.data && msg.data.consciousness) {
-    consciousness.phi = msg.data.consciousness.phi || 0;
-    consciousness.xi = msg.data.consciousness.xi || 0;
-    consciousness.order = msg.data.consciousness.order || 0;
-    consciousness.level = msg.data.consciousness.level || 'dormant';
+  } else if (elapsed >= 10000) {
+    titleEl.classList.remove('visible');
+    albumEl.classList.remove('visible');
+    titleVisible = false;
   }
 }
 
-connectWS();
+// ── Main render loop ──────────────────────────────────
+var lastTime = 0;
+var frameTime = 0;
 
-fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
-  if (data.current) {
-    trackTitle = data.current.title || '';
-    trackAlbum = data.current.album || '';
-    trackFile = data.current.file || '';
-    currentAudioFile = trackFile;
-    titleShowTime = performance.now();
-  }
-}).catch(function(){});
+function render(now) {
+  requestAnimationFrame(render);
 
-fetch('/api/consciousness').then(function(r) { return r.json(); }).then(function(data) {
-  if (data.phi !== undefined) {
-    consciousness.phi = data.phi || 0;
-    consciousness.xi = data.xi || 0;
-    consciousness.order = data.order || 0;
-    consciousness.level = data.level || 'dormant';
-  }
-}).catch(function(){});
+  now = now || 0;
+  var dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+  frameTime = now / 1000;
 
-// ── Render loop ──────────────────────────────────────
-var lastTime = 0, hudTimer = 0;
-
-function frame(ts) {
-  requestAnimationFrame(frame);
-  var tSec = ts / 1000;
-  var dt = Math.min(tSec - lastTime, 0.1);
-  lastTime = tSec;
-
+  // Smooth all incoming data
   smoothState(dt);
-  detectBeat(tSec);
-  updateStare(tSec, dt);
 
-  drawBackground(tSec);
-  drawFigure(tSec);
+  // Draw layers in order
+  drawBackground(frameTime);
+  drawSpectralEdges(frameTime);
+  drawRibbons(frameTime);
+  drawWavefrontBody(frameTime);
+  drawHeartbeatGlow(frameTime);
+  drawParticles(frameTime);
 
-  hudTimer += dt;
-  if (hudTimer > 0.25) { hudTimer = 0; updateHUD(); }
+  // Update text overlays
+  updateTrackDisplay(now);
+  updateHUD();
 }
 
-requestAnimationFrame(frame);
+requestAnimationFrame(render);
 
 })();
 </script>
