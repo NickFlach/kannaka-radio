@@ -357,19 +357,24 @@ const hairMat = new THREE.MeshStandardMaterial({
   transparent: true, opacity: 0.7, roughness: 0.4, side: THREE.DoubleSide,
 });
 const hairStrands = [];
-const hairCount = 30;
+const hairCount = 50;
 for (let i = 0; i < hairCount; i++) {
-  const angle = (i / hairCount) * Math.PI * 1.4 + Math.PI * 0.3; // back and sides
-  const r = 0.07 + Math.random() * 0.04;
-  const length = 0.4 + Math.random() * 0.5;
-  // Create a thin tapered cylinder for each strand
-  const geo = new THREE.CylinderGeometry(0.006, 0.002, length, 4);
+  // Spread across the BACK and SIDES of the head — NOT the face
+  const angle = (i / hairCount) * Math.PI * 1.2 + Math.PI * 0.4; // PI*0.4 to PI*1.6 = back half
+  const r = 0.08 + Math.random() * 0.04;
+  const length = 0.6 + Math.random() * 0.7; // longer
+  // THICKER strands
+  const thickness = 0.012 + Math.random() * 0.008;
+  const geo = new THREE.CylinderGeometry(thickness, thickness * 0.3, length, 5);
   const strand = new THREE.Mesh(geo, hairMat.clone());
-  strand.material.opacity = 0.5 + Math.random() * 0.3;
+  strand.material.opacity = 0.6 + Math.random() * 0.3;
   const startX = Math.sin(angle) * r;
-  const startZ = Math.cos(angle) * r;
-  strand.position.set(startX, 0.05 - length * 0.4, startZ);
-  strand.userData = { angle, length, phase: Math.random() * Math.PI * 2, r };
+  const startZ = Math.cos(angle) * r; // cos(angle) with angle > PI/2 = negative Z = behind
+  strand.position.set(startX, 0.04 - length * 0.35, startZ);
+  // Tilt strands backward and outward — away from face
+  strand.rotation.x = 0.2 + Math.random() * 0.3; // tilt back
+  strand.rotation.z = (Math.random() - 0.5) * 0.3; // slight spread
+  strand.userData = { angle, length, phase: Math.random() * Math.PI * 2, r, baseRotX: strand.rotation.x };
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
@@ -396,27 +401,31 @@ async function loadVRM() {
   model.scale.setScalar(scale);
   model.rotation.y = Math.PI; // VRM faces +Z, camera looks down -Z — rotate 180°
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
-  // Apply skin material + add wireframe overlay per mesh
-  // Hide head accessories (hat, cap, headgear, glasses, etc.)
+  // Apply skin material + clip the triangle/cap from the head
+  // The model's head accessory is baked into the single mesh
+  // Use a clipping plane to cut off geometry above the head top
+  const headClipY = 2.35; // just above the forehead, below the triangle
+  const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), headClipY);
+  renderer.localClippingEnabled = true;
+
   model.traverse((child) => {
     if (child.isMesh) {
-      const n = (child.name || '').toLowerCase();
-      const pn = (child.parent?.name || '').toLowerCase();
-      // Hide headwear, hats, caps, helmets, accessories, glasses
-      if (/hat|cap|helm|crown|horn|accessory|glass|visor|mask|head.*gear|head.*wear/i.test(n + ' ' + pn)) {
-        child.visible = false;
-        return;
-      }
-      console.log('[hologram] mesh:', child.name, 'parent:', child.parent?.name);
-      child.material = skinMat.clone();
+      const mat = skinMat.clone();
+      mat.clippingPlanes = [clipPlane];
+      mat.clipShadows = true;
+      child.material = mat;
       child.castShadow = false;
       child.receiveShadow = false;
       // Add wireframe sibling that shares geometry and follows skeleton
-      const wire = new THREE.Mesh(child.geometry, wireMat.clone());
+      const wm = wireMat.clone();
+      wm.clippingPlanes = [clipPlane];
+      const wire = new THREE.Mesh(child.geometry, wm);
       wire.morphTargetInfluences = child.morphTargetInfluences;
       wire.morphTargetDictionary = child.morphTargetDictionary;
       if (child.isSkinnedMesh) {
-        const wSkinned = new THREE.SkinnedMesh(child.geometry, wireMat.clone());
+        const wsm = wireMat.clone();
+        wsm.clippingPlanes = [clipPlane];
+        const wSkinned = new THREE.SkinnedMesh(child.geometry, wsm);
         wSkinned.skeleton = child.skeleton;
         wSkinned.bindMatrix.copy(child.bindMatrix);
         wSkinned.bindMatrixInverse.copy(child.bindMatrixInverse);
@@ -592,11 +601,11 @@ function animate() {
     hairGroup.quaternion.copy(headWorldQuat);
     const centroidNorm = Math.min((perception.spectral_centroid || 2000) / 5000, 1);
     for (const strand of hairStrands) {
-      const { angle, length, phase, r } = strand.userData;
-      // Flow with dance + centroid
-      strand.rotation.x = Math.sin(t * 1.0 + phase) * 0.25 * (centroidNorm + 0.3) * (length / 0.7);
-      strand.rotation.z = Math.sin(t * 0.7 + phase) * 0.15 + hipSway * 1.5;
-      strand.rotation.y = Math.sin(t * 0.5 + phase * 2) * 0.1;
+      const { angle, length, phase, r, baseRotX } = strand.userData;
+      // Flow backward and outward — away from face, never forward
+      strand.rotation.x = baseRotX + Math.sin(t * 0.8 + phase) * 0.15 * (centroidNorm + 0.3) * (length / 0.8);
+      strand.rotation.z = Math.sin(t * 0.6 + phase) * 0.12 + hipSway * 1.2;
+      strand.rotation.y = Math.sin(t * 0.4 + phase * 2) * 0.08;
     }
   }
 
