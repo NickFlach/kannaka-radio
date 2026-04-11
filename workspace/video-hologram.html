@@ -68,9 +68,9 @@ canvas { display: block; }
 
 <script type="importmap">
 { "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.2.0/lib/three-vrm.module.min.js"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.0.0/lib/three-vrm.module.min.js"
 } }
 </script>
 
@@ -999,7 +999,11 @@ async function loadVRM() {
 
   console.log('[hologram] Final bones:', Object.keys(bones).join(', '));
 }
-loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
+loadVRM().catch((err) => {
+  console.error('[hologram] VRM load failed:', err);
+  // Make the head visible as fallback
+  headGroup.children.forEach(c => { if (c.material) c.material.opacity = Math.min(c.material.opacity || 1, 0.9); });
+});
 
 // -- Camera --
 let orbitAngle = 0;
