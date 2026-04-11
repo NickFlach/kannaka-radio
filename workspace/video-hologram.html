@@ -597,6 +597,48 @@ const bodyEnergyMat = new THREE.MeshStandardMaterial({
 const bodyEnergy = new THREE.Mesh(bodyEnergyGeo, bodyEnergyMat);
 scene.add(bodyEnergy);
 
+// ── Reflective Floor ──────────────────────────────────
+const floorGeo = new THREE.PlaneGeometry(20, 20);
+const floorMat = new THREE.MeshPhysicalMaterial({
+  color: 0x111118, roughness: 0.15, metalness: 0.9,
+  transparent: true, opacity: 0.6,
+  side: THREE.DoubleSide, depthWrite: true,
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.5;
+floor.renderOrder = -1; // render before transparent objects
+scene.add(floor);
+
+// Light pool — glowing circle on the floor under her
+const poolGeo = new THREE.CircleGeometry(1.2, 48);
+const poolMat = new THREE.MeshBasicMaterial({
+  color: 0x6644aa, transparent: true, opacity: 0.12,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const lightPool = new THREE.Mesh(poolGeo, poolMat);
+lightPool.rotation.x = -Math.PI / 2;
+lightPool.position.y = -0.49; // just above floor
+scene.add(lightPool);
+
+// Spot light pointing down for the pool effect
+const poolSpot = new THREE.SpotLight(0x7755cc, 8, 6, Math.PI / 5, 0.8);
+poolSpot.position.set(0, 4, 0);
+poolSpot.target.position.set(0, -0.5, 0);
+scene.add(poolSpot, poolSpot.target);
+
+// ── Shadow Circle ─────────────────────────────────────
+const shadowGeo = new THREE.CircleGeometry(0.3, 32);
+const shadowMat = new THREE.MeshBasicMaterial({
+  color: 0x000000, transparent: true, opacity: 0.3,
+  depthWrite: false, side: THREE.DoubleSide,
+});
+const shadowCircle = new THREE.Mesh(shadowGeo, shadowMat);
+shadowCircle.rotation.x = -Math.PI / 2;
+shadowCircle.position.y = -0.49;
+scene.add(shadowCircle);
+
 // -- Custom sculpted head (replaces VRM head) --
 const headGroup = new THREE.Group();
 
@@ -673,65 +715,52 @@ buildFace();
 headGroup.add(faceGroup);
 scene.add(headGroup);
 
-// -- Hair — flowing curve tubes --
+// ── Hair — Ribbon Sheets ──────────────────────────────
 const hairGroup = new THREE.Group();
-const hairStrands = [];
-const hairCount = 60;
+const hairRibbons = [];
+const RIBBON_COUNT = 14;
 
-function createHairStrand(angle, r, length, thickness, isPonytail) {
-  // Hair starts on TOP of the skull, close to center
-  const startX = Math.sin(angle) * r * 0.5;
-  const startZ = Math.cos(angle) * r * 0.3;
-  const startY = 0.13;
-
-  let midX, midY, midZ, endX, endY, endZ;
-
-  if (isPonytail) {
-    // Ponytail: converge at back of crown (head faces -Z due to 180° rotation, so back = +Z)
-    const gatherX = (Math.random() - 0.5) * 0.02;
-    const gatherZ = -0.10 + (Math.random() - 0.5) * 0.02; // behind the head in head-local space
-    midX = gatherX;
-    midZ = gatherZ;
-    midY = 0.08 + (Math.random() - 0.5) * 0.02;
-    endX = gatherX + (Math.random() - 0.5) * 0.04;
-    endZ = gatherZ - 0.06 + (Math.random() - 0.5) * 0.03;
-    endY = midY - length;
-  } else {
-    // Scalp strands: short, flat, swept toward the back
-    midX = startX * 0.7 + (Math.random() - 0.5) * 0.02;
-    midZ = startZ - 0.04;
-    midY = startY - length * 0.4;
-    endX = startX * 0.4 + (Math.random() - 0.5) * 0.02;
-    endZ = startZ - 0.07;
-    endY = startY - length;
-  }
-
-  const curve = new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(startX, startY, startZ),
-    new THREE.Vector3(midX, midY, midZ),
-    new THREE.Vector3(endX, endY, endZ)
-  );
-
-  // Tube along the curve — smooth, tapered (faked by scaling segments)
-  const geo = new THREE.TubeGeometry(curve, 12, thickness, 6, false);
-
+for (let i = 0; i < RIBBON_COUNT; i++) {
+  // Varying lengths — 0.3 to 0.6 units
+  const ribbonLength = 0.3 + Math.random() * 0.3;
+  const ribbonWidth = 0.015 + Math.random() * 0.01;
+  const geo = new THREE.PlaneGeometry(ribbonWidth, ribbonLength, 1, 6); // 6 segments for wave deformation
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x0d0618,              // very dark purple-black
+    color: 0x0d0618,
     emissive: 0x1a0830,
-    emissiveIntensity: 0.2,
+    emissiveIntensity: 0.25,
     transparent: true,
-    opacity: 0.75 + Math.random() * 0.2,
-    roughness: 0.3,               // slight sheen like real hair
+    opacity: 0.7 + Math.random() * 0.2,
+    roughness: 0.3,
     metalness: 0.1,
     side: THREE.DoubleSide,
+    depthWrite: false,
   });
+  const ribbon = new THREE.Mesh(geo, mat);
 
-  const strand = new THREE.Mesh(geo, mat);
-  strand.userData = { angle, length, curve, phase: Math.random() * Math.PI * 2, startX, startZ };
-  return strand;
+  // Start from the crown area, spread slightly
+  const angle = (i / RIBBON_COUNT) * Math.PI * 1.6 - Math.PI * 0.8; // arc across back of head
+  const spreadX = Math.sin(angle) * (0.06 + Math.random() * 0.04);
+  const spreadZ = -0.04 - Math.random() * 0.06; // behind the head
+  const startY = 0.10 + Math.random() * 0.04;
+
+  ribbon.position.set(spreadX, startY - ribbonLength * 0.5, spreadZ);
+  ribbon.rotation.x = 0.2 + Math.random() * 0.15; // tilt backward slightly
+
+  ribbon.userData = {
+    phase: Math.random() * Math.PI * 2,
+    swaySpeed: 0.5 + Math.random() * 0.4,
+    swayAmp: 0.04 + Math.random() * 0.03,
+    length: ribbonLength,
+    baseY: startY - ribbonLength * 0.5,
+    baseX: spreadX,
+    baseZ: spreadZ,
+    baseRotX: ribbon.rotation.x,
+  };
+  hairGroup.add(ribbon);
+  hairRibbons.push(ribbon);
 }
 
-// Hair removed — will come back to this later
 headGroup.add(hairGroup); // hair is attached to the head
 
 // -- VRM Model --
@@ -893,7 +922,8 @@ loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
 
 // -- Camera --
 let orbitAngle = 0;
-const orbitRadius = 5, orbitHeight = 1.8, orbitSpeed = 0.08;
+let orbitRadius = 5, orbitHeight = 1.8, orbitSpeed = 0.08;
+let targetOrbitRadius = 5, targetOrbitHeight = 1.8, targetOrbitSpeed = 0.08;
 let stareState = 'orbit', stareTimer = 0, stareProgress = 0;
 let nextStareAt = 25 + Math.random()*25;
 const stareDuration = 2.0, stareHoldDuration = 3 + Math.random()*3;
@@ -1034,6 +1064,84 @@ function animate() {
   if (useBloom) bloomPass.strength = 0.6 + lf*1.2 + audio.overall * 0.5; // music brightens the world
   // Analyze audio frequencies
   analyzeAudio(dt);
+
+  // ── Dynamic Backlight Color ─────────────────────────
+  {
+    let targetH, targetS, targetL;
+    if (audio.beat) {
+      // Peak/beat: white-hot flash
+      targetH = 0; targetS = 0; targetL = 0.9;
+    } else if (audio.vocal > 0.35) {
+      // Vocals strong: warm pink
+      targetH = 0.9; targetS = 0.7; targetL = 0.6;
+    } else if (audio.bass > 0.3) {
+      // Bass heavy: deep purple
+      targetH = 0.75; targetS = 0.8; targetL = 0.4;
+    } else {
+      // Instrumental/low energy: cool blue
+      targetH = 0.6; targetS = 0.6; targetL = 0.5;
+    }
+    const currentHSL = { h: 0, s: 0, l: 0 };
+    backLight.color.getHSL(currentHSL);
+    const lerpRate = audio.beat ? 0.5 : 0.08;
+    const newH = currentHSL.h + (targetH - currentHSL.h) * lerpRate;
+    const newS = currentHSL.s + (targetS - currentHSL.s) * lerpRate;
+    const newL = currentHSL.l + (targetL - currentHSL.l) * lerpRate;
+    backLight.color.setHSL(newH, newS, newL);
+  }
+
+  // ── Cinematic Camera — music-driven radius/height/speed ──
+  {
+    const totalEnergy = audio.overall;
+    if (totalEnergy < 0.15) {
+      // Quiet: wide shot
+      targetOrbitRadius = 6.5; targetOrbitSpeed = 0.04; targetOrbitHeight = 2.0;
+    } else if (totalEnergy < 0.35) {
+      // Moderate: medium shot
+      targetOrbitRadius = 4.5; targetOrbitSpeed = 0.08; targetOrbitHeight = 1.8;
+    } else {
+      // Intense: close-up
+      targetOrbitRadius = 2.8; targetOrbitSpeed = 0.12; targetOrbitHeight = 1.6;
+    }
+    // Bass-heavy: lower camera for drama
+    targetOrbitHeight -= audio.bass * 0.5;
+    // Highs: raise camera
+    targetOrbitHeight += audio.high * 0.4;
+    // Smooth transitions
+    orbitRadius += (targetOrbitRadius - orbitRadius) * dt * 0.8;
+    orbitHeight += (targetOrbitHeight - orbitHeight) * dt * 0.8;
+    orbitSpeed += (targetOrbitSpeed - orbitSpeed) * dt * 1.5;
+  }
+
+  // ── Vocal-triggered stare (instead of timer) ──
+  if (stareState === 'orbit' && audio.vocal > 0.5 && stareTimer > 8) {
+    stareState = 'dolly_in'; stareProgress = 0;
+    orbitPosBeforeStare.copy(camera.position);
+    nextStareAt = 25 + Math.random() * 25;
+  }
+
+  // ── Floor, Shadow, Light Pool updates ───────────────
+  {
+    const wx = window._wander ? window._wander.currentX : 0;
+    const wz = window._wander ? window._wander.currentZ : 0;
+    // Shadow follows wander position
+    shadowCircle.position.x = wx;
+    shadowCircle.position.z = wz;
+    // Scale shadow with bounce — smaller when higher
+    const bounceY = (bones.hips && bones.hips.userData.restY !== undefined)
+      ? (bones.hips.position.y - bones.hips.userData.restY) : 0;
+    const shadowScale = Math.max(0.5, 1.0 - bounceY * 4);
+    shadowCircle.scale.set(shadowScale, shadowScale, 1);
+    shadowMat.opacity = 0.3 * shadowScale;
+    // Light pool follows wander
+    lightPool.position.x = wx;
+    lightPool.position.z = wz;
+    lightPool.material.opacity = 0.08 + audio.overall * 0.08;
+    // Pool spot follows
+    poolSpot.position.x = wx;
+    poolSpot.target.position.x = wx;
+    poolSpot.target.position.z = wz;
+  }
 
   particleMat.opacity = 0.2 + lf*0.6 + audio.vocal * 0.3;
   particleMat.size = (isMobile ? 0.04 : 0.03) + audio.vocal * 0.03;
@@ -1363,13 +1471,22 @@ function animate() {
       }
     }
 
-    // Hair sway — strands swing relative to head
-    const centroidNorm = Math.min((perception.spectral_centroid || 2000) / 5000, 1);
-    for (const strand of hairStrands) {
-      const { phase } = strand.userData;
-      strand.rotation.x = Math.sin(t * 0.7 + phase) * 0.06 * (centroidNorm + 0.3);
-      strand.rotation.z = Math.sin(t * 0.5 + phase) * 0.04;
-      strand.rotation.y = Math.sin(t * 0.3 + phase * 1.5) * 0.03;
+    // ── Hair ribbons — sine wave sway, reacting to audio.mid ──
+    for (const ribbon of hairRibbons) {
+      const u = ribbon.userData;
+      const midReact = 1.0 + audio.mid * 2.0;
+      ribbon.rotation.x = u.baseRotX + Math.sin(t * u.swaySpeed + u.phase) * u.swayAmp * midReact;
+      ribbon.rotation.z = Math.sin(t * u.swaySpeed * 0.7 + u.phase * 1.3) * u.swayAmp * 0.8 * midReact;
+      ribbon.rotation.y = Math.sin(t * u.swaySpeed * 0.4 + u.phase * 0.7) * u.swayAmp * 0.5;
+      // Vertex deformation for flowing wave effect
+      const posAttr = ribbon.geometry.attributes.position;
+      for (let vi = 0; vi < posAttr.count; vi++) {
+        const vy = posAttr.getY(vi); // local Y along the ribbon
+        const wave = Math.sin(t * u.swaySpeed * 1.5 + u.phase + vy * 8) * 0.005 * midReact;
+        posAttr.setX(vi, posAttr.getX(vi) * 0.97 + (ribbon.userData['origX_' + vi] || posAttr.getX(vi)) * 0.03 + wave);
+        if (!ribbon.userData['origX_' + vi]) ribbon.userData['origX_' + vi] = posAttr.getX(vi);
+      }
+      posAttr.needsUpdate = true;
     }
   }
 
@@ -1399,10 +1516,11 @@ function animate() {
     orbitAngle += orbitSpeed * dt;
     camera.position.set(wanderLookX + Math.sin(orbitAngle)*orbitRadius, orbitHeight + Math.sin(t*0.3)*0.2, wanderLookZ + Math.cos(orbitAngle)*orbitRadius);
     camera.lookAt(wanderLookX, 1.2, wanderLookZ);
+    // Stare trigger is now vocal-driven (see above), but keep timer fallback for very long quiet sections
     if (stareTimer >= nextStareAt) {
       stareState = 'dolly_in'; stareProgress = 0;
       orbitPosBeforeStare.copy(camera.position);
-      nextStareAt = 25 + Math.random()*25;
+      nextStareAt = 30 + Math.random()*30;
     }
   } else if (stareState === 'dolly_in') {
     stareProgress += dt / stareDuration;
