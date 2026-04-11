@@ -260,53 +260,60 @@ const faceGroup = new THREE.Group();
 
 // Build face
 function buildFace() {
+  const eyeY = 0.01;        // eye height relative to head center
+  const eyeX = 0.038;       // eye spacing from center
+  const eyeZ = 0.085;       // eye depth (front of face)
+
   // Left eye
   const lSclera = new THREE.Mesh(scleraGeo, scleraMat);
-  lSclera.position.set(-0.045, 0.02, 0.08);
+  lSclera.position.set(-eyeX, eyeY, eyeZ);
   const lIris = new THREE.Mesh(irisGeo, irisMat);
-  lIris.position.set(-0.045, 0.02, 0.105);
+  lIris.position.set(-eyeX, eyeY, eyeZ + 0.025);
   const lPupil = new THREE.Mesh(pupilGeo, pupilMat);
-  lPupil.position.set(-0.045, 0.02, 0.115);
+  lPupil.position.set(-eyeX, eyeY, eyeZ + 0.032);
   const lCatch = new THREE.Mesh(catchGeo, catchMat);
-  lCatch.position.set(-0.038, 0.028, 0.118);
+  lCatch.position.set(-eyeX + 0.008, eyeY + 0.008, eyeZ + 0.035);
 
   // Right eye
   const rSclera = new THREE.Mesh(scleraGeo, scleraMat);
-  rSclera.position.set(0.045, 0.02, 0.08);
+  rSclera.position.set(eyeX, eyeY, eyeZ);
   const rIris = new THREE.Mesh(irisGeo, irisMat);
-  rIris.position.set(0.045, 0.02, 0.105);
+  rIris.position.set(eyeX, eyeY, eyeZ + 0.025);
   const rPupil = new THREE.Mesh(pupilGeo, pupilMat);
-  rPupil.position.set(0.045, 0.02, 0.115);
+  rPupil.position.set(eyeX, eyeY, eyeZ + 0.032);
   const rCatch = new THREE.Mesh(catchGeo, catchMat);
-  rCatch.position.set(0.052, 0.028, 0.118);
+  rCatch.position.set(eyeX + 0.008, eyeY + 0.008, eyeZ + 0.035);
 
-  // Upper lip (cupid's bow, rotated to face forward)
+  // Nose — bridge + tip
+  const noseBridgeGeo = new THREE.CylinderGeometry(0.004, 0.006, 0.03, 6);
+  const noseBridge = new THREE.Mesh(noseBridgeGeo, noseMat);
+  noseBridge.position.set(0, eyeY - 0.025, eyeZ + 0.015);
+  noseBridge.rotation.x = -0.3;
+  const noseTip = new THREE.Mesh(noseGeo, noseMat);
+  noseTip.position.set(0, eyeY - 0.04, eyeZ + 0.025);
+
+  // Lips — positioned below nose
+  const lipY = eyeY - 0.065;
   const uLip = new THREE.Mesh(lipGeo, upperLipMat);
-  uLip.position.set(0, -0.035, 0.07);
+  uLip.position.set(0, lipY, eyeZ + 0.005);
   uLip.rotation.x = Math.PI * 0.5;
   uLip.rotation.z = Math.PI;
-
-  // Lower lip
   const lLip = new THREE.Mesh(lowerLipGeo, lowerLipMat);
-  lLip.position.set(0, -0.045, 0.068);
+  lLip.position.set(0, lipY - 0.012, eyeZ + 0.003);
   lLip.rotation.x = -Math.PI * 0.5;
 
-  // Nose tip
-  const noseTip = new THREE.Mesh(noseGeo, noseMat);
-  noseTip.position.set(0, -0.01, 0.10);
-
-  // Eyebrows
+  // Eyebrows — arched above eyes
+  const browY = eyeY + 0.035;
   const lBrow = new THREE.Mesh(browGeo, browMat);
-  lBrow.position.set(-0.045, 0.055, 0.075);
-  lBrow.rotation.z = -0.15;
+  lBrow.position.set(-eyeX, browY, eyeZ + 0.005);
+  lBrow.rotation.z = -0.2;
   const rBrow = new THREE.Mesh(browGeo, browMat);
-  rBrow.position.set(0.045, 0.055, 0.075);
-  rBrow.rotation.z = 0.15;
+  rBrow.position.set(eyeX, browY, eyeZ + 0.005);
+  rBrow.rotation.z = 0.2;
 
   faceGroup.add(lSclera, lIris, lPupil, lCatch, rSclera, rIris, rPupil, rCatch,
-                uLip, lLip, noseTip, lBrow, rBrow);
+                noseBridge, noseTip, uLip, lLip, lBrow, rBrow);
 
-  // Store iris/pupil refs for animation
   faceGroup.userData = { lIris, rIris, lPupil, rPupil, lCatch, rCatch };
 }
 buildFace();
@@ -353,29 +360,42 @@ scene.add(bodyEnergy);
 // -- Custom sculpted head (replaces VRM head) --
 const headGroup = new THREE.Group();
 
-// Skull — slightly elongated sphere
-const skullGeo = new THREE.SphereGeometry(0.095, 24, 20);
+// Skull — elongated sphere, feminine proportions
+const skullGeo = new THREE.SphereGeometry(0.10, 32, 24);
 const headMat = skinMat.clone();
 headMat.clippingPlanes = []; // no clipping on custom head
 const skull = new THREE.Mesh(skullGeo, headMat);
-skull.scale.set(1.0, 1.15, 0.95); // taller, slightly narrower front-to-back
+skull.scale.set(0.95, 1.12, 0.92); // oval, taller, narrower front-to-back
 headGroup.add(skull);
 
-// Jaw / chin — flattened sphere merged below
-const jawGeo = new THREE.SphereGeometry(0.07, 16, 12);
+// Jaw / chin — softer, feminine
+const jawGeo = new THREE.SphereGeometry(0.065, 16, 12);
 const jaw = new THREE.Mesh(jawGeo, headMat.clone());
-jaw.position.set(0, -0.06, 0.015);
-jaw.scale.set(0.85, 0.7, 0.75);
+jaw.position.set(0, -0.065, 0.02);
+jaw.scale.set(0.78, 0.65, 0.72); // narrow, delicate chin
 headGroup.add(jaw);
 
-// Cheekbones — subtle bumps
+// Forehead — smooth brow area
+const foreheadGeo = new THREE.SphereGeometry(0.06, 12, 8);
+const forehead = new THREE.Mesh(foreheadGeo, headMat.clone());
+forehead.position.set(0, 0.04, 0.065);
+forehead.scale.set(1.4, 0.7, 0.6);
+headGroup.add(forehead);
+
+// Cheekbones — soft definition
 for (let side = -1; side <= 1; side += 2) {
-  const cheekGeo = new THREE.SphereGeometry(0.03, 8, 8);
+  const cheekGeo = new THREE.SphereGeometry(0.028, 10, 8);
   const cheek = new THREE.Mesh(cheekGeo, headMat.clone());
-  cheek.position.set(side * 0.06, -0.01, 0.06);
-  cheek.scale.set(1.2, 0.8, 0.8);
+  cheek.position.set(side * 0.058, -0.015, 0.065);
+  cheek.scale.set(1.1, 0.75, 0.85);
   headGroup.add(cheek);
 }
+
+// Neck base — smooth transition to body
+const neckGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.06, 12);
+const neck = new THREE.Mesh(neckGeo, headMat.clone());
+neck.position.set(0, -0.11, 0);
+headGroup.add(neck);
 
 scene.add(headGroup);
 
@@ -431,10 +451,10 @@ for (let i = 0; i < 25; i++) {
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-// Layer 2: flowing outer strands (longer, visible)
+// Layer 2: flowing outer strands (longer, visible — shoulder length)
 for (let i = 0; i < 25; i++) {
   const angle = (i / 25) * Math.PI * 1.2 + Math.PI * 0.4;
-  const strand = createHairStrand(angle, 0.095 + Math.random() * 0.02, 0.45 + Math.random() * 0.4, 0.008 + Math.random() * 0.005);
+  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.02, 0.55 + Math.random() * 0.55, 0.008 + Math.random() * 0.006);
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
@@ -473,8 +493,13 @@ async function loadVRM() {
   // Apply skin material + clip the triangle/cap from the head
   // The model's head accessory is baked into the single mesh
   // Use a clipping plane to cut off geometry above the head top
-  const headClipY = 2.15; // at the neck — our custom head sits above this
-  const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), headClipY);
+  // Clip the VRM model's head — calculate world-space Y for the neck
+  // Model: 2.63 units tall, scaled by (4/2.63)≈1.52, bottom at -0.5
+  // Neck is at about model Y=2.2, world Y = 2.2 * scale + model.position.y
+  const neckModelY = 2.1; // model-space neck height
+  const neckWorldY = neckModelY * scale + (-box.min.y * scale - 0.5);
+  console.log('[hologram] clip at world Y:', neckWorldY);
+  const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), neckWorldY);
   renderer.localClippingEnabled = true;
 
   model.traverse((child) => {
