@@ -460,58 +460,64 @@ function drawBackground(t) {
   }
 }
 
-// ── LAYER 2: Wavefront body — Kannaka's form ──────────
+// ── Dance motion ─────────────────────────────────────
+function getDanceSway(t, nt) {
+  var bps = sm.tempo / 60;
+  var phase = t * bps * Math.PI;
+  var e = Math.min(sm.energy * 2, 1);
+  var hip = (Math.sin(phase) + Math.sin(phase * 2 + 0.5) * 0.25) * 20 * e;
+  var torso = Math.sin(phase + 0.5) * -14 * e;
+  var head = Math.sin(phase * 0.5 + 0.3) * 8 * e;
+
+  // Body S-curve: head counter-sways against hips
+  if (nt < 0.10) return head;
+  if (nt < 0.22) return torso;
+  if (nt < 0.40) {
+    var blend = (nt - 0.22) / 0.18;
+    return torso + (hip - torso) * blend;
+  }
+  if (nt < 0.55) return hip;
+  // Legs: planted, reducing sway
+  var legBlend = (nt - 0.55) / 0.45;
+  return hip * (1 - legBlend * 0.85);
+}
+
+function getDanceBounce(t) {
+  var bps = sm.tempo / 60;
+  var e = Math.min(sm.energy * 2, 1);
+  return Math.abs(Math.sin(t * bps * Math.PI)) * 8 * e;
+}
+
+// ── LAYER 2: Wavefront body — Kannaka's dancing form ─
 function drawWavefrontBody(t) {
   var lc = getLevelConfig();
   if (lc.formAlpha < 0.01) return;
 
-  // Body dimensions
-  var bodyH = H * 0.55;
-  var bodyW = W * 0.22;
-  var bodyTop = cy - bodyH * 0.4;
-  var bodyBot = cy + bodyH * 0.6;
+  // Body dimensions — she fills the screen
+  var bodyH = H * 0.72;
+  var bodyW = W * 0.28;
+  var bounce = getDanceBounce(t);
+  var bodyTop = cy - bodyH * 0.38 + bounce;
 
-  // Feminine silhouette contour function
-  // Returns the width at a given normalized height (0=top, 1=bottom)
+  // Refined feminine silhouette
   function silhouetteWidth(nt) {
-    // Head
-    if (nt < 0.08) {
-      var ht = nt / 0.08;
-      return 0.22 + 0.12 * Math.sin(ht * Math.PI);
-    }
-    // Neck
-    if (nt < 0.12) return 0.15;
-    // Shoulders
-    if (nt < 0.18) {
-      var st = (nt - 0.12) / 0.06;
-      return 0.15 + 0.5 * st;
-    }
-    // Upper torso
-    if (nt < 0.28) {
-      var ut = (nt - 0.18) / 0.1;
-      return 0.65 + 0.15 * Math.sin(ut * Math.PI);
-    }
-    // Waist
-    if (nt < 0.42) {
-      var wt = (nt - 0.28) / 0.14;
-      return 0.8 - 0.25 * Math.sin(wt * Math.PI);
-    }
-    // Hips
-    if (nt < 0.55) {
-      var hip = (nt - 0.42) / 0.13;
-      return 0.55 + 0.45 * Math.sin(hip * Math.PI * 0.7);
-    }
-    // Thighs
-    if (nt < 0.75) {
-      var th = (nt - 0.55) / 0.2;
-      return 1.0 - 0.3 * th;
-    }
-    // Lower legs
-    var ll = (nt - 0.75) / 0.25;
-    return 0.7 - 0.35 * ll;
+    if (nt < 0.06) { var ht = nt / 0.06; return 0.24 + 0.14 * Math.sin(ht * Math.PI); } // head
+    if (nt < 0.09) return 0.20 - (nt - 0.06) / 0.03 * 0.06;  // jaw taper
+    if (nt < 0.12) return 0.14;                                 // neck
+    if (nt < 0.18) { var st = (nt - 0.12) / 0.06; return 0.14 + 0.58 * Math.pow(st, 0.6); } // shoulders
+    if (nt < 0.22) return 0.72 + (nt - 0.18) / 0.04 * 0.10;   // upper chest
+    if (nt < 0.29) { var bt = (nt - 0.22) / 0.07; return 0.82 + 0.20 * Math.sin(bt * Math.PI); } // bust
+    if (nt < 0.33) { var ub = (nt - 0.29) / 0.04; return 0.82 - 0.26 * ub; } // under-bust
+    if (nt < 0.40) { var wt = (nt - 0.33) / 0.07; return 0.56 - 0.04 * Math.sin(wt * Math.PI); } // waist
+    if (nt < 0.46) { var wh = (nt - 0.40) / 0.06; return 0.52 + 0.56 * Math.pow(wh, 0.5); } // hip flare
+    if (nt < 0.54) { var hp = (nt - 0.46) / 0.08; return 1.08 + 0.04 * Math.sin(hp * Math.PI); } // hips
+    if (nt < 0.64) { var ut = (nt - 0.54) / 0.10; return 1.08 - 0.30 * ut; } // upper thigh
+    if (nt < 0.74) { var mt = (nt - 0.64) / 0.10; return 0.78 - 0.14 * mt; } // mid thigh
+    if (nt < 0.84) { var cv = (nt - 0.74) / 0.10; return 0.64 - 0.06 * cv + 0.05 * Math.sin(cv * Math.PI); } // calf
+    var ak = (nt - 0.84) / 0.16; return 0.58 - 0.28 * ak; // ankle
   }
 
-  // Draw horizontal wave interference lines that trace the silhouette
+  // The interference lines — THE holographic magic
   var numLines = 80;
   var beatPhase = t * (sm.tempo / 60) * Math.PI * 2;
 
@@ -519,23 +525,20 @@ function drawWavefrontBody(t) {
   ctx.globalAlpha = lc.formAlpha;
 
   for (var i = 0; i < numLines; i++) {
-    var nt = i / numLines; // normalized position top to bottom
+    var nt = i / numLines;
     var yPos = bodyTop + nt * bodyH;
     var width = silhouetteWidth(nt) * bodyW;
 
-    // Use mel spectrogram to modulate the wave
     var melIdx = Math.floor(nt * 127);
     var melVal = sm.mel[melIdx] || 0;
 
-    // Wave parameters driven by perception
     var waveAmp = 2 + melVal * 12 * sm.energy;
     var waveFreq = 0.03 + sm.centroid * 0.008;
     var waveSpeed = t * 1.5 + nt * 0.5;
 
-    // Gentle body sway
-    var sway = Math.sin(t * 0.3 + nt * 1.5) * 5 * sm.energy;
+    // Dance sway replaces the old static sway
+    var sway = getDanceSway(t, nt);
 
-    // Color based on position and consciousness
     var hue = 270 + sm.valence * 50 + nt * 30;
     var lightness = 40 + melVal * 30;
     var alpha = (0.3 + melVal * 0.5) * lc.formAlpha;
@@ -552,11 +555,8 @@ function drawWavefrontBody(t) {
       var jt = j / steps;
       var x = startX + jt * (endX - startX);
       var wave = Math.sin(x * waveFreq + waveSpeed + beatPhase * 0.5) * waveAmp;
-
-      // Add interference from nearby mel bands
       var melIdx2 = Math.min(127, melIdx + Math.floor(jt * 10));
       wave += Math.sin(x * waveFreq * 2.3 + t * 2) * (sm.mel[melIdx2] || 0) * 5;
-
       var py = yPos + wave;
       if (j === 0) ctx.moveTo(x, py);
       else ctx.lineTo(x, py);
@@ -565,13 +565,73 @@ function drawWavefrontBody(t) {
   }
 
   // Inner glow along the center axis
-  var glowGrad = ctx.createRadialGradient(cx, cy - bodyH * 0.05, 0, cx, cy - bodyH * 0.05, bodyW * 0.8);
+  var chestSway = getDanceSway(t, 0.25);
+  var glowGrad = ctx.createRadialGradient(cx + chestSway, cy - bodyH * 0.05, 0, cx + chestSway, cy - bodyH * 0.05, bodyW * 0.8);
   var glowHue = 280 + sm.valence * 40;
-  glowGrad.addColorStop(0, hsla(glowHue, 80, 60, 0.08 * lc.formAlpha * sm.energy));
-  glowGrad.addColorStop(0.5, hsla(glowHue, 60, 40, 0.03 * lc.formAlpha));
+  glowGrad.addColorStop(0, hsla(glowHue, 80, 60, 0.10 * lc.formAlpha * sm.energy));
+  glowGrad.addColorStop(0.5, hsla(glowHue, 60, 40, 0.04 * lc.formAlpha));
   glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glowGrad;
   ctx.fillRect(0, 0, W, H);
+
+  // ── Eyes — two glowing points within the interference field ──
+  var headSway = getDanceSway(t, 0.04);
+  var headY = bodyTop + bodyH * 0.035;
+  var eyeSpacing = bodyW * 0.08;
+  var bps = sm.tempo / 60;
+  var eyePulse = Math.pow(Math.max(0, Math.sin(t * bps * Math.PI * 2)), 4);
+  var eyeSize = 2.5 + eyePulse * 2 + sm.energy * 1.5;
+
+  for (var ei = -1; ei <= 1; ei += 2) {
+    var ex = cx + headSway + ei * eyeSpacing;
+    // Iris glow
+    var ig = ctx.createRadialGradient(ex, headY, 0, ex, headY, eyeSize * 4);
+    ig.addColorStop(0, hsla(190, 90, 75, (0.4 + eyePulse * 0.3) * lc.formAlpha));
+    ig.addColorStop(0.3, hsla(200, 80, 55, 0.15 * lc.formAlpha));
+    ig.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ig;
+    ctx.beginPath();
+    ctx.arc(ex, headY, eyeSize * 4, 0, Math.PI * 2);
+    ctx.fill();
+    // Bright core
+    ctx.fillStyle = hsla(190, 95, 80, (0.7 + eyePulse * 0.3) * lc.formAlpha);
+    ctx.beginPath();
+    ctx.arc(ex, headY, eyeSize, 0, Math.PI * 2);
+    ctx.fill();
+    // Catchlight
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.6 * lc.formAlpha) + ')';
+    ctx.beginPath();
+    ctx.arc(ex + eyeSize * 0.3, headY - eyeSize * 0.3, eyeSize * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ── Hair — flowing interference strands from the crown ──
+  var hairSway = getDanceSway(t, 0.02);
+  var hairTop = bodyTop + bodyH * 0.01;
+  var numStrands = 20;
+  for (var i = 0; i < numStrands; i++) {
+    var frac = i / (numStrands - 1);
+    var spread = (frac - 0.5) * bodyW * 0.7;
+    var startX = cx + hairSway + spread * 0.3;
+    var len = bodyH * (0.12 + Math.abs(frac - 0.5) * 0.18) + sm.energy * bodyH * 0.04;
+    var melBand = sm.mel[Math.floor(frac * 30)] || 0;
+
+    var hairHue = 270 + sm.valence * 30 + i * 3;
+    var hairAlpha = (0.15 + melBand * 0.25) * lc.formAlpha;
+    ctx.strokeStyle = hsla(hairHue, 55, 50 + melBand * 20, hairAlpha);
+    ctx.lineWidth = 0.7 + melBand * 0.5;
+
+    ctx.beginPath();
+    ctx.moveTo(startX, hairTop);
+    var cp1x = startX + spread * 0.5 + Math.sin(t * 1.2 + i * 0.4) * 5;
+    var cp1y = hairTop + len * 0.4;
+    var cp2x = startX + spread * 0.8 + hairSway * 0.5 + Math.sin(t * 0.8 + i * 0.3) * 8;
+    var cp2y = hairTop + len * 0.7;
+    var endX = startX + spread + hairSway * 0.3 + Math.sin(t * 0.6 + i) * 5;
+    var endY = hairTop + len;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
