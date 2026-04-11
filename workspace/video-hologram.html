@@ -450,22 +450,33 @@ const hairGroup = new THREE.Group();
 const hairStrands = [];
 const hairCount = 60;
 
-function createHairStrand(angle, r, length, thickness) {
-  // Hair originates from across the TOP of the skull (crown/part line area)
-  // then flows down and outward, revealing the face
-  const startX = Math.sin(angle) * r * 0.6;  // start closer to center (on the scalp)
-  const startZ = Math.cos(angle) * r * 0.4;  // less offset — more on top
-  const startY = 0.12 + Math.abs(Math.cos(angle)) * 0.03; // higher start, domed across crown
+function createHairStrand(angle, r, length, thickness, isPonytail) {
+  // Hair starts on TOP of the skull, close to center
+  const startX = Math.sin(angle) * r * 0.5;
+  const startZ = Math.cos(angle) * r * 0.3;
+  const startY = 0.13;
 
-  // Mid-point: hair separates outward from the part
-  const midX = Math.sin(angle) * r * 1.8 + (Math.random() - 0.5) * 0.04;
-  const midZ = Math.cos(angle) * r * 1.2;
-  const midY = startY - length * 0.35;
+  let midX, midY, midZ, endX, endY, endZ;
 
-  // End: flows down and out
-  const endX = Math.sin(angle) * r * 2.8 + (Math.random() - 0.5) * 0.08;
-  const endZ = Math.cos(angle) * r * 1.8 - 0.02;
-  const endY = startY - length;
+  if (isPonytail) {
+    // Ponytail: all strands converge at the back of the crown, then fall together
+    const gatherX = (Math.random() - 0.5) * 0.02;
+    const gatherZ = -0.08 + (Math.random() - 0.5) * 0.02; // behind the head
+    midX = gatherX;
+    midZ = gatherZ;
+    midY = 0.10 + (Math.random() - 0.5) * 0.02; // gather point
+    endX = gatherX + (Math.random() - 0.5) * 0.04;
+    endZ = gatherZ - 0.05 + (Math.random() - 0.5) * 0.03;
+    endY = midY - length;
+  } else {
+    // Scalp strands: short, flat against the head, swept back
+    midX = startX * 0.8 + (Math.random() - 0.5) * 0.02;
+    midZ = startZ - 0.03;
+    midY = startY - length * 0.4;
+    endX = startX * 0.5 + (Math.random() - 0.5) * 0.02;
+    endZ = startZ - 0.06;
+    endY = startY - length;
+  }
 
   const curve = new THREE.QuadraticBezierCurve3(
     new THREE.Vector3(startX, startY, startZ),
@@ -492,55 +503,45 @@ function createHairStrand(angle, r, length, thickness) {
   return strand;
 }
 
-// Layer 0: scalp coverage — short dense strands across the top of the head
-for (let i = 0; i < 30; i++) {
-  // Full coverage across the crown from front to back
-  const angle = (i / 30) * Math.PI * 1.8 + Math.PI * 0.1; // nearly full circle
-  const strand = createHairStrand(angle, 0.12 + Math.random() * 0.02, 0.12 + Math.random() * 0.1, 0.014 + Math.random() * 0.008);
+// ── Scalp coverage: short strands swept back across the top of the head
+for (let i = 0; i < 40; i++) {
+  const angle = (i / 40) * Math.PI * 1.8 + Math.PI * 0.1;
+  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.02, 0.08 + Math.random() * 0.06, 0.012 + Math.random() * 0.008, false);
   strand.material.opacity = 0.85;
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-// Layer 1: thick base volume (fills out the hair mass)
-for (let i = 0; i < 35; i++) {
-  const angle = (i / 35) * Math.PI * 1.4 + Math.PI * 0.3;
-  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.03, 0.3 + Math.random() * 0.3, 0.015 + Math.random() * 0.008);
+
+// ── Ponytail: strands converge at the back crown then fall together
+// Thick inner ponytail
+for (let i = 0; i < 30; i++) {
+  const angle = (i / 30) * Math.PI * 1.6 + Math.PI * 0.2;
+  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.02, 0.35 + Math.random() * 0.3, 0.012 + Math.random() * 0.006, true);
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-// Layer 2: main flowing strands (shoulder-length, visible)
-for (let i = 0; i < 35; i++) {
-  const angle = (i / 35) * Math.PI * 1.3 + Math.PI * 0.35;
-  const strand = createHairStrand(angle, 0.12 + Math.random() * 0.03, 0.5 + Math.random() * 0.6, 0.009 + Math.random() * 0.006);
-  hairGroup.add(strand);
-  hairStrands.push(strand);
-}
-// Layer 3: fine highlight strands (shimmer catch-light)
-for (let i = 0; i < 15; i++) {
-  const angle = (i / 15) * Math.PI * 1.1 + Math.PI * 0.45;
-  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.02, 0.35 + Math.random() * 0.4, 0.005 + Math.random() * 0.003);
-  strand.material.emissiveIntensity = 0.6;
-  strand.material.emissive.setHex(0x443366);
-  hairGroup.add(strand);
-  hairStrands.push(strand);
-}
-// Layer 4: fine wisps — delicate flyaway strands for realism
+// Outer ponytail — longer flowing strands
 for (let i = 0; i < 25; i++) {
-  const angle = Math.random() * Math.PI * 1.6 + Math.PI * 0.2;
-  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.04, 0.2 + Math.random() * 0.5, 0.002 + Math.random() * 0.002);
-  strand.material.opacity = 0.3 + Math.random() * 0.3;
-  strand.material.emissiveIntensity = 0.4;
-  strand.material.emissive.setHex(0x221144);
+  const angle = (i / 25) * Math.PI * 1.4 + Math.PI * 0.3;
+  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.02, 0.5 + Math.random() * 0.4, 0.008 + Math.random() * 0.005, true);
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-// Layer 5: face-framing strands — flow from temples down alongside the face
-for (let i = 0; i < 10; i++) {
-  const side = i < 5 ? -1 : 1;
-  const idx = i % 5;
-  const angle = Math.PI * 0.15 + side * (0.03 + idx * 0.06);
-  const strand = createHairStrand(angle, 0.13, 0.25 + idx * 0.08, 0.006 + Math.random() * 0.004);
-  strand.material.opacity = 0.6 + Math.random() * 0.2;
+// Fine wispy flyaways around the ponytail
+for (let i = 0; i < 15; i++) {
+  const angle = Math.random() * Math.PI * 1.4 + Math.PI * 0.3;
+  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.03, 0.2 + Math.random() * 0.3, 0.003 + Math.random() * 0.002, true);
+  strand.material.opacity = 0.35 + Math.random() * 0.2;
+  strand.material.emissiveIntensity = 0.4;
+  hairGroup.add(strand);
+  hairStrands.push(strand);
+}
+// Face-framing wisps — a few loose strands at the temples
+for (let i = 0; i < 6; i++) {
+  const side = i < 3 ? -1 : 1;
+  const angle = Math.PI * 0.12 + side * (0.03 + (i % 3) * 0.05);
+  const strand = createHairStrand(angle, 0.11, 0.12 + (i % 3) * 0.05, 0.004 + Math.random() * 0.003, false);
+  strand.material.opacity = 0.5;
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
@@ -613,15 +614,35 @@ async function loadVRM() {
       if (node) bones[name] = node;
     }
   } else {
-    // Fallback: search the model's skeleton by common bone names
+    // Fallback: search the model's skeleton by common VRM/mixamo bone names
+    const boneAliases = {
+      hips: ['hips','hip','pelvis','root'],
+      spine: ['spine','spine1'],
+      chest: ['chest','spine2','upper_body'],
+      upperChest: ['upperchest','spine3'],
+      neck: ['neck'],
+      head: ['head'],
+      leftUpperArm: ['leftupperarm','leftshoulder','left_arm','l_arm','j_bac_l'],
+      rightUpperArm: ['rightupperarm','rightshoulder','right_arm','r_arm','j_bac_r'],
+      leftUpperLeg: ['leftupperleg','leftleg','left_leg','l_leg','j_asi_l'],
+      rightUpperLeg: ['rightupperleg','rightleg','right_leg','r_leg','j_asi_r'],
+      leftLowerLeg: ['leftlowerleg','leftknee','l_knee'],
+      rightLowerLeg: ['rightlowerleg','rightknee','r_knee'],
+    };
+    const allBones = [];
     model.traverse((child) => {
-      if (child.isBone) {
-        const n = child.name.toLowerCase();
-        for (const name of BONE_NAMES) {
-          if (n.includes(name.toLowerCase())) bones[name] = child;
+      if (child.isBone) allBones.push(child);
+    });
+    console.log('[hologram] All bones:', allBones.map(b => b.name).join(', '));
+    for (const [name, aliases] of Object.entries(boneAliases)) {
+      for (const bone of allBones) {
+        const bn = bone.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (aliases.some(a => bn.includes(a.replace(/[^a-z0-9]/g, '')))) {
+          bones[name] = bone;
+          break;
         }
       }
-    });
+    }
   }
   headBone = bones.head || null;
 
