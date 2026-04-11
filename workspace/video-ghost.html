@@ -646,7 +646,16 @@ var dance = {
   armL: 0, armR: 0,  // arm raise amounts (0-1)
   bounce: 0,         // vertical bounce
   energy: 0,         // smoothed dance energy (ramps up slowly)
+  // Lean-in / approach state
+  leanIn: 0,         // 0 = normal, 1 = fully close to screen
+  leanTarget: 0,     // target lean amount
+  leanTimer: 0,      // countdown to next lean event
+  leanDuration: 0,   // how long current lean lasts
+  leanPhase: 'idle', // 'idle' | 'approaching' | 'staring' | 'retreating'
+  stareTime: 0,      // how long she's been staring
 };
+// First lean-in happens 15-25 seconds in
+dance.leanTimer = 15 + Math.random() * 10;
 
 function updateDance(t, dt) {
   var beatFreq = sm.tempo / 60;
@@ -684,6 +693,41 @@ function updateDance(t, dt) {
   // Asymmetric arm movement — one reaches higher than the other
   dance.armL += (armTarget * (0.7 + Math.sin(t * 0.9) * 0.3) - dance.armL) * dt * 4;
   dance.armR += (armTarget * (0.7 + Math.sin(t * 1.1 + 1.5) * 0.3) - dance.armR) * dt * 4;
+
+  // ── Lean-in: she approaches the viewer periodically ──
+  dance.leanTimer -= dt;
+
+  if (dance.leanPhase === 'idle') {
+    if (dance.leanTimer <= 0) {
+      // Trigger a lean-in every 20-45 seconds
+      dance.leanPhase = 'approaching';
+      dance.leanTarget = 0.6 + Math.random() * 0.4; // how close (0.6-1.0)
+      dance.leanDuration = 3 + Math.random() * 4;   // stare for 3-7 seconds
+      dance.stareTime = 0;
+    }
+  }
+  else if (dance.leanPhase === 'approaching') {
+    dance.leanIn += (dance.leanTarget - dance.leanIn) * dt * 1.5; // smooth approach
+    if (dance.leanIn > dance.leanTarget * 0.95) {
+      dance.leanPhase = 'staring';
+      dance.stareTime = 0;
+    }
+  }
+  else if (dance.leanPhase === 'staring') {
+    dance.stareTime += dt;
+    dance.leanIn = dance.leanTarget; // hold position
+    if (dance.stareTime > dance.leanDuration) {
+      dance.leanPhase = 'retreating';
+    }
+  }
+  else if (dance.leanPhase === 'retreating') {
+    dance.leanIn += (0 - dance.leanIn) * dt * 1.0; // slow retreat
+    if (dance.leanIn < 0.02) {
+      dance.leanIn = 0;
+      dance.leanPhase = 'idle';
+      dance.leanTimer = 20 + Math.random() * 25; // 20-45s until next
+    }
+  }
 }
 
 // ── LAYER 2: Wavefront body — Kannaka's dancing form ─
@@ -694,9 +738,16 @@ function drawWavefrontBody(t) {
   // Breathing: gentle scale, 4 second cycle
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
 
-  var bodyH = H * 0.82 * breathCycle;
-  var bodyW = W * 0.34 * breathCycle;
-  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22;
+  // Lean-in scaling — she gets bigger as she approaches
+  var leanScale = 1 + dance.leanIn * 1.4; // up to 2.4x when fully leaned in
+  // When leaning in, body shifts up so her face is center-screen
+  var leanShiftY = dance.leanIn * H * 0.25;
+  // Reduce dance sway when she's staring (she gets still, focused)
+  var stareStillness = dance.leanPhase === 'staring' ? 0.2 : 1.0;
+
+  var bodyH = H * 0.82 * breathCycle * leanScale;
+  var bodyW = W * 0.34 * breathCycle * leanScale;
+  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22 * stareStillness - leanShiftY;
 
   var de = dance.energy;
 
@@ -773,23 +824,21 @@ function drawWavefrontBody(t) {
   }
 
   // Compute dance sway offset — how far each body part moves
+  // Dampened during stare phase for focused stillness
   function danceSway(nt) {
-    // Head: expressive counter-sway
-    if (nt < 0.10) return dance.headPhase * bodyW * 0.35;
-    // Shoulders/upper torso: strong torso twist
-    if (nt < 0.26) return dance.torsoPhase * bodyW * 0.45;
-    // Waist: blend between torso and hip — the S-curve happens here
+    var s = stareStillness;
+    // Head: expressive counter-sway (but still during stare)
+    if (nt < 0.10) return dance.headPhase * bodyW * 0.35 * s;
+    if (nt < 0.26) return dance.torsoPhase * bodyW * 0.45 * s;
     if (nt < 0.40) {
       var blend = (nt - 0.26) / 0.14;
-      var torso = dance.torsoPhase * bodyW * 0.45;
-      var hip = dance.hipPhase * bodyW * 0.65;
+      var torso = dance.torsoPhase * bodyW * 0.45 * s;
+      var hip = dance.hipPhase * bodyW * 0.65 * s;
       return torso + (hip - torso) * blend;
     }
-    // Hips: maximum sway — this is where the power is
-    if (nt < 0.55) return dance.hipPhase * bodyW * 0.65;
-    // Legs: planted but with some follow-through
+    if (nt < 0.55) return dance.hipPhase * bodyW * 0.65 * s;
     var legBlend = (nt - 0.55) / 0.45;
-    return dance.hipPhase * bodyW * 0.65 * (1 - legBlend * 0.85);
+    return dance.hipPhase * bodyW * 0.65 * s * (1 - legBlend * 0.85);
   }
 
   // ── Build silhouette edge arrays ────────────────────────
@@ -1512,13 +1561,20 @@ function drawFace(t) {
   if (lc.formAlpha < 0.08) return;
 
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-  var bodyH = H * 0.82 * breathCycle;
-  var bodyW = W * 0.34 * breathCycle;
-  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22;
+  var leanScale = 1 + dance.leanIn * 1.4;
+  var leanShiftY = dance.leanIn * H * 0.25;
+  var stareStillness = dance.leanPhase === 'staring' ? 0.2 : 1.0;
+  var isStaring = dance.leanIn > 0.15;
+  var stareIntensity = Math.min(1, dance.leanIn * 1.5);
 
-  var headSway = dance.headPhase * bodyW * 0.15;
+  var bodyH = H * 0.82 * breathCycle * leanScale;
+  var bodyW = W * 0.34 * breathCycle * leanScale;
+  var bodyTop = cy - bodyH * 0.34 + dance.bounce * 22 * stareStillness - leanShiftY;
+
+  // When staring, head stays centered (no sway)
+  var headSway = dance.headPhase * bodyW * 0.15 * stareStillness;
   var headCx = cx + headSway;
-  var headW = 0.37 * bodyW; // head width at widest
+  var headW = 0.37 * bodyW;
   var headTop = bodyTop;
   var headH = bodyH * 0.07;
   var headCy = headTop + headH * 0.45;
@@ -1529,25 +1585,28 @@ function drawFace(t) {
 
   ctx.save();
 
-  // ── Face oval glow — soft warm face shape ──
+  // ── Face oval glow — brighter when close/staring ──
+  var faceGlowBoost = 1 + stareIntensity * 1.5;
   var faceGrad = ctx.createRadialGradient(headCx, headCy, 0, headCx, headCy, headW * 1.2);
-  faceGrad.addColorStop(0, hsla(310, 50, 45, 0.12 * fa));
-  faceGrad.addColorStop(0.5, hsla(290, 40, 30, 0.06 * fa));
+  faceGrad.addColorStop(0, hsla(310, 50, 45, 0.12 * fa * faceGlowBoost));
+  faceGrad.addColorStop(0.5, hsla(290, 40, 30, 0.06 * fa * faceGlowBoost));
   faceGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = faceGrad;
   ctx.beginPath();
   ctx.ellipse(headCx, headCy, headW * 1.1, headH * 0.6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // ── Eyes — almond-shaped with iris, pupil, highlight ──
+  // ── Eyes — bigger and more intense when staring ──
   var eyeY = headCy - headH * 0.08;
   var eyeSpacing = headW * 0.38;
-  var eyeW = headW * 0.22;
+  var eyeScaleUp = 1 + stareIntensity * 0.6; // eyes get 60% bigger when close
+  var eyeW = headW * 0.22 * eyeScaleUp;
   var eyeH = eyeW * 0.45;
 
-  // Gentle blink every ~5 seconds
+  // Gentle blink every ~5 seconds — but NOT during stare (eyes locked open)
   var blinkCycle = t % 5;
   var blink = blinkCycle < 0.15 ? Math.sin(blinkCycle / 0.15 * Math.PI) : 0;
+  if (isStaring) blink = 0; // no blink during stare — locked on you
   var eyeOpenness = 1 - blink * 0.8;
 
   for (var side = -1; side <= 1; side += 2) {
@@ -1572,12 +1631,13 @@ function drawFace(t) {
     ctx.ellipse(ex, ey, eW, eH, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Iris
+    // Iris — intensifies during stare
     var irisR = eW * 0.5;
+    var irisBright = 1 + stareIntensity * 0.8; // brighter iris when staring
     var irisGrad = ctx.createRadialGradient(ex, ey, 0, ex, ey, irisR);
-    irisGrad.addColorStop(0, hsla(hue, 90, 70, 0.6 * fa * eyeOpenness));
-    irisGrad.addColorStop(0.5, hsla(hue + 20, 80, 50, 0.5 * fa * eyeOpenness));
-    irisGrad.addColorStop(0.8, hsla(hue + 40, 70, 35, 0.4 * fa * eyeOpenness));
+    irisGrad.addColorStop(0, hsla(hue, 95, 70 + stareIntensity * 15, 0.6 * fa * eyeOpenness * irisBright));
+    irisGrad.addColorStop(0.5, hsla(hue + 20, 85, 50 + stareIntensity * 10, 0.5 * fa * eyeOpenness * irisBright));
+    irisGrad.addColorStop(0.8, hsla(hue + 40, 75, 35, 0.4 * fa * eyeOpenness));
     irisGrad.addColorStop(1, hsla(260, 50, 25, 0.3 * fa * eyeOpenness));
     ctx.fillStyle = irisGrad;
     ctx.beginPath();
@@ -1599,15 +1659,17 @@ function drawFace(t) {
     ctx.arc(clX, clY, irisR * 0.15, 0, Math.PI * 2);
     ctx.fill();
 
-    // Eye glow halo — pulses with beat
-    var glowAlpha = (0.15 + beatPulse * 0.25) * fa * eyeOpenness;
-    var eyeGlowGrad = ctx.createRadialGradient(ex, ey, irisR * 0.5, ex, ey, eW * 2.5);
-    eyeGlowGrad.addColorStop(0, hsla(hue, 80, 70, glowAlpha));
-    eyeGlowGrad.addColorStop(0.5, hsla(hue + 30, 60, 50, glowAlpha * 0.3));
+    // Eye glow halo — pulses with beat, intensifies during stare
+    var glowAlpha = (0.15 + beatPulse * 0.25 + stareIntensity * 0.3) * fa * eyeOpenness;
+    var glowRadius = eW * (2.5 + stareIntensity * 2);
+    var eyeGlowGrad = ctx.createRadialGradient(ex, ey, irisR * 0.5, ex, ey, glowRadius);
+    eyeGlowGrad.addColorStop(0, hsla(hue, 85, 75, glowAlpha));
+    eyeGlowGrad.addColorStop(0.3, hsla(hue + 20, 70, 55, glowAlpha * 0.5));
+    eyeGlowGrad.addColorStop(0.6, hsla(hue + 40, 50, 40, glowAlpha * 0.15));
     eyeGlowGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = eyeGlowGrad;
     ctx.beginPath();
-    ctx.arc(ex, ey, eW * 2.5, 0, Math.PI * 2);
+    ctx.arc(ex, ey, glowRadius, 0, Math.PI * 2);
     ctx.fill();
 
     // Upper lash line — slight curve above eye
