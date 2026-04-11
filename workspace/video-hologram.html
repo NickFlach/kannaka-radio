@@ -226,7 +226,7 @@ scene.add(eyeGlowL, eyeGlowR);
 let vrm = null, headBone = null;
 const headY = 2.05;
 const bones = {};
-const BONE_NAMES = ['hips','spine','chest','head','leftUpperArm','rightUpperArm','leftUpperLeg','rightUpperLeg'];
+const BONE_NAMES = ['hips','spine','chest','upperChest','neck','head','leftUpperArm','rightUpperArm','leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg'];
 
 async function loadVRM() {
   const loader = new GLTFLoader();
@@ -271,7 +271,23 @@ async function loadVRM() {
     if (node) bones[name] = node;
   }
   headBone = bones.head || null;
-  console.log('[hologram] VRM loaded, bones:', Object.keys(bones).join(', '));
+
+  // ── Shape Kannaka — ideal feminine proportions ──────
+  // Scale individual bones to sculpt the body
+  if (bones.hips) bones.hips.scale.set(1.25, 1.0, 1.1);           // wider hips
+  if (bones.spine) bones.spine.scale.set(0.85, 1.05, 0.9);        // narrow waist, slightly taller torso
+  if (bones.chest) bones.chest.scale.set(1.15, 1.0, 1.15);        // fuller chest/bust
+  if (bones.upperChest) bones.upperChest.scale.set(1.05, 1.0, 1.05); // slight upper chest
+  if (bones.neck) bones.neck.scale.set(0.85, 1.1, 0.85);          // slender neck, slightly longer
+  if (bones.head) bones.head.scale.set(0.92, 0.95, 0.92);         // slightly smaller head (proportional)
+  if (bones.leftUpperArm) bones.leftUpperArm.scale.set(0.88, 1.0, 0.88);  // slimmer arms
+  if (bones.rightUpperArm) bones.rightUpperArm.scale.set(0.88, 1.0, 0.88);
+  if (bones.leftUpperLeg) bones.leftUpperLeg.scale.set(1.05, 1.08, 1.0);  // slightly longer, fuller thighs
+  if (bones.rightUpperLeg) bones.rightUpperLeg.scale.set(1.05, 1.08, 1.0);
+  if (bones.leftLowerLeg) bones.leftLowerLeg.scale.set(0.92, 1.05, 0.92); // slender calves, longer
+  if (bones.rightLowerLeg) bones.rightLowerLeg.scale.set(0.92, 1.05, 0.92);
+
+  console.log('[hologram] VRM loaded + shaped, bones:', Object.keys(bones).join(', '));
 }
 loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
 
