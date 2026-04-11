@@ -162,14 +162,38 @@ function connectAudioSource() {
   } catch(e) { console.warn('[hologram] Audio source connect failed:', e); }
 }
 
-function getVocalAmplitude() {
-  if (!analyser || !freqData) return 0;
+// Detailed audio analysis — bass, mids, highs, vocal, beat
+const audio = { bass: 0, mid: 0, high: 0, vocal: 0, overall: 0, beat: false, beatHold: 0, prevBass: 0 };
+
+function analyzeAudio(dt) {
+  if (!analyser || !freqData) return audio;
   analyser.getByteFrequencyData(freqData);
-  // Vocal range roughly bins 4-20 (300Hz-3kHz in a 256-FFT at 44100Hz)
-  let sum = 0;
-  for (let i = 4; i < 20; i++) sum += freqData[i];
-  return sum / (16 * 255); // normalize 0-1
+  // Bass: bins 1-4 (~40-300Hz) — kick drums, bass
+  let bass = 0; for (let i = 1; i < 5; i++) bass += freqData[i]; bass /= (4 * 255);
+  // Mids: bins 5-15 (~300-1.5kHz) — instruments, body
+  let mid = 0; for (let i = 5; i < 16; i++) mid += freqData[i]; mid /= (11 * 255);
+  // Highs: bins 16-40 (~1.5-6kHz) — cymbals, sibilance
+  let high = 0; for (let i = 16; i < 41; i++) high += freqData[i]; high /= (25 * 255);
+  // Vocal: bins 4-20 (~300-3kHz)
+  let vocal = 0; for (let i = 4; i < 20; i++) vocal += freqData[i]; vocal /= (16 * 255);
+  // Overall
+  let overall = 0; for (let i = 0; i < freqData.length; i++) overall += freqData[i]; overall /= (freqData.length * 255);
+  // Beat detection: bass spike
+  audio.beatHold = Math.max(0, audio.beatHold - dt);
+  audio.beat = (bass > audio.prevBass + 0.08 && bass > 0.2 && audio.beatHold <= 0);
+  if (audio.beat) audio.beatHold = 0.15; // 150ms hold
+  audio.prevBass = bass;
+  // Smooth
+  const r = 0.3;
+  audio.bass += (bass - audio.bass) * r;
+  audio.mid += (mid - audio.mid) * r;
+  audio.high += (high - audio.high) * r;
+  audio.vocal += (vocal - audio.vocal) * r;
+  audio.overall += (overall - audio.overall) * r;
+  return audio;
 }
+
+function getVocalAmplitude() { return audio.vocal; }
 
 // Connect analyser when audio first plays
 audioEl.addEventListener('play', () => { initAudioAnalyser(); connectAudioSource(); });
@@ -1007,10 +1031,14 @@ function animate() {
   irisMat.emissiveIntensity = 1.0 + lf*3;
   eyeGlowL.intensity = 0.5 + lf*2;
   eyeGlowR.intensity = 0.5 + lf*2;
-  if (useBloom) bloomPass.strength = 0.6 + lf*1.2;
-  const va = getVocalAmplitude();
-  particleMat.opacity = 0.2 + lf*0.6 + va * 0.3;
-  particleMat.size = (isMobile ? 0.04 : 0.03) + va * 0.03; // particles swell when she sings
+  if (useBloom) bloomPass.strength = 0.6 + lf*1.2 + audio.overall * 0.5; // music brightens the world
+  // Analyze audio frequencies
+  analyzeAudio(dt);
+
+  particleMat.opacity = 0.2 + lf*0.6 + audio.vocal * 0.3;
+  particleMat.size = (isMobile ? 0.04 : 0.03) + audio.vocal * 0.03;
+  // Particles color shifts with the music — bass=warm, highs=cool
+  particleMat.color.setHSL(0.75 - audio.bass * 0.15 + audio.high * 0.1, 0.6, 0.5 + audio.overall * 0.2);
 
   // VRM bone animation
   // Update VRM FIRST (resets pose), then apply our dance on top
@@ -1035,21 +1063,26 @@ function animate() {
     const hipXAmp = [0.08, 0.06, 0.12, 0.10][style];
     const hipZAmp = [0.10, 0.08, 0.06, 0.12][style];
     const hipPhase = style === 1 ? beatPhase * 0.5 : slow;
-    hipSway = Math.sin(hipPhase) * hipAmp * e + Math.sin(hipPhase * 2 + 0.5) * 0.08 * e;
+    // Bass hits push the hips harder
+    const bassKick = audio.bass * 0.15;
+    hipSway = Math.sin(hipPhase) * (hipAmp + bassKick) * e + Math.sin(hipPhase * 2 + 0.5) * 0.08 * e;
     bones.hips.rotation.y = hipSway;
-    bones.hips.rotation.x = Math.sin(hipPhase) * hipXAmp * e;
+    bones.hips.rotation.x = Math.sin(hipPhase) * (hipXAmp + bassKick * 0.5) * e;
     bones.hips.rotation.z = Math.sin(hipPhase + 0.7) * hipZAmp * e;
+    // Beat hit: sharp hip pop
+    if (audio.beat) bones.hips.rotation.z += 0.06 * e;
 
     // Bounce varies by style
     const bounceAmp = [0.04, 0.10, 0.03, 0.12][style];
-    const bounce = Math.pow(Math.abs(Math.sin(beatPhase)), [2,1.5,3,1][style]) * bounceAmp * e;
+    const bassBounce = audio.beat ? 0.04 : 0; // extra drop on beat
+    const bounce = Math.pow(Math.abs(Math.sin(beatPhase)), [2,1.5,3,1][style]) * bounceAmp * e + bassBounce;
     if (bones.hips.userData.restY === undefined) bones.hips.userData.restY = bones.hips.position.y;
     bones.hips.position.y = bones.hips.userData.restY + bounce;
 
     // Spine: body roll — delayed wave traveling up from hips
     if (bones.spine) {
       bones.spine.rotation.y = -hipSway * 0.5;
-      bones.spine.rotation.x = Math.sin(slow - 0.4) * 0.08 * e;  // body roll wave
+      bones.spine.rotation.x = Math.sin(slow - 0.4) * (0.08 + audio.mid * 0.06) * e; // mids drive the body roll
       bones.spine.rotation.z = Math.sin(slow + 0.8) * 0.06 * e;  // side lean
     }
 
@@ -1072,24 +1105,26 @@ function animate() {
       bones.neck.rotation.z = Math.sin(slow + 2.0) * 0.03 * e;
     }
 
-    // Head — style-specific
+    // Head — reacts to highs + vocals
     if (bones.head) {
       const hTurn = [0.10, 0.06, 0.12, 0.15][style];
       const hTilt = [0.06, 0.04, 0.08, 0.08][style];
       const hNod = [0.06, 0.08, 0.05, 0.10][style];
       const hSpeed = style === 1 ? beatPhase : t2;
-      bones.head.rotation.x = -0.10 + Math.sin(hSpeed) * hNod * e;
+      bones.head.rotation.x = -0.10 + Math.sin(hSpeed) * hNod * e + audio.vocal * 0.04;
       bones.head.rotation.y = Math.sin(hSpeed * 0.7) * hTurn * e;
-      bones.head.rotation.z = Math.sin(hSpeed + 0.5) * hTilt * e;
+      bones.head.rotation.z = Math.sin(hSpeed + 0.5) * hTilt * e + audio.high * 0.03;
+      // Beat nod
+      if (audio.beat) bones.head.rotation.x += 0.05;
     }
 
     // Shoulders: rise and roll
     if (bones.leftShoulder) {
-      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * 0.08 * e;
+      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * (0.08 + audio.high * 0.06) * e + (audio.beat ? 0.04 : 0);
       bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.05 * e;
     }
     if (bones.rightShoulder) {
-      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * 0.08 * e;
+      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * (0.08 + audio.high * 0.06) * e - (audio.beat ? 0.04 : 0);
       bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.05 * e;
     }
 
@@ -1352,7 +1387,9 @@ function animate() {
   particles.geometry.attributes.position.needsUpdate = true;
 
   // Emissive color shift
-  skinMat.emissive.setHSL(0.95 + valence*0.05, 0.3, 0.05 + energy*0.05);
+  // Skin reacts to the music — bass warms, highs shimmer, vocals glow
+  skinMat.emissive.setHSL(0.95 + valence*0.05 - audio.bass*0.05, 0.3 + audio.mid*0.15, 0.05 + energy*0.05 + audio.vocal*0.03);
+  skinMat.iridescence = 0.35 + audio.high * 0.3; // highs bring out the shimmer
 
   // Camera orbit + stare
   stareTimer += dt;
