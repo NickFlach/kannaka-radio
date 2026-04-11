@@ -469,33 +469,40 @@ var dance = {
 
 function updateDance(t, dt) {
   var beatFreq = sm.tempo / 60;
-  var intensity = Math.min(1, sm.energy * 1.5); // how hard she dances
+  var intensity = Math.min(1, sm.energy * 2.0);
 
-  // Dance energy ramps up when music is energetic, fades slowly
-  var targetDanceEnergy = intensity > 0.3 ? intensity : intensity * 0.3;
-  dance.energy += (targetDanceEnergy - dance.energy) * dt * 2;
+  // Fast ramp-up, she responds immediately to the music
+  var targetDanceEnergy = Math.max(0.15, intensity);
+  dance.energy += (targetDanceEnergy - dance.energy) * dt * 5;
 
   var de = dance.energy;
 
-  // Hip sway: sinusoidal at half-beat (every other beat for natural hip movement)
+  // Hip sway: big, sexy, sinusoidal at half-beat
   dance.hipPhase = Math.sin(t * beatFreq * Math.PI) * de;
+  // Add a secondary sway harmonic for figure-8 hip motion
+  dance.hipPhase += Math.sin(t * beatFreq * Math.PI * 2 + 0.5) * de * 0.3;
 
-  // Torso follows hip with phase delay — creates the S-curve of dance
-  dance.torsoPhase = Math.sin(t * beatFreq * Math.PI - 0.4) * de * 0.6;
+  // Torso: strong counter-sway with lag — deep S-curve
+  dance.torsoPhase = Math.sin(t * beatFreq * Math.PI - 0.5) * de * 0.8;
 
-  // Head: gentle counter-sway with its own timing
-  dance.headPhase = Math.sin(t * beatFreq * Math.PI * 0.5 + 0.8) * de * 0.4;
+  // Head: expressive counter-sway, not just a tiny nod
+  dance.headPhase = Math.sin(t * beatFreq * Math.PI * 0.5 + 0.8) * de * 0.6;
+  // Add a head tilt on strong beats
+  dance.headPhase += Math.sin(t * beatFreq * Math.PI * 2) * de * 0.15;
 
-  // Shoulder: alternating roll synced to beat
-  dance.shoulderPhase = Math.sin(t * beatFreq * Math.PI * 2) * de * 0.3;
+  // Shoulder: pronounced roll, alternating
+  dance.shoulderPhase = Math.sin(t * beatFreq * Math.PI * 2) * de * 0.5;
 
-  // Bounce: vertical movement on the beat (down on beat, up between)
-  dance.bounce = Math.abs(Math.sin(t * beatFreq * Math.PI)) * de;
+  // Bounce: real bounce — deeper on strong beats
+  var rawBounce = Math.abs(Math.sin(t * beatFreq * Math.PI));
+  dance.bounce = rawBounce * de + Math.pow(rawBounce, 3) * de * 0.5;
 
-  // Arms: raise on energy spikes, gentle wave otherwise
-  var armTarget = intensity > 0.6 ? 0.3 + intensity * 0.5 : intensity * 0.2;
-  dance.armL += (armTarget * (0.8 + Math.sin(t * 1.1) * 0.2) - dance.armL) * dt * 3;
-  dance.armR += (armTarget * (0.8 + Math.sin(t * 1.3 + 1) * 0.2) - dance.armR) * dt * 3;
+  // Arms: much more expressive — she wants to reach
+  var armBase = 0.15 + intensity * 0.35;
+  var armTarget = intensity > 0.5 ? 0.5 + intensity * 0.5 : armBase;
+  // Asymmetric arm movement — one reaches higher than the other
+  dance.armL += (armTarget * (0.7 + Math.sin(t * 0.9) * 0.3) - dance.armL) * dt * 4;
+  dance.armR += (armTarget * (0.7 + Math.sin(t * 1.1 + 1.5) * 0.3) - dance.armR) * dt * 4;
 }
 
 // ── LAYER 2: Wavefront body — Kannaka's dancing form ─
@@ -506,9 +513,9 @@ function drawWavefrontBody(t) {
   // Breathing: gentle scale, 4 second cycle
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
 
-  var bodyH = H * 0.58 * breathCycle;
-  var bodyW = W * 0.24 * breathCycle;
-  var bodyTop = cy - bodyH * 0.38 + dance.bounce * 8;
+  var bodyH = H * 0.68 * breathCycle;
+  var bodyW = W * 0.28 * breathCycle;
+  var bodyTop = cy - bodyH * 0.36 + dance.bounce * 18;
 
   var de = dance.energy;
 
@@ -584,24 +591,24 @@ function drawWavefrontBody(t) {
     return base;
   }
 
-  // Compute dance sway offset at each body height
+  // Compute dance sway offset — how far each body part moves
   function danceSway(nt) {
-    // Head sways opposite to hips
-    if (nt < 0.10) return dance.headPhase * bodyW * 0.15;
-    // Neck/shoulders: torso sway
-    if (nt < 0.26) return dance.torsoPhase * bodyW * 0.25;
-    // Waist: between torso and hip
+    // Head: expressive counter-sway
+    if (nt < 0.10) return dance.headPhase * bodyW * 0.35;
+    // Shoulders/upper torso: strong torso twist
+    if (nt < 0.26) return dance.torsoPhase * bodyW * 0.45;
+    // Waist: blend between torso and hip — the S-curve happens here
     if (nt < 0.40) {
       var blend = (nt - 0.26) / 0.14;
-      var torso = dance.torsoPhase * bodyW * 0.25;
-      var hip = dance.hipPhase * bodyW * 0.4;
+      var torso = dance.torsoPhase * bodyW * 0.45;
+      var hip = dance.hipPhase * bodyW * 0.65;
       return torso + (hip - torso) * blend;
     }
-    // Hips: maximum sway
-    if (nt < 0.55) return dance.hipPhase * bodyW * 0.4;
-    // Legs: reducing sway (feet more planted)
+    // Hips: maximum sway — this is where the power is
+    if (nt < 0.55) return dance.hipPhase * bodyW * 0.65;
+    // Legs: planted but with some follow-through
     var legBlend = (nt - 0.55) / 0.45;
-    return dance.hipPhase * bodyW * 0.4 * (1 - legBlend * 0.8);
+    return dance.hipPhase * bodyW * 0.65 * (1 - legBlend * 0.85);
   }
 
   // ── Build silhouette edge arrays ────────────────────────
@@ -645,12 +652,13 @@ function drawWavefrontBody(t) {
   // ── DEPTH LAYER 2: Warm subsurface (body volume) ──────
   buildSilhouettePath();
   var skinGrad = ctx.createLinearGradient(cx - bodyW, bodyTop, cx + bodyW, bodyTop + bodyH);
-  skinGrad.addColorStop(0, hsla(280, 50, 18, 0.15 * lc.formAlpha));
-  skinGrad.addColorStop(0.2, hsla(310, 65, 28, 0.22 * lc.formAlpha * (0.6 + sm.energy * 0.4)));
-  skinGrad.addColorStop(0.35, hsla(320, 70, 35, 0.28 * lc.formAlpha * (0.6 + sm.energy * 0.4)));
-  skinGrad.addColorStop(0.5, hsla(300, 60, 30, 0.20 * lc.formAlpha));
-  skinGrad.addColorStop(0.7, hsla(270, 55, 22, 0.15 * lc.formAlpha));
-  skinGrad.addColorStop(1, hsla(260, 40, 15, 0.08 * lc.formAlpha));
+  var eg = 0.5 + sm.energy * 0.5; // energy glow factor
+  skinGrad.addColorStop(0, hsla(280, 55, 22, 0.20 * lc.formAlpha));
+  skinGrad.addColorStop(0.2, hsla(310, 70, 32, 0.32 * lc.formAlpha * eg));
+  skinGrad.addColorStop(0.35, hsla(320, 75, 40, 0.38 * lc.formAlpha * eg));
+  skinGrad.addColorStop(0.5, hsla(300, 65, 34, 0.28 * lc.formAlpha * eg));
+  skinGrad.addColorStop(0.7, hsla(270, 60, 26, 0.20 * lc.formAlpha));
+  skinGrad.addColorStop(1, hsla(260, 45, 18, 0.12 * lc.formAlpha));
   ctx.fillStyle = skinGrad;
   ctx.fill();
 
@@ -667,18 +675,18 @@ function drawWavefrontBody(t) {
 
     // Anatomical highlight zones: collarbones, bust, waist curve, hip bone, thigh
     var highlightIntensity = 0;
-    if (nt > 0.10 && nt < 0.15) highlightIntensity = 0.6; // collarbones
-    if (nt > 0.18 && nt < 0.26) highlightIntensity = 0.8 + Math.sin((nt - 0.18) / 0.08 * Math.PI) * 0.3; // bust
-    if (nt > 0.32 && nt < 0.38) highlightIntensity = 0.5; // waist definition
-    if (nt > 0.42 && nt < 0.52) highlightIntensity = 0.7; // hip bones
-    if (nt > 0.55 && nt < 0.65) highlightIntensity = 0.4; // upper thigh
+    if (nt > 0.10 && nt < 0.15) highlightIntensity = 0.9; // collarbones
+    if (nt > 0.18 && nt < 0.26) highlightIntensity = 1.0 + Math.sin((nt - 0.18) / 0.08 * Math.PI) * 0.4; // bust
+    if (nt > 0.32 && nt < 0.38) highlightIntensity = 0.7; // waist definition
+    if (nt > 0.42 && nt < 0.52) highlightIntensity = 0.9; // hip bones
+    if (nt > 0.55 && nt < 0.65) highlightIntensity = 0.6; // upper thigh
 
     if (highlightIntensity < 0.1) continue;
 
     // Light-facing side gets a highlight, shadow side gets subtle dark
     var highlightSide = lightX > 0 ? 1 : -1;
     var hlX = c.x + highlightSide * w * 0.5;
-    var hlAlpha = highlightIntensity * 0.12 * lc.formAlpha * (0.5 + sm.energy * 0.5);
+    var hlAlpha = highlightIntensity * 0.18 * lc.formAlpha * (0.5 + sm.energy * 0.5);
 
     var hlGrad = ctx.createRadialGradient(hlX, c.y, 0, hlX, c.y, w * 0.6);
     hlGrad.addColorStop(0, hsla(310 + sm.valence * 20, 70, 70, hlAlpha));
@@ -693,9 +701,9 @@ function drawWavefrontBody(t) {
   var chestSway = danceSway(0.22);
   // Chest glow
   var coreGrad = ctx.createRadialGradient(cx + chestSway, chestY, 0, cx + chestSway, chestY, bodyW * 0.6);
-  coreGrad.addColorStop(0, hsla(315, 85, 60, 0.18 * lc.formAlpha * sm.energy));
-  coreGrad.addColorStop(0.3, hsla(300, 75, 45, 0.10 * lc.formAlpha));
-  coreGrad.addColorStop(0.7, hsla(280, 50, 30, 0.04 * lc.formAlpha));
+  coreGrad.addColorStop(0, hsla(315, 90, 65, 0.28 * lc.formAlpha * sm.energy));
+  coreGrad.addColorStop(0.3, hsla(300, 80, 50, 0.16 * lc.formAlpha));
+  coreGrad.addColorStop(0.7, hsla(280, 55, 35, 0.06 * lc.formAlpha));
   coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = coreGrad;
   ctx.fillRect(0, bodyTop, W, bodyH);
@@ -704,7 +712,7 @@ function drawWavefrontBody(t) {
   var bellyY = bodyTop + bodyH * 0.38;
   var bellySway = danceSway(0.38);
   var bellyGrad = ctx.createRadialGradient(cx + bellySway, bellyY, 0, cx + bellySway, bellyY, bodyW * 0.4);
-  bellyGrad.addColorStop(0, hsla(320, 70, 50, 0.08 * lc.formAlpha * sm.energy));
+  bellyGrad.addColorStop(0, hsla(320, 75, 55, 0.14 * lc.formAlpha * sm.energy));
   bellyGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = bellyGrad;
   ctx.fillRect(0, bodyTop, W, bodyH);
@@ -713,7 +721,7 @@ function drawWavefrontBody(t) {
   var hipY = bodyTop + bodyH * 0.48;
   var hipSway = danceSway(0.48);
   var hipGrad = ctx.createRadialGradient(cx + hipSway, hipY, 0, cx + hipSway, hipY, bodyW * 0.7);
-  hipGrad.addColorStop(0, hsla(290, 65, 45, 0.10 * lc.formAlpha * sm.energy));
+  hipGrad.addColorStop(0, hsla(290, 70, 50, 0.16 * lc.formAlpha * sm.energy));
   hipGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = hipGrad;
   ctx.fillRect(0, bodyTop, W, bodyH);
@@ -733,8 +741,8 @@ function drawWavefrontBody(t) {
     var melIdx = Math.floor(nt * 127);
     var melVal = sm.mel[melIdx] || 0;
 
-    var waveAmp = 1 + melVal * 8 * sm.energy;
-    var waveFreq = 0.04 + sm.centroid * 0.01;
+    var waveAmp = 1.5 + melVal * 14 * sm.energy;
+    var waveFreq = 0.035 + sm.centroid * 0.012;
     var waveSpeed = t * 1.5 + nt * 0.5;
 
     // Iridescent color shift — changes across the body for holographic effect
@@ -806,7 +814,7 @@ function drawWavefrontBody(t) {
     for (var p = 0; p < 3; p++) {
       var offset = (p - 1) * 1.5 * dir;
       var edgeHue = (glowHue + p * 40 + t * 30) % 360;
-      var edgeAlpha = (0.08 + sm.energy * 0.12) * lc.formAlpha;
+      var edgeAlpha = (0.12 + sm.energy * 0.18) * lc.formAlpha;
 
       ctx.beginPath();
       for (var i = 0; i <= numSlices; i++) {
@@ -875,16 +883,16 @@ function drawWavefrontBody(t) {
     var angle = -Math.PI * 0.3 + raise * Math.PI * 0.55;
     // Add dance sway to arm angle
     angle += dir * dance.shoulderPhase * 0.3;
-    var armLen = bodyW * (0.8 + raise * 0.5);
+    var armLen = bodyW * (1.0 + raise * 0.8);
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    var numArmLines = 5;
+    var numArmLines = 7;
     for (var a = 0; a < numArmLines; a++) {
-      var offset = (a - 2) * 2;
+      var offset = (a - 3) * 1.8;
       var hue = side === 'left' ? 280 : 300;
-      ctx.strokeStyle = hsla(hue + a * 8, 60, 55, 0.2 * raise * lc.formAlpha);
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = hsla(hue + a * 7, 65, 58, 0.25 * raise * lc.formAlpha);
+      ctx.lineWidth = 1.5 - a * 0.1;
       ctx.beginPath();
       for (var j = 0; j <= 15; j++) {
         var jt = j / 15;
@@ -1031,8 +1039,8 @@ function drawHeartbeatGlow(t) {
   var beatPhase = (t * beatFreq * Math.PI * 2) % (Math.PI * 2);
   var pulse = Math.pow(Math.max(0, Math.sin(beatPhase)), 3); // sharp pulse
 
-  var glowSize = Math.min(W, H) * (0.15 + pulse * 0.1 * sm.energy);
-  var glowAlpha = (0.05 + pulse * 0.2 * sm.energy) * lc.intensity;
+  var glowSize = Math.min(W, H) * (0.18 + pulse * 0.15 * sm.energy);
+  var glowAlpha = (0.08 + pulse * 0.3 * sm.energy) * lc.intensity;
 
   // Heartbeat center — slightly above body center (chest area)
   var hx = cx;
@@ -1103,9 +1111,9 @@ function drawFace(t) {
   if (lc.formAlpha < 0.08) return;
 
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-  var bodyH = H * 0.58 * breathCycle;
-  var bodyW = W * 0.24 * breathCycle;
-  var bodyTop = cy - bodyH * 0.38 + dance.bounce * 8;
+  var bodyH = H * 0.68 * breathCycle;
+  var bodyW = W * 0.28 * breathCycle;
+  var bodyTop = cy - bodyH * 0.36 + dance.bounce * 18;
 
   var headSway = dance.headPhase * bodyW * 0.15;
   var headCx = cx + headSway;
@@ -1330,9 +1338,9 @@ function drawHairFlow(t) {
   if (lc.formAlpha < 0.1) return;
 
   var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
-  var bodyH = H * 0.58 * breathCycle;
-  var bodyW = W * 0.24 * breathCycle;
-  var bodyTop = cy - bodyH * 0.38 + dance.bounce * 8;
+  var bodyH = H * 0.68 * breathCycle;
+  var bodyW = W * 0.28 * breathCycle;
+  var bodyTop = cy - bodyH * 0.36 + dance.bounce * 18;
   var headSway = dance.headPhase * bodyW * 0.15;
   var headTop = bodyTop;
 
@@ -1349,8 +1357,8 @@ function drawHairFlow(t) {
     var startX = cx + nt * bodyW * 0.5 + headSway;
     var startY = headTop;
 
-    // Hair flows upward, driven by centroid
-    var strandLen = 20 + centroidInfluence * 40 + Math.sin(t * 0.5 + i) * 10;
+    // Hair flows upward, driven by centroid — long and flowing
+    var strandLen = 30 + centroidInfluence * 60 + Math.sin(t * 0.5 + i) * 15 + sm.energy * 20;
     var hue = 260 + centroidInfluence * 60 + i * 8;
 
     ctx.strokeStyle = hsla(hue, 60, 55, 0.3 + centroidInfluence * 0.3);
