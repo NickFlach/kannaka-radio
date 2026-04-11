@@ -456,6 +456,187 @@ function drawBackground(t) {
   }
 }
 
+// ── ATMOSPHERE: Fog, aura, energy expansion ──────────
+
+// Fog particles for ground mist
+var NUM_FOG = 40;
+var fogParticles = [];
+for (var i = 0; i < NUM_FOG; i++) {
+  fogParticles.push({
+    x: Math.random(),
+    y: 0.65 + Math.random() * 0.35,
+    size: 60 + Math.random() * 140,
+    speed: 0.008 + Math.random() * 0.015,
+    phase: Math.random() * Math.PI * 2,
+    drift: Math.random() * 0.003 - 0.0015
+  });
+}
+
+// Energy tendril points
+var NUM_TENDRILS = 8;
+var tendrils = [];
+for (var i = 0; i < NUM_TENDRILS; i++) {
+  tendrils.push({
+    angle: (i / NUM_TENDRILS) * Math.PI * 2,
+    length: 0.3 + Math.random() * 0.4,
+    speed: 0.2 + Math.random() * 0.5,
+    width: 1 + Math.random() * 2,
+    hue: 260 + Math.random() * 60
+  });
+}
+
+function drawGroundFog(t) {
+  var lc = getLevelConfig();
+  ctx.save();
+
+  for (var i = 0; i < NUM_FOG; i++) {
+    var f = fogParticles[i];
+    // Drift horizontally, wrap around
+    f.x += f.speed * 0.1;
+    if (f.x > 1.3) f.x = -0.3;
+
+    var fx = f.x * W;
+    var fy = f.y * H + Math.sin(t * 0.3 + f.phase) * 20;
+    var fsize = f.size * (1 + sm.energy * 0.5);
+
+    // Fog is energy-reactive — brightens and rises with music
+    var rise = sm.energy * 30 * Math.sin(t * 0.5 + i);
+    fy -= rise;
+
+    var fogAlpha = (0.03 + sm.energy * 0.04) * lc.intensity;
+    var fogHue = 260 + sm.valence * 40;
+
+    var fogGrad = ctx.createRadialGradient(fx, fy, 0, fx, fy, fsize);
+    fogGrad.addColorStop(0, hsla(fogHue, 30, 25, fogAlpha));
+    fogGrad.addColorStop(0.4, hsla(fogHue + 20, 25, 18, fogAlpha * 0.6));
+    fogGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = fogGrad;
+    ctx.fillRect(fx - fsize, fy - fsize, fsize * 2, fsize * 2);
+  }
+
+  // Dense ground fog band at the bottom
+  var groundGrad = ctx.createLinearGradient(0, H, 0, H * 0.6);
+  var gAlpha = (0.08 + sm.energy * 0.06) * lc.intensity;
+  groundGrad.addColorStop(0, hsla(270, 30, 15, gAlpha));
+  groundGrad.addColorStop(0.3, hsla(280, 25, 12, gAlpha * 0.5));
+  groundGrad.addColorStop(0.7, hsla(260, 20, 8, gAlpha * 0.15));
+  groundGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, H * 0.5, W, H * 0.5);
+
+  ctx.restore();
+}
+
+function drawAuraExpansion(t) {
+  var lc = getLevelConfig();
+  if (lc.intensity < 0.1) return;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  // Large aura radiating from body center — consciousness-reactive
+  var auraSize = Math.min(W, H) * (0.4 + sm.phi * 0.3 + sm.energy * 0.2);
+  var auraPulse = Math.sin(t * (sm.tempo / 60) * Math.PI) * 0.1 + 1;
+  auraSize *= auraPulse;
+
+  var bodySwayCenter = cx + dance.torsoPhase * W * 0.34 * 0.3;
+  var auraCy = cy - H * 0.04 + dance.bounce * 10;
+
+  // Primary aura — warm purple/magenta
+  var aGrad = ctx.createRadialGradient(bodySwayCenter, auraCy, 0, bodySwayCenter, auraCy, auraSize);
+  var aAlpha = (0.04 + sm.energy * 0.06 + sm.phi * 0.04) * lc.intensity;
+  aGrad.addColorStop(0, hsla(310, 60, 45, aAlpha));
+  aGrad.addColorStop(0.3, hsla(280, 50, 30, aAlpha * 0.5));
+  aGrad.addColorStop(0.6, hsla(260, 40, 20, aAlpha * 0.2));
+  aGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = aGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Secondary aura — cool cyan, offset upward
+  var aura2Size = auraSize * 0.7;
+  var a2Grad = ctx.createRadialGradient(bodySwayCenter, auraCy - auraSize * 0.2, 0,
+                                         bodySwayCenter, auraCy - auraSize * 0.2, aura2Size);
+  var a2Alpha = aAlpha * 0.4;
+  a2Grad.addColorStop(0, hsla(190, 60, 45, a2Alpha));
+  a2Grad.addColorStop(0.5, hsla(210, 40, 30, a2Alpha * 0.3));
+  a2Grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = a2Grad;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.restore();
+}
+
+function drawEnergyTendrils(t) {
+  var lc = getLevelConfig();
+  if (lc.intensity < 0.2 || sm.energy < 0.15) return;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  var bodyCx = cx + dance.torsoPhase * W * 0.34 * 0.3;
+  var bodyCy = cy - H * 0.02 + dance.bounce * 10;
+
+  for (var i = 0; i < NUM_TENDRILS; i++) {
+    var td = tendrils[i];
+    var angle = td.angle + t * td.speed * 0.3 + Math.sin(t * 0.4 + i) * 0.5;
+    var maxLen = Math.min(W, H) * td.length * (0.5 + sm.energy * 0.8);
+
+    var tdAlpha = (0.04 + sm.energy * 0.08) * lc.intensity;
+    var hue = (td.hue + t * 20) % 360;
+
+    ctx.strokeStyle = hsla(hue, 70, 55, tdAlpha);
+    ctx.lineWidth = td.width * (0.5 + sm.energy);
+
+    ctx.beginPath();
+    var points = 20;
+    for (var j = 0; j <= points; j++) {
+      var jt = j / points;
+      var len = jt * maxLen;
+      // Tendrils curve and wave outward
+      var wave = Math.sin(jt * 5 + t * 2 + i * 1.3) * (10 + sm.energy * 25) * jt;
+      var tx = bodyCx + Math.cos(angle + wave * 0.01) * len;
+      var ty = bodyCy + Math.sin(angle + wave * 0.01) * len * 0.7 + wave;
+      if (j === 0) ctx.moveTo(tx, ty);
+      else ctx.lineTo(tx, ty);
+    }
+    ctx.stroke();
+
+    // Fading glow along the tendril
+    ctx.strokeStyle = hsla(hue, 50, 45, tdAlpha * 0.3);
+    ctx.lineWidth = td.width * 3 * sm.energy;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawAtmosphericMist(t) {
+  // Very subtle ambient haze that drifts across the scene
+  var lc = getLevelConfig();
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  // Drifting mist bands
+  for (var i = 0; i < 5; i++) {
+    var mistY = H * (0.2 + i * 0.15) + Math.sin(t * 0.1 + i * 2) * H * 0.05;
+    var mistX = Math.sin(t * 0.05 + i * 1.5) * W * 0.3 + cx;
+    var mistW = W * (0.5 + Math.sin(t * 0.08 + i) * 0.2);
+    var mistH = H * 0.08;
+
+    var mistAlpha = (0.015 + sm.energy * 0.02) * lc.intensity;
+    var mistHue = 260 + i * 15 + sm.valence * 20;
+
+    var mGrad = ctx.createRadialGradient(mistX, mistY, 0, mistX, mistY, mistW);
+    mGrad.addColorStop(0, hsla(mistHue, 30, 30, mistAlpha));
+    mGrad.addColorStop(0.5, hsla(mistHue + 10, 20, 20, mistAlpha * 0.4));
+    mGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = mGrad;
+    ctx.fillRect(mistX - mistW, mistY - mistH, mistW * 2, mistH * 2);
+  }
+
+  ctx.restore();
+}
+
 // ── Dance state ──────────────────────────────────────
 var dance = {
   hipPhase: 0,       // current hip sway phase
@@ -1710,12 +1891,16 @@ function render(now) {
 
   // Draw layers in order
   drawBackground(frameTime);
+  drawGroundFog(frameTime);          // fog behind everything
+  drawAtmosphericMist(frameTime);    // drifting haze
+  drawAuraExpansion(frameTime);      // energy field around her
   drawSpectralEdges(frameTime);
   drawRibbons(frameTime);
   drawHairFlow(frameTime);
   drawWavefrontBody(frameTime);
   drawFace(frameTime);
   drawHeartbeatGlow(frameTime);
+  drawEnergyTendrils(frameTime);     // energy reaching outward
   drawParticles(frameTime);
 
   // Update text overlays
