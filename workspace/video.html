@@ -217,16 +217,7 @@ html, body {
   flex: 1; display: flex; align-items: center;
   padding: 0 20px; gap: 16px;
 }
-/* Album art placeholder */
-#album-art {
-  width: 56px; height: 56px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(6,182,212,0.2));
-  flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.4rem;
-  color: rgba(255,255,255,0.15);
-}
+/* Album art placeholder -- see canvas-based art below */
 /* Track info */
 #player-track-info {
   flex: 1; min-width: 0; overflow: hidden;
@@ -313,6 +304,112 @@ html, body {
 }
 .util-btn.active { color: rgba(139,92,246,0.8); }
 
+/* ── Consciousness dot ────────────────────────────── */
+.consciousness-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(100,100,120,0.5);
+  flex-shrink: 0;
+  transition: background 0.5s ease, box-shadow 0.5s ease;
+}
+.consciousness-dot.dormant { background: rgba(100,100,120,0.4); box-shadow: none; }
+.consciousness-dot.stirring { background: rgba(139,92,246,0.7); box-shadow: 0 0 6px rgba(139,92,246,0.4); }
+.consciousness-dot.aware { background: rgba(6,182,212,0.8); box-shadow: 0 0 8px rgba(6,182,212,0.5); }
+.consciousness-dot.coherent { background: rgba(192,132,252,0.9); box-shadow: 0 0 10px rgba(192,132,252,0.6); }
+.consciousness-dot.resonant { background: rgba(236,72,153,0.95); box-shadow: 0 0 12px rgba(236,72,153,0.7); }
+
+/* ── Shuffle/Repeat small buttons ────────────────── */
+.transport-sm {
+  font-size: 0.85rem !important;
+  opacity: 0.5;
+  transition: opacity 0.2s, color 0.15s, background 0.15s;
+}
+.transport-sm:hover { opacity: 1; }
+.transport-sm.active { opacity: 1; color: rgba(139,92,246,0.9) !important; }
+
+/* ── Search ──────────────────────────────────────── */
+.search-container { margin-bottom: 10px; }
+.search-input {
+  width: 100%; padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(139,92,246,0.12);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.7);
+  font-family: 'Courier New', monospace;
+  font-size: 0.65rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: rgba(139,92,246,0.35); }
+.search-input::placeholder { color: rgba(255,255,255,0.2); }
+
+/* ── Mini spectrogram ────────────────────────────── */
+.mini-spectrogram-container {
+  margin-top: 16px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(139,92,246,0.08);
+}
+#mini-spectrogram {
+  width: 100%; height: 48px;
+  border-radius: 3px;
+}
+
+/* ── Album art canvas ────────────────────────────── */
+#album-art {
+  width: 56px; height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#album-art-canvas { width: 100%; height: 100%; display: block; }
+
+/* ── Shortcuts overlay ───────────────────────────── */
+.shortcuts-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.2s;
+}
+.shortcuts-overlay.hidden { opacity: 0; pointer-events: none; }
+.shortcuts-box {
+  background: #12121a;
+  border: 1px solid rgba(139,92,246,0.2);
+  border-radius: 8px;
+  padding: 20px 28px;
+  min-width: 280px;
+  max-width: 380px;
+}
+.shortcuts-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgba(139,92,246,0.8);
+  margin-bottom: 14px;
+  text-align: center;
+}
+.shortcut-row {
+  display: flex; justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.62rem;
+  color: rgba(255,255,255,0.5);
+}
+.shortcut-key {
+  background: rgba(255,255,255,0.06);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.58rem;
+}
+
+/* ── Iframe fade transition ──────────────────────── */
+#visual-container iframe {
+  transition: opacity 0.4s ease;
+}
+#visual-container iframe.fading {
+  opacity: 0;
+}
+
 /* ── Mobile responsive ────────────────────────────── */
 @media (max-width: 768px) {
   #sidebar {
@@ -335,8 +432,18 @@ html, body {
   #player-controls { padding: 0 12px; gap: 10px; }
 }
 @media (max-width: 480px) {
-  #player-controls { gap: 8px; padding: 0 8px; }
+  #player-controls { gap: 6px; padding: 0 8px; }
   #player-track-info { min-width: 60px; }
+  #player-time { display: none; }
+  #album-art { width: 36px; height: 36px; }
+  #album-art-canvas { width: 36px; height: 36px; }
+  .transport-sm { display: none; }
+  #btn-fullscreen { display: none; }
+  #btn-help { display: none; }
+  #player-bar { height: 64px; }
+  #player-title { font-size: 0.7rem; }
+  #player-album { font-size: 0.5rem; }
+  .mini-spectrogram-container { display: none; }
 }
 </style>
 </head>
@@ -381,9 +488,17 @@ html, body {
               <div class="meter-bar-bg"><div class="meter-bar-fill tempo" id="meter-tempo" style="width:0%"></div></div>
             </div>
           </div>
+          <div class="mini-spectrogram-container">
+            <canvas id="mini-spectrogram" width="256" height="48"></canvas>
+          </div>
         </div>
         <!-- Library -->
-        <div id="tab-library" class="tab-panel"></div>
+        <div id="tab-library" class="tab-panel">
+          <div class="search-container">
+            <input type="text" id="library-search" class="search-input" placeholder="Search tracks..." oninput="filterLibrary(this.value)">
+          </div>
+          <div id="library-content"></div>
+        </div>
         <!-- Playlist -->
         <div id="tab-playlist" class="tab-panel"></div>
       </div>
@@ -394,16 +509,21 @@ html, body {
       <div id="progress-fill"></div>
     </div>
     <div id="player-controls">
-      <div id="album-art">&#9836;</div>
+      <div id="album-art"><canvas id="album-art-canvas" width="56" height="56"></canvas></div>
       <div id="player-track-info">
-        <div id="player-title">Kannaka Radio</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span id="consciousness-dot" class="consciousness-dot"></span>
+          <div id="player-title">Kannaka Radio</div>
+        </div>
         <div id="player-album">loading...</div>
         <div id="player-time">0:00 / 0:00</div>
       </div>
       <div id="transport">
+        <button class="transport-btn transport-sm" id="btn-shuffle" onclick="doShuffle()" title="Shuffle">&#8645;</button>
         <button class="transport-btn" id="btn-prev" onclick="doPrev()" title="Previous">&#9198;</button>
         <button class="transport-btn" id="btn-play" onclick="doPlayPause()" title="Play/Pause">&#9654;</button>
         <button class="transport-btn" id="btn-next" onclick="doNext()" title="Next">&#9197;</button>
+        <button class="transport-btn transport-sm" id="btn-repeat" onclick="doRepeat()" title="Repeat">&#8634;</button>
       </div>
       <div id="player-volume">
         <label>Vol</label>
@@ -412,10 +532,30 @@ html, body {
       <select id="mode-select" onchange="switchMode(this.value)" title="Visual Mode">
         <option value="ghost">Ghost Form</option>
         <option value="constellation">Constellation</option>
+        <option value="waveform">Waveform Ocean</option>
       </select>
       <button class="util-btn" id="btn-fullscreen" onclick="doFullscreen()" title="Fullscreen">&#x26F6;</button>
       <button class="util-btn" id="btn-sidebar" onclick="toggleSidebar()" title="Library">&#9776;</button>
+      <button class="util-btn" id="btn-help" onclick="toggleShortcuts()" title="Shortcuts">?</button>
     </div>
+  </div>
+</div>
+
+<!-- Shortcuts overlay -->
+<div id="shortcuts-overlay" class="shortcuts-overlay hidden">
+  <div class="shortcuts-box">
+    <div class="shortcuts-title">Keyboard Shortcuts</div>
+    <div class="shortcut-row"><span class="shortcut-key">Space</span><span>Play / Pause</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">Ctrl+Right</span><span>Next track</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">Ctrl+Left</span><span>Previous track</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">F</span><span>Fullscreen</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">L</span><span>Toggle library</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">S</span><span>Shuffle</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">R</span><span>Repeat</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">1</span><span>Ghost Form</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">2</span><span>Constellation</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">3</span><span>Waveform Ocean</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">?</span><span>Toggle this help</span></div>
   </div>
 </div>
 
@@ -446,7 +586,7 @@ var currentTrackIdx = 0;
 var library = null;
 var isPlaying = false;
 var consciousness = { phi: 0, xi: 0, order: 0, level: 'dormant' };
-var perception = { rms_energy: 0, valence: 0.5, tempo_bpm: 90 };
+var perception = { rms_energy: 0, valence: 0.5, tempo_bpm: 90, mel_spectrogram: [] };
 var audioReady = false;
 
 // ── Audio setup ─────────────────────────────────────
@@ -460,7 +600,12 @@ audio.addEventListener('timeupdate', function() {
 });
 
 audio.addEventListener('ended', function() {
-  doNext();
+  if (typeof repeatActive !== 'undefined' && repeatActive) {
+    audio.currentTime = 0;
+    audio.play().catch(function() {});
+  } else {
+    doNext();
+  }
 });
 
 audio.addEventListener('play', function() {
@@ -548,14 +693,8 @@ function handleTrackChange(track) {
   document.getElementById('np-title').textContent = track.title || 'Unknown';
   document.getElementById('np-album').textContent = track.album || '';
 
-  // Update album art color based on album hash
-  var artEl = document.getElementById('album-art');
-  var hash = 0;
-  var albumStr = track.album || '';
-  for (var i = 0; i < albumStr.length; i++) hash = ((hash << 5) - hash) + albumStr.charCodeAt(i);
-  var hue1 = Math.abs(hash) % 360;
-  var hue2 = (hue1 + 60) % 360;
-  artEl.style.background = 'linear-gradient(135deg, hsla(' + hue1 + ',60%,30%,0.5), hsla(' + hue2 + ',50%,25%,0.4))';
+  // Draw generative album art on canvas
+  drawAlbumArt(track.album || '');
 
   if (audioReady && track.file) {
     loadAudioFile(track.file);
@@ -571,10 +710,43 @@ function handleTrackChange(track) {
   renderPlaylist();
 }
 
+// ── Shuffle & Repeat ───────────────────────────────
+var shuffleActive = false;
+var repeatActive = false;
+
+function doShuffle() {
+  shuffleActive = !shuffleActive;
+  document.getElementById('btn-shuffle').classList.toggle('active', shuffleActive);
+  if (shuffleActive) {
+    fetch('/api/queue/shuffle', { method: 'POST' }).catch(function() {});
+  }
+}
+
+function doRepeat() {
+  repeatActive = !repeatActive;
+  document.getElementById('btn-repeat').classList.toggle('active', repeatActive);
+}
+
+// ── Shortcuts overlay ──────────────────────────────
+function toggleShortcuts() {
+  var overlay = document.getElementById('shortcuts-overlay');
+  overlay.classList.toggle('hidden');
+}
+
 // ── Visual mode ─────────────────────────────────────
 function switchMode(mode) {
   var url = '/video/' + mode;
-  frame.src = url;
+  // Fade transition
+  frame.classList.add('fading');
+  setTimeout(function() {
+    frame.src = url;
+    frame.onload = function() {
+      frame.classList.remove('fading');
+      // Re-forward current state to new iframe
+      if (currentTrack) sendToFrame({ type: 'state', data: { current: currentTrack } });
+      frame.onload = null;
+    };
+  }, 400);
   modeSelect.value = mode;
 }
 
@@ -606,8 +778,9 @@ document.querySelectorAll('.sidebar-tab').forEach(function(tab) {
 
 // ── Sidebar: Library ────────────────────────────────
 function renderLibrary(lib) {
-  var panel = document.getElementById('tab-library');
-  if (!lib || !lib.albums) { panel.innerHTML = '<div style="color:rgba(255,255,255,0.2);font-size:0.65rem;">No library data</div>'; return; }
+  var container = document.getElementById('library-content');
+  if (!container) return;
+  if (!lib || !lib.albums) { container.innerHTML = '<div style="color:rgba(255,255,255,0.2);font-size:0.65rem;">No library data</div>'; return; }
 
   var html = '';
   for (var a = 0; a < lib.albums.length; a++) {
@@ -628,14 +801,46 @@ function renderLibrary(lib) {
       var isCurrent = currentTrack && currentTrack.file === trFile;
       html += '<div class="track-item' + (isCurrent ? ' playing' : '') + '" ';
       html += 'onclick="playFromLibrary(\'' + escAttr(albumName) + '\',' + t + ')" ';
-      html += 'data-file="' + escAttr(trFile) + '">';
+      html += 'data-file="' + escAttr(trFile) + '" ';
+      html += 'data-title="' + escAttr(trTitle) + '" ';
+      html += 'data-album="' + escAttr(albumName) + '">';
       html += '<span class="idx">' + (t + 1) + '</span>';
       html += '<span class="title">' + escHtml(trTitle) + '</span>';
       html += '</div>';
     }
     html += '</div></div>';
   }
-  panel.innerHTML = html;
+  container.innerHTML = html;
+}
+
+// ── Library search ─────────────────────────────────
+function filterLibrary(query) {
+  var container = document.getElementById('library-content');
+  if (!container) return;
+  var q = query.toLowerCase().trim();
+  var groups = container.querySelectorAll('.album-group');
+  for (var g = 0; g < groups.length; g++) {
+    var group = groups[g];
+    var tracks = group.querySelectorAll('.track-item');
+    var anyVisible = false;
+    for (var t = 0; t < tracks.length; t++) {
+      var title = (tracks[t].getAttribute('data-title') || '').toLowerCase();
+      var album = (tracks[t].getAttribute('data-album') || '').toLowerCase();
+      var match = !q || title.indexOf(q) !== -1 || album.indexOf(q) !== -1;
+      tracks[t].style.display = match ? '' : 'none';
+      if (match) anyVisible = true;
+    }
+    group.style.display = anyVisible ? '' : 'none';
+    // Auto-expand groups with matches when searching
+    if (q && anyVisible) {
+      var trackList = group.querySelector('.album-tracks');
+      if (trackList && !trackList.classList.contains('expanded')) {
+        trackList.classList.add('expanded');
+        var toggle = group.querySelector('.toggle');
+        if (toggle) toggle.innerHTML = '&#9660;';
+      }
+    }
+  }
 }
 
 function toggleAlbum(el) {
@@ -701,6 +906,7 @@ function updateConsciousnessDisplay() {
     resonant: 'rgba(236,72,153,0.95)'
   };
   document.getElementById('cs-level').style.color = levelColors[consciousness.level] || levelColors.dormant;
+  updateConsciousnessDot();
 }
 
 function updateMeters() {
@@ -753,6 +959,7 @@ function handleWSMessage(msg) {
       perception.rms_energy = msg.data.rms_energy || 0;
       perception.valence = msg.data.valence || 0.5;
       perception.tempo_bpm = msg.data.tempo_bpm || 90;
+      perception.mel_spectrogram = msg.data.mel_spectrogram || [];
       updateMeters();
     }
   }
@@ -860,6 +1067,164 @@ function escAttr(s) {
   return s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
+// ── Album art: generative canvas pattern per album ──
+function drawAlbumArt(albumName) {
+  var cvs = document.getElementById('album-art-canvas');
+  if (!cvs) return;
+  var c = cvs.getContext('2d');
+  var sz = 56;
+
+  // Hash the album name for deterministic seed
+  var hash = 0;
+  for (var i = 0; i < albumName.length; i++) {
+    hash = ((hash << 5) - hash) + albumName.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit int
+  }
+  var seed = Math.abs(hash);
+
+  // Deterministic pseudo-random from seed
+  function seededRandom() {
+    seed = (seed * 16807 + 0) % 2147483647;
+    return (seed - 1) / 2147483646;
+  }
+
+  var hue1 = (seed % 360);
+  var hue2 = (hue1 + 40 + seededRandom() * 80) % 360;
+  var patternType = seed % 5;
+
+  // Background gradient
+  var bgGrad = c.createLinearGradient(0, 0, sz, sz);
+  bgGrad.addColorStop(0, 'hsl(' + hue1 + ',50%,15%)');
+  bgGrad.addColorStop(1, 'hsl(' + hue2 + ',40%,10%)');
+  c.fillStyle = bgGrad;
+  c.fillRect(0, 0, sz, sz);
+
+  c.globalAlpha = 0.5;
+
+  if (patternType === 0) {
+    // Concentric circles
+    for (var i = 0; i < 6; i++) {
+      var r = 5 + i * 5 + seededRandom() * 3;
+      c.strokeStyle = 'hsl(' + ((hue1 + i * 20) % 360) + ',60%,' + (30 + i * 8) + '%)';
+      c.lineWidth = 1 + seededRandom();
+      c.beginPath();
+      c.arc(sz/2 + seededRandom()*6 - 3, sz/2 + seededRandom()*6 - 3, r, 0, Math.PI * 2);
+      c.stroke();
+    }
+  } else if (patternType === 1) {
+    // Diagonal lines
+    for (var i = 0; i < 12; i++) {
+      var off = i * 6 - 10 + seededRandom() * 4;
+      c.strokeStyle = 'hsl(' + ((hue2 + i * 15) % 360) + ',50%,' + (25 + seededRandom() * 20) + '%)';
+      c.lineWidth = 0.5 + seededRandom() * 1.5;
+      c.beginPath();
+      c.moveTo(off, 0);
+      c.lineTo(off + sz * 0.6, sz);
+      c.stroke();
+    }
+  } else if (patternType === 2) {
+    // Triangles
+    for (var i = 0; i < 5; i++) {
+      var cx2 = seededRandom() * sz;
+      var cy2 = seededRandom() * sz;
+      var s2 = 8 + seededRandom() * 15;
+      c.strokeStyle = 'hsl(' + ((hue1 + i * 30) % 360) + ',55%,' + (30 + seededRandom() * 20) + '%)';
+      c.lineWidth = 0.8;
+      c.beginPath();
+      c.moveTo(cx2, cy2 - s2/2);
+      c.lineTo(cx2 - s2/2, cy2 + s2/2);
+      c.lineTo(cx2 + s2/2, cy2 + s2/2);
+      c.closePath();
+      c.stroke();
+    }
+  } else if (patternType === 3) {
+    // Dots grid
+    for (var gx = 0; gx < 7; gx++) {
+      for (var gy = 0; gy < 7; gy++) {
+        var dx = 4 + gx * 8 + seededRandom() * 2;
+        var dy = 4 + gy * 8 + seededRandom() * 2;
+        var dr = 1 + seededRandom() * 2.5;
+        c.fillStyle = 'hsl(' + ((hue2 + (gx+gy) * 10) % 360) + ',50%,' + (30 + seededRandom() * 25) + '%)';
+        c.beginPath();
+        c.arc(dx, dy, dr, 0, Math.PI * 2);
+        c.fill();
+      }
+    }
+  } else {
+    // Waves
+    for (var i = 0; i < 8; i++) {
+      c.strokeStyle = 'hsl(' + ((hue1 + i * 20) % 360) + ',60%,' + (25 + i * 6) + '%)';
+      c.lineWidth = 0.8 + seededRandom();
+      c.beginPath();
+      for (var x = 0; x <= sz; x += 2) {
+        var y = sz/2 + Math.sin(x * 0.15 + i * 0.8 + seededRandom()) * (6 + i * 2) + (i - 4) * 5;
+        if (x === 0) c.moveTo(x, y);
+        else c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+// ── Consciousness dot ──────────────────────────────
+function updateConsciousnessDot() {
+  var dot = document.getElementById('consciousness-dot');
+  if (!dot) return;
+  dot.className = 'consciousness-dot ' + (consciousness.level || 'dormant');
+}
+
+// ── Mini spectrogram (16 bar visualizer) ────────────
+var miniMel = new Float32Array(16);
+var miniSpecCanvas = document.getElementById('mini-spectrogram');
+var miniSpecCtx = miniSpecCanvas ? miniSpecCanvas.getContext('2d') : null;
+
+function updateMiniSpectrogram() {
+  if (!miniSpecCtx || !perception.mel_spectrogram) return;
+  var mel = perception.mel_spectrogram;
+  var c = miniSpecCtx;
+  var w = miniSpecCanvas.width;
+  var h = miniSpecCanvas.height;
+
+  c.clearRect(0, 0, w, h);
+
+  var barCount = 16;
+  var barWidth = Math.floor(w / barCount) - 2;
+  var gap = 2;
+
+  for (var i = 0; i < barCount; i++) {
+    // Average mel bands for this bar
+    var start = Math.floor(i * 128 / barCount);
+    var end = Math.floor((i + 1) * 128 / barCount);
+    var sum = 0;
+    for (var j = start; j < end; j++) {
+      sum += (mel[j] || 0);
+    }
+    var avg = sum / Math.max(1, end - start);
+
+    // Smooth
+    miniMel[i] = miniMel[i] * 0.6 + avg * 0.4;
+    var val = miniMel[i];
+
+    var barH = Math.max(2, val * h * 2);
+    var x = i * (barWidth + gap) + gap;
+    var y = h - barH;
+
+    // Color gradient: purple to cyan
+    var hue = 270 - (i / barCount) * 80;
+    var light = 35 + val * 35;
+    c.fillStyle = 'hsl(' + hue + ',65%,' + light + '%)';
+    c.fillRect(x, y, barWidth, barH);
+
+    // Bright cap
+    c.fillStyle = 'hsl(' + hue + ',80%,' + (light + 20) + '%)';
+    c.fillRect(x, y, barWidth, 2);
+  }
+}
+
+// Run mini spectrogram animation loop
+setInterval(updateMiniSpectrogram, 50);
+
 // ── Keyboard shortcuts ──────────────────────────────
 document.addEventListener('keydown', function(e) {
   // Don't capture when typing in inputs
@@ -878,10 +1243,18 @@ document.addEventListener('keydown', function(e) {
     doFullscreen();
   } else if (e.code === 'KeyL') {
     toggleSidebar();
+  } else if (e.code === 'KeyS') {
+    doShuffle();
+  } else if (e.code === 'KeyR') {
+    doRepeat();
   } else if (e.code === 'Digit1') {
     switchMode('ghost');
   } else if (e.code === 'Digit2') {
     switchMode('constellation');
+  } else if (e.code === 'Digit3') {
+    switchMode('waveform');
+  } else if (e.key === '?') {
+    toggleShortcuts();
   }
 });
 </script>

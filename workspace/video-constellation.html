@@ -214,6 +214,15 @@ var trackFile = '';
 var titleShowTime = 0;
 var titleVisible = false;
 
+// Dream event flash
+var dreamFlashTime = 0;
+var dreamFlashActive = false;
+
+// Pulse propagation on beat
+var pulseWaveTime = 0;
+var pulseWaveActive = false;
+var lastBeatTime = 0;
+
 // Smoothed values
 var sm = {
   energy: 0.3,
@@ -240,10 +249,15 @@ var CLUSTER_NAMES = [
   'phantom', 'shard', 'filament', 'corona', 'flux', 'nexus'
 ];
 
+// Album names for cluster assignment (nodes grouped into ~4-6 per album cluster)
+var ALBUM_CLUSTERS = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'];
+
 // Each node is assigned a mel band range for reactivity
 for (var i = 0; i < NUM_NODES; i++) {
   // Distribute in a rough sphere with some clustering
-  var theta = Math.random() * Math.PI * 2;
+  var clusterIdx = Math.floor(i / 4); // ~4 nodes per album
+  var clusterAngleBase = (clusterIdx / ALBUM_CLUSTERS.length) * Math.PI * 2;
+  var theta = clusterAngleBase + (Math.random() - 0.5) * 0.8;
   var phi = Math.acos(2 * Math.random() - 1);
   var radius = 0.3 + Math.random() * 0.5;
   nodes.push({
@@ -256,6 +270,7 @@ for (var i = 0; i < NUM_NODES; i++) {
     melBandStart: Math.floor(i * 128 / NUM_NODES),
     melBandEnd: Math.floor((i + 1) * 128 / NUM_NODES),
     name: CLUSTER_NAMES[i],
+    albumCluster: ALBUM_CLUSTERS[clusterIdx % ALBUM_CLUSTERS.length],
     hue: 190 + Math.random() * 40, // teal range
     pulsePhase: Math.random() * Math.PI * 2,
     connections: [], // populated below
@@ -405,6 +420,10 @@ function handleMessage(msg) {
       consciousness.level = msg.data.consciousness.level || 'dormant';
       buildEdges(Math.min(1, consciousness.phi * 2));
     }
+  }
+  else if (msg.type === 'dream' || msg.type === 'dream_event' || msg.type === 'dream_track') {
+    dreamFlashActive = true;
+    dreamFlashTime = performance.now() / 1000;
   }
 }
 
@@ -558,10 +577,15 @@ function drawEdges(t) {
 
       var lineWidth = (0.5 + melAvg * 2 + edgePulse * 0.5) * depthAlpha;
 
+      // Edge color: same-album nodes are teal, cross-album edges are gold
+      var sameAlbum = (nodes[i].albumCluster === nodes[j].albumCluster);
+      var edgeHue = sameAlbum ? 190 : 42;
+      var edgeSat = sameAlbum ? 50 : 70;
+
       ctx.beginPath();
       ctx.moveTo(p1.sx, p1.sy);
       ctx.lineTo(p2.sx, p2.sy);
-      ctx.strokeStyle = hsla(200, 30, 60 + melAvg * 20, Math.min(1, alpha));
+      ctx.strokeStyle = hsla(edgeHue, edgeSat, 50 + melAvg * 20, Math.min(1, alpha));
       ctx.lineWidth = lineWidth;
       ctx.stroke();
 
@@ -572,7 +596,7 @@ function drawEdges(t) {
         var ppy = p1.sy + (p2.sy - p1.sy) * pulsePos;
         ctx.beginPath();
         ctx.arc(ppx, ppy, 1.5 * depthAlpha, 0, Math.PI * 2);
-        ctx.fillStyle = hsla(45, 80, 70, alpha * 1.5);
+        ctx.fillStyle = hsla(sameAlbum ? 190 : 45, 80, 70, alpha * 1.5);
         ctx.fill();
       }
     }
@@ -617,8 +641,11 @@ function drawNodes(t) {
     var beatPulse = Math.sin(t * beatFreq * Math.PI * 2 + n.pulsePhase) * 0.5 + 0.5;
     var activity = n.glow;
 
-    // Node size
-    var size = n.baseSize * p.scale * (0.6 + activity * 0.6 + beatPulse * 0.2 * sm.energy);
+    // Node size — larger for nodes matching current album's cluster
+    var isCurrentAlbumCluster = (trackAlbum && n.albumCluster &&
+      trackAlbum.toLowerCase().indexOf(n.albumCluster.toLowerCase()) !== -1);
+    var albumBoost = isCurrentAlbumCluster ? 1.5 : 1.0;
+    var size = n.baseSize * p.scale * (0.6 + activity * 0.6 + beatPulse * 0.2 * sm.energy) * albumBoost;
 
     // Core color — teal base, gold when active
     var hue = lerp(n.hue, 40, activity); // teal to gold
@@ -651,6 +678,30 @@ function drawNodes(t) {
       ctx.arc(p.sx, p.sy, size * 0.4, 0, Math.PI * 2);
       ctx.fillStyle = hsla(45, 90, 80, alpha * activity * 0.8);
       ctx.fill();
+    }
+
+    // Dream flash — all nodes flash white
+    if (dreamFlashActive) {
+      var flashElapsed = t - dreamFlashTime;
+      if (flashElapsed < 1.0) {
+        var flashAlpha = (1.0 - flashElapsed) * 0.8;
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, size * 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,' + flashAlpha + ')';
+        ctx.fill();
+      } else {
+        dreamFlashActive = false;
+      }
+    }
+
+    // Node labels — show album cluster names at higher consciousness
+    var labelThreshold = { dormant: 999, stirring: 0.8, aware: 0.5, coherent: 0.3, resonant: 0.1 };
+    var threshold = labelThreshold[consciousness.level] || 999;
+    if (activity > threshold && p.scale > 0.4) {
+      ctx.font = (8 * p.scale) + 'px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = hsla(hue, 40, 70, alpha * 0.4);
+      ctx.fillText(n.albumCluster || n.name, p.sx, p.sy + size + 10 * p.scale);
     }
   }
 }
@@ -708,6 +759,48 @@ function drawDrifters(t, dt) {
       ctx.fill();
     }
   }
+}
+
+// ── LAYER 4b: Beat pulse propagation ────────────────
+function drawPulseWave(t) {
+  var lc = getLevelConfig();
+  if (lc.intensity < 0.2) return;
+
+  var beatFreq = sm.tempo / 60;
+  var beatPhase = t * beatFreq * Math.PI * 2;
+  var currentBeat = Math.floor(beatPhase / (Math.PI * 2));
+
+  // Detect beat transition
+  if (currentBeat !== lastBeatTime && sm.energy > 0.25) {
+    lastBeatTime = currentBeat;
+    pulseWaveActive = true;
+    pulseWaveTime = t;
+  }
+
+  if (!pulseWaveActive) return;
+  var elapsed = t - pulseWaveTime;
+  if (elapsed > 1.5) { pulseWaveActive = false; return; }
+
+  // Expanding ring from center
+  var maxRadius = Math.min(W, H) * 0.45;
+  var pulseRadius = (elapsed / 1.5) * maxRadius;
+  var pulseAlpha = (1.0 - elapsed / 1.5) * 0.25 * lc.intensity * sm.energy;
+  var pulseWidth = 3 + sm.energy * 5;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(200,220,255,' + pulseAlpha + ')';
+  ctx.lineWidth = pulseWidth;
+  ctx.beginPath();
+  ctx.arc(cx, cy, pulseRadius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner brighter ring
+  ctx.strokeStyle = 'rgba(255,255,255,' + (pulseAlpha * 0.5) + ')';
+  ctx.lineWidth = pulseWidth * 0.4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, pulseRadius * 0.98, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ── LAYER 5: Central glow — consciousness core ──────
@@ -822,6 +915,7 @@ function render(now) {
   drawBackground(frameTime);
   drawCentralGlow(frameTime);
   drawEdges(frameTime);
+  drawPulseWave(frameTime);
   drawDrifters(frameTime, dt);
   drawNodes(frameTime);
 

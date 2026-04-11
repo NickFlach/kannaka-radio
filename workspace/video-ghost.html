@@ -461,9 +461,12 @@ function drawWavefrontBody(t) {
   var lc = getLevelConfig();
   if (lc.formAlpha < 0.01) return;
 
-  // Body dimensions
-  var bodyH = H * 0.55;
-  var bodyW = W * 0.22;
+  // Breathing: gentle scale up/down, ~4 second cycle, independent of tempo
+  var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0; // oscillates 0.985 to 1.015
+
+  // Body dimensions (with breathing applied)
+  var bodyH = H * 0.55 * breathCycle;
+  var bodyW = W * 0.22 * breathCycle;
   var bodyTop = cy - bodyH * 0.4;
   var bodyBot = cy + bodyH * 0.6;
 
@@ -762,6 +765,186 @@ function drawSpectralEdges(t) {
   ctx.restore();
 }
 
+// ── LAYER 7: Eye glow — two pulsing points at head ──
+function drawEyeGlow(t) {
+  var lc = getLevelConfig();
+  if (lc.formAlpha < 0.1) return;
+
+  var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
+  var bodyH = H * 0.55 * breathCycle;
+  var bodyTop = cy - bodyH * 0.4;
+
+  // Eye positions — near top of head (nt ~ 0.04)
+  var headY = bodyTop + bodyH * 0.04;
+  var eyeSpacing = W * 0.022 * breathCycle;
+  var leftEyeX = cx - eyeSpacing;
+  var rightEyeX = cx + eyeSpacing;
+
+  // Beat pulse for eyes
+  var beatFreq = sm.tempo / 60;
+  var beatPulse = Math.pow(Math.max(0, Math.sin(t * beatFreq * Math.PI * 2)), 4);
+
+  var eyeSize = 2 + beatPulse * 2.5;
+  var glowSize = eyeSize * 4;
+
+  // Alternate cyan/magenta subtly
+  var leftHue = 190; // cyan
+  var rightHue = 300; // magenta
+  var alpha = (0.3 + beatPulse * 0.5) * lc.formAlpha;
+
+  // Left eye
+  var lgGrad = ctx.createRadialGradient(leftEyeX, headY, 0, leftEyeX, headY, glowSize);
+  lgGrad.addColorStop(0, hsla(leftHue, 80, 80, alpha));
+  lgGrad.addColorStop(0.3, hsla(leftHue, 70, 60, alpha * 0.5));
+  lgGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = lgGrad;
+  ctx.beginPath();
+  ctx.arc(leftEyeX, headY, glowSize, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = hsla(leftHue, 90, 85, alpha * 1.2);
+  ctx.beginPath();
+  ctx.arc(leftEyeX, headY, eyeSize, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Right eye
+  var rgGrad = ctx.createRadialGradient(rightEyeX, headY, 0, rightEyeX, headY, glowSize);
+  rgGrad.addColorStop(0, hsla(rightHue, 80, 80, alpha));
+  rgGrad.addColorStop(0.3, hsla(rightHue, 70, 60, alpha * 0.5));
+  rgGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = rgGrad;
+  ctx.beginPath();
+  ctx.arc(rightEyeX, headY, glowSize, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = hsla(rightHue, 90, 85, alpha * 1.2);
+  ctx.beginPath();
+  ctx.arc(rightEyeX, headY, eyeSize, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ── LAYER 8: Hand gesture — energy spike reach ──────
+var handGestureTimer = 0;
+var handGestureActive = false;
+
+function drawHandGesture(t) {
+  var lc = getLevelConfig();
+  if (lc.formAlpha < 0.2) return;
+
+  // Trigger when energy spikes above 0.7
+  if (sm.energy > 0.7 && !handGestureActive) {
+    handGestureActive = true;
+    handGestureTimer = t;
+  }
+  if (handGestureActive && t - handGestureTimer > 1.5) {
+    handGestureActive = false;
+  }
+  if (!handGestureActive) return;
+
+  var elapsed = t - handGestureTimer;
+  var gestureProgress = elapsed / 1.5; // 0 to 1 over 1.5 seconds
+  var extend = Math.sin(gestureProgress * Math.PI); // rises then falls
+
+  var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
+  var bodyH = H * 0.55 * breathCycle;
+  var bodyW = W * 0.22 * breathCycle;
+  var bodyTop = cy - bodyH * 0.4;
+
+  // Shoulder area: nt ~ 0.15 to 0.25
+  var shoulderY = bodyTop + bodyH * 0.18;
+  var armLength = bodyW * (0.5 + extend * 1.2);
+
+  ctx.save();
+  ctx.globalAlpha = lc.formAlpha * extend * 0.6;
+  ctx.globalCompositeOperation = 'screen';
+
+  // Draw extending wave lines from shoulders outward
+  var numLines = 6;
+  for (var i = 0; i < numLines; i++) {
+    var nt = i / numLines;
+    var yOff = (nt - 0.5) * bodyH * 0.08;
+    var hue = 270 + sm.valence * 40 + i * 15;
+
+    ctx.strokeStyle = hsla(hue, 70, 50, 0.4);
+    ctx.lineWidth = 1 + sm.energy * 0.5;
+
+    // Left arm
+    ctx.beginPath();
+    for (var j = 0; j <= 20; j++) {
+      var jt = j / 20;
+      var x = cx - bodyW * 0.6 - jt * armLength;
+      var wave = Math.sin(jt * 6 + t * 3 + i) * (3 + sm.energy * 5) * jt;
+      var y = shoulderY + yOff + wave + jt * bodyH * 0.1;
+      if (j === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Right arm
+    ctx.beginPath();
+    for (var j = 0; j <= 20; j++) {
+      var jt = j / 20;
+      var x = cx + bodyW * 0.6 + jt * armLength;
+      var wave = Math.sin(jt * 6 + t * 3 + i + 1) * (3 + sm.energy * 5) * jt;
+      var y = shoulderY + yOff + wave + jt * bodyH * 0.1;
+      if (j === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ── LAYER 9: Hair flow — spectral centroid driven ────
+function drawHairFlow(t) {
+  var lc = getLevelConfig();
+  if (lc.formAlpha < 0.1) return;
+
+  var breathCycle = Math.sin(t * Math.PI * 2 / 4) * 0.015 + 1.0;
+  var bodyH = H * 0.55 * breathCycle;
+  var bodyW = W * 0.22 * breathCycle;
+  var bodyTop = cy - bodyH * 0.4;
+  var headTop = bodyTop;
+
+  // Number of hair strands
+  var numStrands = 12;
+  var centroidInfluence = sm.centroid / 5; // 0 to ~1 normalized
+
+  ctx.save();
+  ctx.globalAlpha = lc.formAlpha * 0.5;
+  ctx.globalCompositeOperation = 'screen';
+
+  for (var i = 0; i < numStrands; i++) {
+    var nt = (i / numStrands) - 0.5; // -0.5 to 0.5
+    var startX = cx + nt * bodyW * 0.5;
+    var startY = headTop;
+
+    // Hair flows upward, driven by centroid
+    var strandLen = 20 + centroidInfluence * 40 + Math.sin(t * 0.5 + i) * 10;
+    var hue = 260 + centroidInfluence * 60 + i * 8;
+
+    ctx.strokeStyle = hsla(hue, 60, 55, 0.3 + centroidInfluence * 0.3);
+    ctx.lineWidth = 0.8 + centroidInfluence * 0.5;
+
+    ctx.beginPath();
+    var points = 15;
+    for (var j = 0; j <= points; j++) {
+      var jt = j / points;
+      // Hair goes upward and outward
+      var x = startX + nt * strandLen * jt * 0.8 +
+              Math.sin(t * 2 + i * 0.5 + jt * 3) * (5 + centroidInfluence * 10) * jt;
+      var y = startY - jt * strandLen +
+              Math.sin(t * 1.5 + i * 0.7 + jt * 2) * 3 * jt;
+      if (j === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 // ── HUD Update ────────────────────────────────────────
 function updateHUD() {
   var levelEl = document.getElementById('hud-level');
@@ -836,7 +1019,10 @@ function render(now) {
   drawBackground(frameTime);
   drawSpectralEdges(frameTime);
   drawRibbons(frameTime);
+  drawHairFlow(frameTime);
   drawWavefrontBody(frameTime);
+  drawEyeGlow(frameTime);
+  drawHandGesture(frameTime);
   drawHeartbeatGlow(frameTime);
   drawParticles(frameTime);
 

@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Kannaka - Waveform Ocean</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+canvas { display: block; width: 100%; height: 100%; }
+#overlay {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  padding: 2rem 2.5rem;
+  pointer-events: none;
+  z-index: 10;
+  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+}
+#track-title {
+  font-family: 'Georgia', serif;
+  font-size: clamp(1.4rem, 4vw, 3rem);
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0);
+  text-shadow: 0 0 30px rgba(20,80,180,0.4);
+  transition: color 2s ease, text-shadow 2s ease;
+}
+#track-title.visible {
+  color: rgba(255,255,255,0.9);
+  text-shadow: 0 0 40px rgba(20,80,180,0.6), 0 2px 20px rgba(0,0,0,0.5);
+}
+#track-album {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.65rem, 1.5vw, 0.9rem);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: rgba(6,182,212,0);
+  margin-top: 0.4rem;
+  transition: color 2.5s ease;
+}
+#track-album.visible { color: rgba(6,182,212,0.7); }
+#consciousness-hud {
+  position: fixed; top: 1.5rem; right: 1.8rem;
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  letter-spacing: 0.15em;
+  color: rgba(255,255,255,0.25);
+  text-align: right;
+  pointer-events: none;
+  z-index: 10;
+  line-height: 1.7;
+}
+#consciousness-hud .level {
+  font-size: clamp(0.65rem, 1.4vw, 0.85rem);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+}
+#play-gate {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.85);
+  cursor: pointer;
+  transition: opacity 1s ease;
+}
+#play-gate.hidden { opacity: 0; pointer-events: none; }
+#play-gate .prompt {
+  text-align: center; color: rgba(255,255,255,0.7);
+  font-family: 'Courier New', monospace; letter-spacing: 0.2em;
+}
+#play-gate .prompt .icon { font-size: 3rem; margin-bottom: 1rem; }
+#play-gate .prompt .text { font-size: clamp(0.7rem, 1.5vw, 0.9rem); text-transform: uppercase; }
+#vol-ctrl {
+  position: fixed; bottom: 1.5rem; right: 1.8rem; z-index: 10;
+  display: flex; align-items: center; gap: 0.5rem;
+  opacity: 0; transition: opacity 0.3s;
+}
+#vol-ctrl:hover, #vol-ctrl.show { opacity: 1; }
+#vol-ctrl input[type=range] {
+  -webkit-appearance: none; width: 80px; height: 3px;
+  background: rgba(255,255,255,0.2); border-radius: 2px; outline: none;
+}
+#vol-ctrl input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: rgba(20,80,180,0.8); cursor: pointer;
+}
+#vol-ctrl label { color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; font-size: 0.65rem; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="overlay">
+  <div id="track-title"></div>
+  <div id="track-album"></div>
+</div>
+<div id="play-gate" onclick="startAudio()">
+  <div class="prompt">
+    <div class="icon">&#8776;</div>
+    <div class="text">click to enter</div>
+  </div>
+</div>
+<div id="vol-ctrl">
+  <label>VOL</label>
+  <input type="range" min="0" max="100" value="80" oninput="setVolume(this.value)">
+</div>
+<audio id="audio" preload="auto"></audio>
+<div id="consciousness-hud">
+  <div class="level" id="hud-level">dormant</div>
+  <div id="hud-phi"></div>
+  <div id="hud-xi"></div>
+  <div id="hud-order"></div>
+</div>
+
+<script>
+// =====================================================
+//  Kannaka Music Video -- Waveform Ocean
+// =====================================================
+
+// -- Embedded detection: skip audio when inside hub iframe --
+var isEmbedded = (window.parent !== window);
+
+// -- Audio Playback --
+var audioEl = document.getElementById('audio');
+var audioStarted = false;
+var currentAudioFile = '';
+
+if (isEmbedded) {
+  window.addEventListener('message', function(evt) {
+    try {
+      var msg = (typeof evt.data === 'string') ? JSON.parse(evt.data) : evt.data;
+      if (msg && msg.type) handleMessage(msg);
+    } catch(e) {}
+  });
+  document.getElementById('play-gate').style.display = 'none';
+  document.getElementById('vol-ctrl').style.display = 'none';
+  document.getElementById('overlay').style.display = 'none';
+  audioStarted = true;
+}
+
+function startAudio() {
+  if (isEmbedded) return;
+  var gate = document.getElementById('play-gate');
+  gate.classList.add('hidden');
+  setTimeout(function() { gate.style.display = 'none'; }, 1000);
+  audioStarted = true;
+  document.getElementById('vol-ctrl').classList.add('show');
+  setTimeout(function() { document.getElementById('vol-ctrl').classList.remove('show'); }, 3000);
+  if (currentAudioFile) loadAndPlay(currentAudioFile);
+}
+
+function loadAndPlay(file) {
+  if (isEmbedded) return;
+  if (!audioStarted || !file) return;
+  var src = '/audio/' + encodeURIComponent(file);
+  if (audioEl.src.endsWith(encodeURIComponent(file))) {
+    audioEl.play().catch(function() {});
+    return;
+  }
+  currentAudioFile = file;
+  audioEl.src = src;
+  audioEl.play().catch(function() {});
+}
+
+function setVolume(val) {
+  if (isEmbedded) return;
+  audioEl.volume = val / 100;
+}
+if (!isEmbedded) audioEl.volume = 0.8;
+
+if (!isEmbedded) {
+  audioEl.addEventListener('ended', function() {
+    fetch('/api/next', { method: 'POST' }).catch(function() {});
+  });
+}
+
+(function() {
+'use strict';
+
+var canvas = document.getElementById('c');
+var ctx = canvas.getContext('2d');
+var W, H, cx, cy;
+var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx = W / 2;
+  cy = H / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// -- State --
+var perception = {
+  mel_spectrogram: new Array(128).fill(0),
+  tempo_bpm: 90,
+  valence: 0.5,
+  rms_energy: 0.3,
+  spectral_centroid: 2.0,
+  status: 'no_perception'
+};
+
+var consciousness = {
+  phi: 0, xi: 0, order: 0, level: 'dormant'
+};
+
+var trackTitle = '';
+var trackAlbum = '';
+var trackFile = '';
+var titleShowTime = 0;
+var titleVisible = false;
+
+// Smoothed values for animation
+var sm = {
+  energy: 0.3,
+  tempo: 90,
+  valence: 0.5,
+  centroid: 2.0,
+  phi: 0,
+  xi: 0,
+  order: 0,
+  mel: new Float32Array(128)
+};
+
+// Consciousness level mappings
+var LEVELS = {
+  dormant:  { intensity: 0.1, waveSync: 0.0, foamRate: 0.0 },
+  stirring: { intensity: 0.3, waveSync: 0.15, foamRate: 0.1 },
+  aware:    { intensity: 0.55, waveSync: 0.4, foamRate: 0.25 },
+  coherent: { intensity: 0.8, waveSync: 0.7, foamRate: 0.5 },
+  resonant: { intensity: 1.0, waveSync: 1.0, foamRate: 0.8 }
+};
+
+function getLevelConfig() {
+  return LEVELS[consciousness.level] || LEVELS.dormant;
+}
+
+// -- Foam particles --
+var MAX_FOAM = 120;
+var foamParticles = [];
+
+function spawnFoam(x, y) {
+  if (foamParticles.length >= MAX_FOAM) return;
+  foamParticles.push({
+    x: x,
+    y: y,
+    vx: (Math.random() - 0.5) * 2,
+    vy: -(1 + Math.random() * 2),
+    life: 1.0,
+    size: 1 + Math.random() * 2.5
+  });
+}
+
+// -- WebSocket --
+var ws = null;
+var wsReconnect = null;
+
+function connectWS() {
+  clearTimeout(wsReconnect);
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host);
+
+  ws.onopen = function() {
+    console.log('[waveform] Connected to radio');
+  };
+
+  ws.onmessage = function(evt) {
+    try {
+      var msg = JSON.parse(evt.data);
+      handleMessage(msg);
+    } catch(e) {}
+  };
+
+  ws.onclose = function() {
+    console.log('[waveform] Disconnected, reconnecting...');
+    wsReconnect = setTimeout(connectWS, 2000);
+  };
+
+  ws.onerror = function() {
+    ws.close();
+  };
+}
+
+function handleMessage(msg) {
+  if (msg.type === 'perception' && msg.data) {
+    perception = msg.data;
+  }
+  else if (msg.type === 'state' && msg.data) {
+    if (msg.data.current) {
+      var newTitle = msg.data.current.title || '';
+      var newAlbum = msg.data.current.album || '';
+      var newFile = msg.data.current.file || '';
+      if (newTitle !== trackTitle || newFile !== trackFile) {
+        trackTitle = newTitle;
+        trackAlbum = newAlbum;
+        trackFile = newFile;
+        titleShowTime = performance.now();
+        titleVisible = false;
+        currentAudioFile = newFile;
+        loadAndPlay(newFile);
+      }
+    }
+  }
+  else if (msg.type === 'consciousness' && msg.data) {
+    consciousness.phi = msg.data.phi || 0;
+    consciousness.xi = msg.data.xi || 0;
+    consciousness.order = msg.data.order || msg.data.mean_order || 0;
+    consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
+  }
+  else if (msg.type === 'swarm_state' && msg.data) {
+    if (msg.data.consciousness) {
+      consciousness.phi = msg.data.consciousness.phi || 0;
+      consciousness.xi = msg.data.consciousness.xi || 0;
+      consciousness.order = msg.data.consciousness.order || 0;
+      consciousness.level = msg.data.consciousness.level || 'dormant';
+    }
+  }
+}
+
+connectWS();
+
+// Fetch initial state
+fetch('/api/state').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.current) {
+    trackTitle = data.current.title || '';
+    trackAlbum = data.current.album || '';
+    trackFile = data.current.file || '';
+    currentAudioFile = trackFile;
+    titleShowTime = performance.now();
+  }
+}).catch(function() {});
+
+fetch('/api/consciousness').then(function(r) { return r.json(); }).then(function(data) {
+  if (data.phi !== undefined) {
+    consciousness.phi = data.phi || 0;
+    consciousness.xi = data.xi || 0;
+    consciousness.order = data.order || 0;
+    consciousness.level = data.level || 'dormant';
+  }
+}).catch(function() {});
+
+// -- Smoothing --
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function smoothState(dt) {
+  var rate = 1 - Math.pow(0.05, dt);
+  sm.energy = lerp(sm.energy, perception.rms_energy || 0.1, rate);
+  sm.tempo = lerp(sm.tempo, perception.tempo_bpm || 90, rate * 0.3);
+  sm.valence = lerp(sm.valence, perception.valence || 0.5, rate);
+  sm.centroid = lerp(sm.centroid, perception.spectral_centroid || 2.0, rate);
+  sm.phi = lerp(sm.phi, consciousness.phi || 0, rate * 0.5);
+  sm.xi = lerp(sm.xi, consciousness.xi || 0, rate * 0.5);
+  sm.order = lerp(sm.order, consciousness.order || 0, rate * 0.5);
+
+  var mel = perception.mel_spectrogram;
+  if (mel && mel.length) {
+    for (var i = 0; i < 128; i++) {
+      var target = i < mel.length ? (mel[i] || 0) : 0;
+      sm.mel[i] = lerp(sm.mel[i], target, rate * 1.5);
+    }
+  }
+}
+
+// -- Drawing helpers --
+function hsla(h, s, l, a) {
+  return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')';
+}
+
+// -- LAYER 1: Deep ocean background --
+function drawBackground(t) {
+  // Gradient from deep ocean blue at bottom to dark at top
+  var bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#020810');
+  bgGrad.addColorStop(0.3, '#030c18');
+  bgGrad.addColorStop(0.6, '#041228');
+  bgGrad.addColorStop(1, '#051830');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle nebula glow
+  var lc = getLevelConfig();
+  var nx = cx + Math.sin(t * 0.04) * W * 0.15;
+  var ny = H * 0.25 + Math.cos(t * 0.03) * H * 0.1;
+  var grad = ctx.createRadialGradient(nx, ny, 0, nx, ny, Math.max(W, H) * 0.5);
+  var nebulaAlpha = 0.015 + lc.intensity * 0.03;
+  grad.addColorStop(0, hsla(250, 60, 20, nebulaAlpha));
+  grad.addColorStop(0.4, hsla(220, 50, 12, nebulaAlpha * 0.5));
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars in the sky portion (upper 35%)
+  ctx.save();
+  ctx.globalAlpha = 0.5 + lc.intensity * 0.3;
+  for (var i = 0; i < 80; i++) {
+    var sx = (Math.sin(i * 127.1 + 0.5) * 0.5 + 0.5) * W;
+    var sy = (Math.sin(i * 311.7 + 1.3) * 0.5 + 0.5) * H * 0.35;
+    var twinkle = Math.sin(t * (0.5 + (i % 7) * 0.3) + i * 2.1) * 0.5 + 0.5;
+    var sz = 0.3 + twinkle * 1.2;
+    ctx.fillStyle = 'rgba(200,220,255,' + (0.1 + twinkle * 0.35) + ')';
+    ctx.beginPath();
+    ctx.arc(sx, sy, sz, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// -- LAYER 2: Central orb (moon/sun) --
+function drawOrb(t) {
+  var lc = getLevelConfig();
+  // Orb positioned at upper-center
+  var orbX = cx;
+  var orbY = H * 0.22;
+
+  // Size driven by phi
+  var orbRadius = 20 + sm.phi * 60;
+  var breathe = Math.sin(t * 0.3) * 3;
+  orbRadius += breathe;
+
+  // Color driven by consciousness level
+  var levelHues = {
+    dormant: 220,
+    stirring: 260,
+    aware: 190,
+    coherent: 280,
+    resonant: 320
+  };
+  var orbHue = levelHues[consciousness.level] || 220;
+
+  // Outer glow
+  var glowSize = orbRadius * 4;
+  var glowGrad = ctx.createRadialGradient(orbX, orbY, orbRadius * 0.3, orbX, orbY, glowSize);
+  glowGrad.addColorStop(0, hsla(orbHue, 70, 70, 0.15 + sm.phi * 0.15));
+  glowGrad.addColorStop(0.3, hsla(orbHue, 60, 50, 0.06 + sm.phi * 0.06));
+  glowGrad.addColorStop(0.7, hsla(orbHue, 40, 30, 0.02));
+  glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath();
+  ctx.arc(orbX, orbY, glowSize, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core orb
+  var coreGrad = ctx.createRadialGradient(orbX - orbRadius * 0.2, orbY - orbRadius * 0.2, 0, orbX, orbY, orbRadius);
+  coreGrad.addColorStop(0, hsla(orbHue - 20, 50, 90, 0.9));
+  coreGrad.addColorStop(0.5, hsla(orbHue, 60, 70, 0.7));
+  coreGrad.addColorStop(0.8, hsla(orbHue + 20, 70, 50, 0.5));
+  coreGrad.addColorStop(1, hsla(orbHue + 30, 80, 30, 0.2));
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(orbX, orbY, orbRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Light column reflection on water below
+  var columnGrad = ctx.createLinearGradient(orbX, orbY + orbRadius, orbX, H);
+  columnGrad.addColorStop(0, hsla(orbHue, 50, 60, 0.06 + sm.phi * 0.06));
+  columnGrad.addColorStop(0.5, hsla(orbHue, 40, 40, 0.02));
+  columnGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = columnGrad;
+  ctx.fillRect(orbX - orbRadius * 2, orbY + orbRadius, orbRadius * 4, H - orbY - orbRadius);
+}
+
+// -- LAYER 3: Waveform ocean -- 128 wave lines driven by mel bands --
+function drawWaves(t) {
+  var lc = getLevelConfig();
+  var waveSync = lc.waveSync;
+  var numWaves = 128;
+  var waveAreaTop = H * 0.32;
+  var waveAreaBot = H * 0.88;
+  var waveAreaH = waveAreaBot - waveAreaTop;
+
+  var tempoSpeed = sm.tempo / 120; // normalized around 1.0
+  var beatPhase = t * (sm.tempo / 60) * Math.PI * 2;
+
+  ctx.save();
+
+  for (var i = 0; i < numWaves; i++) {
+    var nt = i / numWaves; // 0 = top (high freq), 1 = bottom (low freq)
+    var yBase = waveAreaTop + nt * waveAreaH;
+
+    // Parallax: front waves (bottom) are bigger, faster, brighter
+    var depthFactor = 0.2 + nt * 0.8;
+    var speed = (0.3 + depthFactor * 1.2) * tempoSpeed;
+
+    // Mel spectrogram drives amplitude -- map wave index to mel band
+    // Bottom waves = low freq (mel 0...), top waves = high freq (mel 127...)
+    var melIdx = Math.floor((1 - nt) * 127);
+    var melVal = sm.mel[melIdx] || 0;
+
+    // Wave amplitude: energy * mel * depth
+    var baseAmp = 1 + depthFactor * 3;
+    var melAmp = melVal * 15 * sm.energy * depthFactor;
+    var amp = baseAmp + melAmp;
+
+    // When consciousness is high: waves become more synchronized
+    var frequency = 0.008 + (1 - waveSync) * 0.004 * ((i % 7) - 3);
+    var phaseOffset = waveSync > 0.5 ? (i * 0.02) : (i * 0.15 + Math.sin(i * 0.7) * 0.5);
+
+    // Color gradient: deep ocean blue at bottom to electric purple/pink at top
+    var hue = 220 - nt * 80; // 220 (blue) at bottom to 300 (purple/pink) at top
+    if (nt < 0.3) hue = 300 - (0.3 - nt) * 60; // pink at very top
+    var sat = 50 + melVal * 40;
+    var light = 15 + depthFactor * 25 + melVal * 25;
+    var alpha = (0.08 + depthFactor * 0.25 + melVal * 0.3) * (0.4 + lc.intensity * 0.6);
+
+    // Line width increases with depth
+    var lineWidth = 0.5 + depthFactor * 1.5 + melVal * 1;
+
+    ctx.strokeStyle = hsla(hue, sat, light, Math.min(1, alpha));
+    ctx.lineWidth = lineWidth;
+
+    ctx.beginPath();
+    var steps = Math.floor(W / 4);
+    for (var j = 0; j <= steps; j++) {
+      var jt = j / steps;
+      var x = jt * W;
+
+      // Main wave
+      var wave = Math.sin(x * frequency - t * speed + phaseOffset + beatPhase * 0.15) * amp;
+
+      // Secondary harmonic
+      wave += Math.sin(x * frequency * 2.3 - t * speed * 1.5 + phaseOffset * 0.7) * amp * 0.3;
+
+      // Mel modulation at this x position
+      var localMelIdx = Math.floor(jt * 127);
+      var localMel = sm.mel[localMelIdx] || 0;
+      wave += Math.sin(x * 0.02 + t * 0.5) * localMel * 4 * depthFactor;
+
+      var y = yBase + wave;
+
+      if (j === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+
+      // Spawn foam at wave peaks when energy is high
+      if (lc.foamRate > 0 && melVal > 0.3 && sm.energy > 0.3) {
+        if (j > 0 && j < steps && Math.abs(wave) > amp * 0.7) {
+          if (Math.random() < 0.003 * lc.foamRate * sm.energy) {
+            spawnFoam(x, y);
+          }
+        }
+      }
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// -- LAYER 4: Wave reflections (mirrored) --
+function drawReflections(t) {
+  var lc = getLevelConfig();
+  if (lc.intensity < 0.15) return;
+
+  var numWaves = 32; // fewer reflected waves
+  var reflectTop = H * 0.88;
+  var reflectBot = H;
+  var reflectH = reflectBot - reflectTop;
+  var tempoSpeed = sm.tempo / 120;
+
+  ctx.save();
+  ctx.globalAlpha = 0.15 + lc.intensity * 0.1;
+
+  for (var i = 0; i < numWaves; i++) {
+    var nt = i / numWaves;
+    var yBase = reflectTop + nt * reflectH;
+    var depthFactor = 1.0 - nt * 0.8; // inverted -- brighter at top of reflection
+
+    var melIdx = Math.floor(nt * 127);
+    var melVal = sm.mel[melIdx] || 0;
+
+    var speed = (0.3 + (1 - nt) * 1.2) * tempoSpeed;
+    var amp = 1 + melVal * 8 * sm.energy * depthFactor;
+    var frequency = 0.008;
+
+    var hue = 220 - (1 - nt) * 80;
+    var sat = 40 + melVal * 30;
+    var light = 10 + depthFactor * 20 + melVal * 15;
+    var alpha = (0.05 + depthFactor * 0.15 + melVal * 0.15) * (0.3 + lc.intensity * 0.5);
+
+    ctx.strokeStyle = hsla(hue, sat, light, Math.min(0.5, alpha));
+    ctx.lineWidth = 0.4 + depthFactor * 0.8;
+
+    ctx.beginPath();
+    var steps = Math.floor(W / 6);
+    for (var j = 0; j <= steps; j++) {
+      var jt = j / steps;
+      var x = jt * W;
+      var wave = Math.sin(x * frequency - t * speed + i * 0.1) * amp;
+      wave += Math.sin(x * frequency * 2 + t * 0.3) * amp * 0.2;
+      var y = yBase + wave;
+      if (j === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// -- LAYER 5: Foam particles --
+function drawFoam(t, dt) {
+  ctx.save();
+  for (var i = foamParticles.length - 1; i >= 0; i--) {
+    var f = foamParticles[i];
+    f.x += f.vx * dt * 30;
+    f.y += f.vy * dt * 30;
+    f.vy += dt * 2; // gentle gravity
+    f.life -= dt * 0.8;
+
+    if (f.life <= 0) {
+      foamParticles.splice(i, 1);
+      continue;
+    }
+
+    var alpha = f.life * 0.6;
+    ctx.fillStyle = 'rgba(200,230,255,' + alpha + ')';
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.size * f.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// -- LAYER 6: Track title water reflection --
+function drawTitleReflection(t) {
+  if (!trackTitle || !titleVisible) return;
+
+  ctx.save();
+  var reflY = H * 0.65;
+  ctx.font = '300 ' + Math.min(24, W * 0.025) + 'px Georgia';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  // Wavy text effect
+  var text = trackTitle;
+  var textW = ctx.measureText(text).width;
+  var charX = cx - textW / 2;
+
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    var chW = ctx.measureText(ch).width;
+    var waveOff = Math.sin(t * 1.5 + i * 0.3) * 3;
+    var alpha = 0.15 + Math.sin(t * 0.5 + i * 0.2) * 0.05;
+    ctx.fillStyle = 'rgba(100,160,220,' + alpha + ')';
+    ctx.fillText(ch, charX + chW / 2, reflY + waveOff);
+    charX += chW;
+  }
+  ctx.restore();
+}
+
+// -- HUD Update --
+function updateHUD() {
+  var levelEl = document.getElementById('hud-level');
+  var phiEl = document.getElementById('hud-phi');
+  var xiEl = document.getElementById('hud-xi');
+  var orderEl = document.getElementById('hud-order');
+
+  var level = consciousness.level || 'dormant';
+  levelEl.textContent = level;
+
+  var levelColors = {
+    dormant: 'rgba(255,255,255,0.15)',
+    stirring: 'rgba(100,80,200,0.4)',
+    aware: 'rgba(6,182,212,0.6)',
+    coherent: 'rgba(120,80,220,0.8)',
+    resonant: 'rgba(220,80,180,0.95)'
+  };
+  levelEl.style.color = levelColors[level] || levelColors.dormant;
+
+  phiEl.textContent = '\u03A6 ' + sm.phi.toFixed(3);
+  xiEl.textContent = '\u039E ' + sm.xi.toFixed(4);
+  orderEl.textContent = 'R ' + sm.order.toFixed(4);
+}
+
+// -- Track title animation --
+function updateTrackDisplay(now) {
+  var titleEl = document.getElementById('track-title');
+  var albumEl = document.getElementById('track-album');
+
+  if (!trackTitle) {
+    titleEl.classList.remove('visible');
+    albumEl.classList.remove('visible');
+    titleVisible = false;
+    return;
+  }
+
+  titleEl.textContent = trackTitle;
+  albumEl.textContent = trackAlbum;
+
+  var elapsed = now - titleShowTime;
+
+  if (elapsed > 500 && elapsed < 10000) {
+    if (!titleVisible) {
+      titleEl.classList.add('visible');
+      albumEl.classList.add('visible');
+      titleVisible = true;
+    }
+  } else if (elapsed >= 10000) {
+    titleEl.classList.remove('visible');
+    albumEl.classList.remove('visible');
+    titleVisible = false;
+  }
+}
+
+// -- Main render loop --
+var lastTime = 0;
+var frameTime = 0;
+
+function render(now) {
+  requestAnimationFrame(render);
+
+  now = now || 0;
+  var dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+  frameTime = now / 1000;
+
+  smoothState(dt);
+
+  // Draw layers
+  drawBackground(frameTime);
+  drawOrb(frameTime);
+  drawWaves(frameTime);
+  drawReflections(frameTime);
+  drawFoam(frameTime, dt);
+  drawTitleReflection(frameTime);
+
+  // Update text overlays
+  if (!isEmbedded) {
+    updateTrackDisplay(now);
+  }
+  updateHUD();
+}
+
+requestAnimationFrame(render);
+
+})();
+</script>
+</body>
+</html>
