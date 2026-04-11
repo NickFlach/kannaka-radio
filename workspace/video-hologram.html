@@ -232,28 +232,29 @@ const wireMat = new THREE.MeshBasicMaterial({
 
 // -- Face features (attached to head bone after load) --
 // Eyes: white sclera + colored iris + dark pupil + catchlight
-const scleraGeo = new THREE.SphereGeometry(0.032, 16, 12);
-const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, emissive: 0x222222, emissiveIntensity: 0.3, roughness: 0.3 });
-const irisGeo = new THREE.SphereGeometry(0.018, 16, 12);
-const irisMat = new THREE.MeshStandardMaterial({ color: 0x44aacc, emissive: 0x00aacc, emissiveIntensity: 2.0, roughness: 0.1 });
-const pupilGeo = new THREE.SphereGeometry(0.008, 8, 8);
-const pupilMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x000000, roughness: 0.9 });
-const catchGeo = new THREE.SphereGeometry(0.004, 6, 6);
-const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3 });
+// Larger, more defined face features
+const scleraGeo = new THREE.SphereGeometry(0.038, 20, 14);
+const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf5f0f0, emissive: 0x333333, emissiveIntensity: 0.4, roughness: 0.2 });
+const irisGeo = new THREE.SphereGeometry(0.022, 20, 14);
+const irisMat = new THREE.MeshStandardMaterial({ color: 0x44bbdd, emissive: 0x00bbdd, emissiveIntensity: 2.5, roughness: 0.05 });
+const pupilGeo = new THREE.SphereGeometry(0.010, 10, 10);
+const pupilMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.9 });
+const catchGeo = new THREE.SphereGeometry(0.005, 8, 8);
+const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 4 });
 
-// Lip geometry
-const lipGeo = new THREE.TorusGeometry(0.025, 0.008, 8, 16, Math.PI);
-const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xcc6677, emissive: 0x662233, emissiveIntensity: 0.4, roughness: 0.3 });
-const lowerLipGeo = new THREE.TorusGeometry(0.022, 0.009, 8, 16, Math.PI);
-const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xdd7788, emissive: 0x663344, emissiveIntensity: 0.3, roughness: 0.25 });
+// Lips — fuller
+const lipGeo = new THREE.TorusGeometry(0.030, 0.010, 10, 20, Math.PI);
+const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xcc6677, emissive: 0x662233, emissiveIntensity: 0.5, roughness: 0.25 });
+const lowerLipGeo = new THREE.TorusGeometry(0.027, 0.012, 10, 20, Math.PI);
+const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xdd7788, emissive: 0x663344, emissiveIntensity: 0.4, roughness: 0.2 });
 
-// Eyebrow geometry
-const browGeo = new THREE.CylinderGeometry(0.002, 0.001, 0.04, 4);
-const browMat = new THREE.MeshStandardMaterial({ color: 0x443355, emissive: 0x221133, emissiveIntensity: 0.3 });
+// Eyebrows — thicker arches
+const browGeo = new THREE.CylinderGeometry(0.003, 0.001, 0.05, 6);
+const browMat = new THREE.MeshStandardMaterial({ color: 0x221133, emissive: 0x110822, emissiveIntensity: 0.2 });
 
-// Nose highlight
-const noseGeo = new THREE.SphereGeometry(0.006, 6, 6);
-const noseMat = new THREE.MeshStandardMaterial({ color: 0xddaa99, emissive: 0x332222, emissiveIntensity: 0.2, roughness: 0.4 });
+// Nose
+const noseGeo = new THREE.SphereGeometry(0.010, 8, 8);
+const noseMat = new THREE.MeshStandardMaterial({ color: 0xddaa99, emissive: 0x332222, emissiveIntensity: 0.2, roughness: 0.35 });
 
 // Face group — all face parts go here, attached to head bone
 const faceGroup = new THREE.Group();
@@ -360,41 +361,73 @@ scene.add(bodyEnergy);
 // -- Custom sculpted head (replaces VRM head) --
 const headGroup = new THREE.Group();
 
-// Skull — elongated sphere, feminine proportions
-const skullGeo = new THREE.SphereGeometry(0.10, 32, 24);
+// Skull — larger, feminine oval
+const skullGeo = new THREE.SphereGeometry(0.13, 32, 28);
 const headMat = skinMat.clone();
-headMat.clippingPlanes = []; // no clipping on custom head
+headMat.clippingPlanes = [];
 const skull = new THREE.Mesh(skullGeo, headMat);
-skull.scale.set(0.95, 1.12, 0.92); // oval, taller, narrower front-to-back
+skull.scale.set(0.92, 1.15, 0.88);
 headGroup.add(skull);
 
-// Jaw / chin — softer, feminine
-const jawGeo = new THREE.SphereGeometry(0.065, 16, 12);
+// Upper cranium — adds volume to top of head
+const craniumGeo = new THREE.SphereGeometry(0.10, 20, 16);
+const cranium = new THREE.Mesh(craniumGeo, headMat.clone());
+cranium.position.set(0, 0.06, -0.01);
+cranium.scale.set(1.0, 0.8, 0.9);
+headGroup.add(cranium);
+
+// Jaw — delicate, tapered
+const jawGeo = new THREE.SphereGeometry(0.085, 20, 14);
 const jaw = new THREE.Mesh(jawGeo, headMat.clone());
-jaw.position.set(0, -0.065, 0.02);
-jaw.scale.set(0.78, 0.65, 0.72); // narrow, delicate chin
+jaw.position.set(0, -0.07, 0.02);
+jaw.scale.set(0.72, 0.6, 0.68);
 headGroup.add(jaw);
 
-// Forehead — smooth brow area
-const foreheadGeo = new THREE.SphereGeometry(0.06, 12, 8);
+// Chin — small, defined
+const chinGeo = new THREE.SphereGeometry(0.025, 10, 8);
+const chin = new THREE.Mesh(chinGeo, headMat.clone());
+chin.position.set(0, -0.105, 0.04);
+chin.scale.set(0.9, 0.7, 0.8);
+headGroup.add(chin);
+
+// Forehead — smooth brow ridge
+const foreheadGeo = new THREE.SphereGeometry(0.07, 14, 10);
 const forehead = new THREE.Mesh(foreheadGeo, headMat.clone());
-forehead.position.set(0, 0.04, 0.065);
-forehead.scale.set(1.4, 0.7, 0.6);
+forehead.position.set(0, 0.045, 0.08);
+forehead.scale.set(1.5, 0.6, 0.5);
 headGroup.add(forehead);
 
-// Cheekbones — soft definition
+// Eye sockets — subtle depth
 for (let side = -1; side <= 1; side += 2) {
-  const cheekGeo = new THREE.SphereGeometry(0.028, 10, 8);
+  const socketGeo = new THREE.SphereGeometry(0.025, 10, 8);
+  const socketMat = headMat.clone();
+  socketMat.color = new THREE.Color(0xb08878);
+  const socket = new THREE.Mesh(socketGeo, socketMat);
+  socket.position.set(side * 0.042, 0.01, 0.09);
+  socket.scale.set(1.2, 0.9, 0.5);
+  headGroup.add(socket);
+}
+
+// Cheekbones — defined
+for (let side = -1; side <= 1; side += 2) {
+  const cheekGeo = new THREE.SphereGeometry(0.035, 12, 10);
   const cheek = new THREE.Mesh(cheekGeo, headMat.clone());
-  cheek.position.set(side * 0.058, -0.015, 0.065);
-  cheek.scale.set(1.1, 0.75, 0.85);
+  cheek.position.set(side * 0.065, -0.02, 0.075);
+  cheek.scale.set(1.0, 0.7, 0.8);
   headGroup.add(cheek);
 }
 
-// Neck base — smooth transition to body
-const neckGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.06, 12);
+// Nose bridge — gives the nose volume/ridge
+const noseBridgeLargeGeo = new THREE.SphereGeometry(0.015, 8, 6);
+const noseBridgeMesh = new THREE.Mesh(noseBridgeLargeGeo, headMat.clone());
+noseBridgeMesh.position.set(0, -0.01, 0.11);
+noseBridgeMesh.scale.set(0.7, 2.0, 0.8);
+headGroup.add(noseBridgeMesh);
+
+// Neck — longer, slender
+const neckGeo = new THREE.CylinderGeometry(0.042, 0.055, 0.08, 14);
 const neck = new THREE.Mesh(neckGeo, headMat.clone());
-neck.position.set(0, -0.11, 0);
+neck.position.set(0, -0.15, 0);
 headGroup.add(neck);
 
 scene.add(headGroup);
@@ -444,26 +477,51 @@ function createHairStrand(angle, r, length, thickness) {
   return strand;
 }
 
-// Layer 1: thick under-layer (volume)
-for (let i = 0; i < 25; i++) {
-  const angle = (i / 25) * Math.PI * 1.3 + Math.PI * 0.35;
-  const strand = createHairStrand(angle, 0.085 + Math.random() * 0.02, 0.35 + Math.random() * 0.25, 0.012 + Math.random() * 0.006);
+// Layer 1: thick base volume (fills out the hair mass)
+for (let i = 0; i < 35; i++) {
+  const angle = (i / 35) * Math.PI * 1.4 + Math.PI * 0.3;
+  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.03, 0.3 + Math.random() * 0.3, 0.015 + Math.random() * 0.008);
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-// Layer 2: flowing outer strands (longer, visible — shoulder length)
-for (let i = 0; i < 25; i++) {
-  const angle = (i / 25) * Math.PI * 1.2 + Math.PI * 0.4;
-  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.02, 0.55 + Math.random() * 0.55, 0.008 + Math.random() * 0.006);
+// Layer 2: main flowing strands (shoulder-length, visible)
+for (let i = 0; i < 35; i++) {
+  const angle = (i / 35) * Math.PI * 1.3 + Math.PI * 0.35;
+  const strand = createHairStrand(angle, 0.12 + Math.random() * 0.03, 0.5 + Math.random() * 0.6, 0.009 + Math.random() * 0.006);
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-// Layer 3: fine highlight strands (shimmer)
-for (let i = 0; i < 10; i++) {
-  const angle = (i / 10) * Math.PI * 1.0 + Math.PI * 0.5;
-  const strand = createHairStrand(angle, 0.09 + Math.random() * 0.02, 0.3 + Math.random() * 0.35, 0.004 + Math.random() * 0.003);
-  strand.material.emissiveIntensity = 0.5;
-  strand.material.emissive.setHex(0x332255);
+// Layer 3: fine highlight strands (shimmer catch-light)
+for (let i = 0; i < 15; i++) {
+  const angle = (i / 15) * Math.PI * 1.1 + Math.PI * 0.45;
+  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.02, 0.35 + Math.random() * 0.4, 0.005 + Math.random() * 0.003);
+  strand.material.emissiveIntensity = 0.6;
+  strand.material.emissive.setHex(0x443366);
+  hairGroup.add(strand);
+  hairStrands.push(strand);
+}
+// Layer 4: fine wisps — delicate flyaway strands for realism
+for (let i = 0; i < 25; i++) {
+  const angle = Math.random() * Math.PI * 1.6 + Math.PI * 0.2;
+  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.04, 0.2 + Math.random() * 0.5, 0.002 + Math.random() * 0.002);
+  strand.material.opacity = 0.3 + Math.random() * 0.3;
+  strand.material.emissiveIntensity = 0.4;
+  strand.material.emissive.setHex(0x221144);
+  hairGroup.add(strand);
+  hairStrands.push(strand);
+}
+// Layer 5: framing strands — a few that come forward along the sides of the face
+for (let i = 0; i < 6; i++) {
+  const side = i < 3 ? -1 : 1;
+  const idx = i % 3;
+  const angle = Math.PI * 0.25 + side * (0.05 + idx * 0.08); // near the temples
+  const strand = createHairStrand(angle, 0.12, 0.3 + idx * 0.1, 0.006 + Math.random() * 0.003);
+  // These curve forward alongside the face
+  const pts = strand.userData.curve.points;
+  if (pts && pts.length >= 3) {
+    pts[1].z += 0.08; // pull mid-point forward
+    pts[2].z += 0.05;
+  }
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
