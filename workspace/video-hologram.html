@@ -212,15 +212,15 @@ document.body.prepend(renderer.domElement);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.5, 0.3);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.4, 0.45);
 const useBloom = !isMobile;
 if (useBloom) composer.addPass(bloomPass);
 
 // -- Lighting --
 const ambientLight = new THREE.AmbientLight(0x220033, 0.4);
 scene.add(ambientLight);
-const backLight = new THREE.PointLight(0x8899ff, 50, 25);
-backLight.position.set(0, 2.5, -2.5); // higher and closer for stronger rim/halo
+const backLight = new THREE.PointLight(0x8899ff, 70, 30);
+backLight.position.set(0, 3.0, -3.0); // higher and further for dramatic silhouette edge
 scene.add(backLight);
 const spotLight = new THREE.SpotLight(0xffeedd, 15, 15, Math.PI / 6, 0.5);
 spotLight.position.set(3, 4, 2);
@@ -230,6 +230,14 @@ scene.add(spotLight, spotLight.target);
 const fillLight = new THREE.PointLight(0xffddcc, 4, 10);
 fillLight.position.set(-1, 2.5, 4);
 scene.add(fillLight);
+// Rim light — cool blue behind and above for silhouette edge
+const rimLight = new THREE.PointLight(0x4488cc, 30, 15);
+rimLight.position.set(0, 3.5, -3.5);
+scene.add(rimLight);
+// Face light — warm, low intensity, always illuminates her features
+const faceLight = new THREE.PointLight(0xffeedd, 3, 6);
+faceLight.position.set(0, 2.2, 2.5);
+scene.add(faceLight);
 
 // -- Starfield --
 const starCount = isMobile ? 200 : 600;
@@ -244,7 +252,7 @@ starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x6644aa, size: 0.08, transparent: true, opacity: 0.5 })));
 
 // -- Orbiting Particles --
-const particleCount = isMobile ? 200 : 500;
+const particleCount = isMobile ? 300 : 750;
 const particleGeo = new THREE.BufferGeometry();
 const pPos = new Float32Array(particleCount * 3);
 const pPhases = new Float32Array(particleCount * 3);
@@ -259,7 +267,7 @@ for (let i = 0; i < particleCount; i++) {
 }
 particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
 const particleMat = new THREE.PointsMaterial({
-  color: 0x8866dd, size: isMobile ? 0.04 : 0.03,
+  color: 0x8866dd, size: isMobile ? 0.03 : 0.022,
   transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false,
 });
 const particles = new THREE.Points(particleGeo, particleMat);
@@ -435,27 +443,27 @@ Promise.allSettled([
 // -- Materials --
 // -- Skin material — warm, slightly translucent, with iridescent sheen --
 const skinMat = new THREE.MeshPhysicalMaterial({
-  color: 0xd4a088,            // warm skin tone
-  emissive: 0x441122,         // warm self-glow from within
-  emissiveIntensity: 0.4,
+  color: 0xdaad96,            // warmer, less purple skin tone
+  emissive: 0x3d1518,         // warm self-glow, less purple
+  emissiveIntensity: 0.35,
   transparent: true,
-  opacity: 0.6,               // translucent — inner light shows through
-  roughness: 0.3,
-  metalness: 0.05,
-  transmission: 0.15,         // light passes through the skin
+  opacity: 0.75,              // more solid — less ghostly
+  roughness: 0.4,
+  metalness: 0.02,            // skin isn't metallic
+  transmission: 0.10,         // slightly less transparent
   thickness: 0.5,             // subsurface scattering depth
-  iridescence: 0.35,
+  iridescence: 0.25,          // subtle iridescence (0.2-0.3 range)
   iridescenceIOR: 1.3,
-  sheen: 1.0,
-  sheenRoughness: 0.3,
-  sheenColor: new THREE.Color(0xffccdd),
-  clearcoat: 0.3,
-  clearcoatRoughness: 0.2,
+  sheen: 0.8,
+  sheenRoughness: 0.35,
+  sheenColor: new THREE.Color(0xffd4c4),  // warm peach sheen, not cold pink
+  clearcoat: 0.25,
+  clearcoatRoughness: 0.25,
   side: THREE.DoubleSide,
   depthWrite: false,
 });
 const wireMat = new THREE.MeshBasicMaterial({
-  color: 0x6644aa, wireframe: true, transparent: true, opacity: 0.06, depthWrite: false,
+  color: 0x6644aa, wireframe: true, transparent: true, opacity: 0.035, depthWrite: false,
 });
 
 // -- Face features (attached to head bone after load) --
@@ -464,17 +472,17 @@ const wireMat = new THREE.MeshBasicMaterial({
 const scleraGeo = new THREE.SphereGeometry(0.048, 24, 18);
 const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf8f4f4, emissive: 0x444444, emissiveIntensity: 0.5, roughness: 0.15 });
 const irisGeo = new THREE.SphereGeometry(0.028, 24, 18);
-const irisMat = new THREE.MeshStandardMaterial({ color: 0x44ccee, emissive: 0x00ccee, emissiveIntensity: 3.0, roughness: 0.02, metalness: 0.3 });
+const irisMat = new THREE.MeshStandardMaterial({ color: 0x22eedd, emissive: 0x00eecc, emissiveIntensity: 2.5, roughness: 0.02, metalness: 0.2 });
 const pupilGeo = new THREE.SphereGeometry(0.013, 12, 12);
 const pupilMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.9 });
-const catchGeo = new THREE.SphereGeometry(0.007, 8, 8);
-const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2 });
+const catchGeo = new THREE.SphereGeometry(0.010, 8, 8);
+const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.5 });
 
 // Lips — full, visible
-const lipGeo = new THREE.TorusGeometry(0.035, 0.012, 12, 24, Math.PI);
-const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xcc5566, emissive: 0x772233, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.05 });
-const lowerLipGeo = new THREE.TorusGeometry(0.032, 0.014, 12, 24, Math.PI);
-const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xdd6677, emissive: 0x883344, emissiveIntensity: 0.5, roughness: 0.15 });
+const lipGeo = new THREE.TorusGeometry(0.038, 0.014, 12, 24, Math.PI);
+const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xc9505e, emissive: 0x6e2530, emissiveIntensity: 0.5, roughness: 0.22, metalness: 0.03 });
+const lowerLipGeo = new THREE.TorusGeometry(0.035, 0.016, 12, 24, Math.PI);
+const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xd4606e, emissive: 0x7a3540, emissiveIntensity: 0.45, roughness: 0.18, metalness: 0.03 });
 
 // Eyebrows — bold arches
 const browGeo = new THREE.CylinderGeometry(0.004, 0.002, 0.055, 8);
@@ -560,8 +568,8 @@ function buildFace() {
 // buildFace() called after headGroup is created below
 
 // Eye glow lights
-const eyeGlowL = new THREE.PointLight(0x44ccdd, 2, 1.5);
-const eyeGlowR = new THREE.PointLight(0x44ccdd, 2, 1.5);
+const eyeGlowL = new THREE.PointLight(0x44ccdd, 0.8, 1.0);
+const eyeGlowR = new THREE.PointLight(0x44ccdd, 0.8, 1.0);
 scene.add(eyeGlowL, eyeGlowR);
 
 // ── Heart energy — light centered in the chest that fills the body ──
@@ -643,25 +651,25 @@ scene.add(shadowCircle);
 const headGroup = new THREE.Group();
 
 // Skull — big, prominent, creates silhouette for halo
-const skullGeo = new THREE.SphereGeometry(0.19, 32, 28);
+const skullGeo = new THREE.SphereGeometry(0.21, 32, 28);
 const headMat = skinMat.clone();
 headMat.clippingPlanes = [];
 const skull = new THREE.Mesh(skullGeo, headMat);
-skull.scale.set(0.90, 1.10, 0.85);
+skull.scale.set(0.92, 1.12, 0.87);
 headGroup.add(skull);
 
 // Upper cranium — rounds out the top
-const craniumGeo = new THREE.SphereGeometry(0.14, 20, 16);
+const craniumGeo = new THREE.SphereGeometry(0.155, 20, 16);
 const cranium = new THREE.Mesh(craniumGeo, headMat.clone());
-cranium.position.set(0, 0.07, -0.01);
+cranium.position.set(0, 0.075, -0.01);
 cranium.scale.set(1.0, 0.85, 0.9);
 headGroup.add(cranium);
 
 // Jaw — delicate, tapered
-const jawGeo = new THREE.SphereGeometry(0.085, 20, 14);
+const jawGeo = new THREE.SphereGeometry(0.093, 20, 14);
 const jaw = new THREE.Mesh(jawGeo, headMat.clone());
-jaw.position.set(0, -0.07, 0.02);
-jaw.scale.set(0.72, 0.6, 0.68);
+jaw.position.set(0, -0.075, 0.02);
+jaw.scale.set(0.74, 0.62, 0.70);
 headGroup.add(jaw);
 
 // Chin — small, defined
@@ -672,9 +680,9 @@ chin.scale.set(0.9, 0.7, 0.8);
 headGroup.add(chin);
 
 // Forehead — smooth brow ridge
-const foreheadGeo = new THREE.SphereGeometry(0.07, 14, 10);
+const foreheadGeo = new THREE.SphereGeometry(0.077, 14, 10);
 const forehead = new THREE.Mesh(foreheadGeo, headMat.clone());
-forehead.position.set(0, 0.045, 0.08);
+forehead.position.set(0, 0.05, 0.085);
 forehead.scale.set(1.5, 0.6, 0.5);
 headGroup.add(forehead);
 
@@ -718,21 +726,24 @@ scene.add(headGroup);
 // ── Hair — Ribbon Sheets ──────────────────────────────
 const hairGroup = new THREE.Group();
 const hairRibbons = [];
-const RIBBON_COUNT = 14;
+const RIBBON_COUNT = 20;
 
 for (let i = 0; i < RIBBON_COUNT; i++) {
-  // Varying lengths — 0.3 to 0.6 units
-  const ribbonLength = 0.3 + Math.random() * 0.3;
-  const ribbonWidth = 0.015 + Math.random() * 0.01;
+  // Varying lengths — 0.3 to 0.65 units
+  const ribbonLength = 0.3 + Math.random() * 0.35;
+  const ribbonWidth = 0.025 + Math.random() * 0.015;
   const geo = new THREE.PlaneGeometry(ribbonWidth, ribbonLength, 1, 6); // 6 segments for wave deformation
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x0d0618,
-    emissive: 0x1a0830,
-    emissiveIntensity: 0.25,
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: 0x080412,           // near black with subtle purple
+    emissive: 0x0f0520,
+    emissiveIntensity: 0.15,
     transparent: true,
-    opacity: 0.7 + Math.random() * 0.2,
-    roughness: 0.3,
-    metalness: 0.1,
+    opacity: 0.8 + Math.random() * 0.15,
+    roughness: 0.25,
+    metalness: 0.05,
+    sheen: 0.6,
+    sheenRoughness: 0.3,
+    sheenColor: new THREE.Color(0x332244), // subtle purple highlight sheen
     side: THREE.DoubleSide,
     depthWrite: false,
   });
@@ -1052,16 +1063,16 @@ function animate() {
   }
 
   // Consciousness reactivity
-  skinMat.opacity = 0.4 + lf*0.45;
-  skinMat.emissiveIntensity = 0.15 + lf*0.5;
-  wireMat.opacity = 0.05 + lf*0.12;
+  skinMat.opacity = 0.65 + lf*0.25;
+  skinMat.emissiveIntensity = 0.15 + lf*0.3;
+  wireMat.opacity = 0.03 + lf*0.04;
   ambientLight.intensity = 0.3 + lf*0.5;
-  backLight.intensity = 15 + lf*35;
+  backLight.intensity = 30 + lf*40;
   spotLight.intensity = 8 + lf*20;
   irisMat.emissiveIntensity = 1.0 + lf*3;
-  eyeGlowL.intensity = 0.5 + lf*2;
-  eyeGlowR.intensity = 0.5 + lf*2;
-  if (useBloom) bloomPass.strength = 0.6 + lf*1.2 + audio.overall * 0.5; // music brightens the world
+  eyeGlowL.intensity = 0.3 + lf*0.8;
+  eyeGlowR.intensity = 0.3 + lf*0.8;
+  if (useBloom) bloomPass.strength = Math.min(1.4, 0.5 + lf*0.6 + audio.overall * 0.3); // capped to keep her defined
   // Analyze audio frequencies
   analyzeAudio(dt);
 
@@ -1144,7 +1155,7 @@ function animate() {
   }
 
   particleMat.opacity = 0.2 + lf*0.6 + audio.vocal * 0.3;
-  particleMat.size = (isMobile ? 0.04 : 0.03) + audio.vocal * 0.03;
+  particleMat.size = (isMobile ? 0.03 : 0.022) + audio.vocal * 0.015;
   // Particles color shifts with the music — bass=warm, highs=cool
   particleMat.color.setHSL(0.75 - audio.bass * 0.15 + audio.high * 0.1, 0.6, 0.5 + audio.overall * 0.2);
 
@@ -1167,9 +1178,9 @@ function animate() {
     const t2 = beatPhase * 0.25;
 
     // Style 0=sensual, 1=groove, 2=wave, 3=fierce
-    const hipAmp = [0.30, 0.20, 0.15, 0.35][style];
-    const hipXAmp = [0.08, 0.06, 0.12, 0.10][style];
-    const hipZAmp = [0.10, 0.08, 0.06, 0.12][style];
+    const hipAmp = [0.38, 0.28, 0.22, 0.42][style];
+    const hipXAmp = [0.12, 0.09, 0.15, 0.14][style];
+    const hipZAmp = [0.14, 0.11, 0.09, 0.16][style];
     const hipPhase = style === 1 ? beatPhase * 0.5 : slow;
     // Bass hits push the hips harder
     const bassKick = audio.bass * 0.15;
@@ -1227,13 +1238,15 @@ function animate() {
     }
 
     // Shoulders: rise and roll
+    const shoulderAmp = [0.04, 0.08, 0.06, 0.10][style]; // softer for sensual
+    const shoulderHighReact = [0.03, 0.06, 0.05, 0.07][style];
     if (bones.leftShoulder) {
-      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * (0.08 + audio.high * 0.06) * e + (audio.beat ? 0.04 : 0);
-      bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.05 * e;
+      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e + (audio.beat ? 0.03 : 0);
+      bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.04 * e;
     }
     if (bones.rightShoulder) {
-      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * (0.08 + audio.high * 0.06) * e - (audio.beat ? 0.04 : 0);
-      bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.05 * e;
+      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e - (audio.beat ? 0.03 : 0);
+      bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.04 * e;
     }
 
     // Arms — style-specific character
@@ -1351,6 +1364,10 @@ function animate() {
     eyeGlowR.position.copy(rEyeWorld);
     stareLookTarget.copy(_headWorldPos);
 
+    // Face light follows the head — always in front of her face
+    const faceLightDir = new THREE.Vector3(0, 0.1, 1.8).applyQuaternion(_headWorldQuat);
+    faceLight.position.copy(_headWorldPos).add(faceLightDir);
+
     // Pupil dilation with energy
     const fd = faceGroup.userData;
     if (fd.lPupil) {
@@ -1362,11 +1379,14 @@ function animate() {
     // ── Lip sync — mouth opens with vocal amplitude ────
     const vocalAmp = getVocalAmplitude();
     const lipBaseY = 0.005 - 0.065; // eyeY - lip offset from buildFace
+    // Subtle smile during intimate close-up (stare hold)
+    const smileAmount = (stareState === 'hold' || stareState === 'dolly_in') ? 0.003 : 0;
     if (fd.uLip && fd.lLip) {
-      fd.uLip.position.y = lipBaseY + vocalAmp * 0.010;
-      fd.uLip.scale.x = 1 + vocalAmp * 0.15;
-      fd.lLip.position.y = (lipBaseY - 0.012) - vocalAmp * 0.030;
-      fd.lLip.scale.x = 1 + vocalAmp * 0.2;
+      fd.uLip.position.y = lipBaseY + vocalAmp * 0.010 + smileAmount;
+      fd.uLip.scale.x = 1 + vocalAmp * 0.15 + smileAmount * 8;
+      fd.uLip.rotation.z = Math.PI + smileAmount * 3; // slight upward curve
+      fd.lLip.position.y = (lipBaseY - 0.012) - vocalAmp * 0.030 + smileAmount * 0.5;
+      fd.lLip.scale.x = 1 + vocalAmp * 0.2 + smileAmount * 6;
     }
     // Jaw mesh drops with vocals
     const jawMesh = headGroup.children.find(c => c.geometry === jawGeo);
@@ -1386,7 +1406,7 @@ function animate() {
       const vpLife = new Float32Array(vpMax);     // lifetime 0-1
       vpGeo.setAttribute('position', new THREE.BufferAttribute(vpPos, 3));
       const vpMat = new THREE.PointsMaterial({
-        color: 0xff66aa, size: 0.04, transparent: true, opacity: 0.8,
+        color: 0xff66aa, size: 0.03, transparent: true, opacity: 0.7,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
       const vpMesh = new THREE.Points(vpGeo, vpMat);
@@ -1505,8 +1525,8 @@ function animate() {
 
   // Emissive color shift
   // Skin reacts to the music — bass warms, highs shimmer, vocals glow
-  skinMat.emissive.setHSL(0.95 + valence*0.05 - audio.bass*0.05, 0.3 + audio.mid*0.15, 0.05 + energy*0.05 + audio.vocal*0.03);
-  skinMat.iridescence = 0.35 + audio.high * 0.3; // highs bring out the shimmer
+  skinMat.emissive.setHSL(0.02 + valence*0.03 - audio.bass*0.03, 0.25 + audio.mid*0.1, 0.06 + energy*0.04 + audio.vocal*0.02);
+  skinMat.iridescence = Math.min(0.3, 0.2 + audio.high * 0.15); // subtle shimmer, capped at 0.3
 
   // Camera orbit + stare
   stareTimer += dt;
@@ -1531,8 +1551,8 @@ function animate() {
   } else if (stareState === 'hold') {
     camera.position.set(0, actualHeadY+0.05, 1.2);
     camera.lookAt(stareLookTarget);
-    irisMat.emissiveIntensity = 5 + Math.sin(t*3);
-    eyeGlowL.intensity = 6; eyeGlowR.intensity = 6;
+    irisMat.emissiveIntensity = 3 + Math.sin(t*3) * 0.5;
+    eyeGlowL.intensity = 1.5; eyeGlowR.intensity = 1.5;
     if (stareTimer >= stareHoldDuration) { stareState = 'dolly_out'; stareProgress = 0; }
   } else if (stareState === 'dolly_out') {
     stareProgress += dt / stareDuration;
