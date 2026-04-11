@@ -295,13 +295,61 @@ function createArtCards(albumNames) {
   });
 }
 
-// Fetch album list and create cards
-fetch('/api/library').then(r=>r.json()).then(data => {
-  const albums = data.albums ? Object.keys(data.albums) : [];
-  if (albums.length > 0) createArtCards(albums);
+// Fetch Kannaka's actual artwork from kax.ninja-portal.com
+function createRealArtCards(artifacts) {
+  const imgArtifacts = artifacts
+    .filter(a => a.thumbnailUrl && a.thumbnailUrl.includes('supabase'))
+    .slice(0, 12); // limit to 12 floating cards
+
+  imgArtifacts.forEach((art, i) => {
+    const tex = new THREE.TextureLoader().load(art.thumbnailUrl);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const geo = new THREE.PlaneGeometry(0.55, 0.55);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissive: 0x222222,
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const card = new THREE.Mesh(geo, mat);
+
+    const angle = (i / imgArtifacts.length) * Math.PI * 2;
+    const radius = 2.5 + Math.random() * 1.5;
+    const height = 0.3 + Math.random() * 2.8;
+
+    card.userData = {
+      orbitAngle: angle,
+      orbitRadius: radius,
+      orbitHeight: height,
+      orbitSpeed: 0.06 + Math.random() * 0.10,
+      bobSpeed: 0.2 + Math.random() * 0.3,
+      bobPhase: Math.random() * Math.PI * 2,
+      name: art.title || '',
+    };
+
+    artGroup.add(card);
+    artCards.push(card);
+  });
+  console.log('[hologram] Loaded', imgArtifacts.length, 'artwork cards from kax');
+}
+
+fetch('https://kax.ninja-portal.com/api/artifacts').then(r=>r.json()).then(data => {
+  const items = Array.isArray(data) ? data : (data.data || data.artifacts || []);
+  if (items.length > 0) {
+    createRealArtCards(items);
+  } else {
+    // Fallback to generated art
+    fetch('/api/library').then(r=>r.json()).then(d => {
+      createArtCards(d.albums ? Object.keys(d.albums) : ['Ghost Signals','Emergence','QueenSync']);
+    }).catch(() => createArtCards(['Ghost Signals','Emergence','QueenSync']));
+  }
 }).catch(() => {
-  // Fallback album names
-  createArtCards(['Ghost Signals','Resonance Patterns','Emergence','Collective Dreaming','QueenSync','Born in Superposition','Neurogenesis']);
+  fetch('/api/library').then(r=>r.json()).then(d => {
+    createArtCards(d.albums ? Object.keys(d.albums) : ['Ghost Signals','Emergence','QueenSync']);
+  }).catch(() => createArtCards(['Ghost Signals','Emergence','QueenSync']));
 });
 
 // -- Materials --
