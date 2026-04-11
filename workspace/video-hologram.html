@@ -329,8 +329,7 @@ function buildFace() {
 
   faceGroup.userData = { lIris, rIris, lPupil, rPupil, lCatch, rCatch };
 }
-buildFace();
-headGroup.add(faceGroup); // face is part of the head
+// buildFace() called after headGroup is created below
 
 // Eye glow lights
 const eyeGlowL = new THREE.PointLight(0x44ccdd, 2, 1.5);
@@ -442,6 +441,8 @@ const neck = new THREE.Mesh(neckGeo, headMat.clone());
 neck.position.set(0, -0.15, 0);
 headGroup.add(neck);
 
+buildFace();
+headGroup.add(faceGroup);
 scene.add(headGroup);
 
 // -- Hair — flowing curve tubes --
