@@ -438,19 +438,21 @@ const hairStrands = [];
 const hairCount = 60;
 
 function createHairStrand(angle, r, length, thickness) {
-  // Build a bezier curve from top of head flowing down and back
-  const startX = Math.sin(angle) * r;
-  const startZ = Math.cos(angle) * r;
-  const startY = 0.08;
+  // Hair originates from across the TOP of the skull (crown/part line area)
+  // then flows down and outward, revealing the face
+  const startX = Math.sin(angle) * r * 0.6;  // start closer to center (on the scalp)
+  const startZ = Math.cos(angle) * r * 0.4;  // less offset — more on top
+  const startY = 0.12 + Math.abs(Math.cos(angle)) * 0.03; // higher start, domed across crown
 
-  // Control points — hair flows backward and down with natural curve
-  const endX = startX * 2.5 + (Math.random() - 0.5) * 0.1;
-  const endZ = startZ * 2.0 - 0.05;
+  // Mid-point: hair separates outward from the part
+  const midX = Math.sin(angle) * r * 1.8 + (Math.random() - 0.5) * 0.04;
+  const midZ = Math.cos(angle) * r * 1.2;
+  const midY = startY - length * 0.35;
+
+  // End: flows down and out
+  const endX = Math.sin(angle) * r * 2.8 + (Math.random() - 0.5) * 0.08;
+  const endZ = Math.cos(angle) * r * 1.8 - 0.02;
   const endY = startY - length;
-
-  const midX = startX * 1.5 + (Math.random() - 0.5) * 0.05;
-  const midZ = startZ * 1.3;
-  const midY = startY - length * 0.4;
 
   const curve = new THREE.QuadraticBezierCurve3(
     new THREE.Vector3(startX, startY, startZ),
@@ -477,6 +479,15 @@ function createHairStrand(angle, r, length, thickness) {
   return strand;
 }
 
+// Layer 0: scalp coverage — short dense strands across the top of the head
+for (let i = 0; i < 30; i++) {
+  // Full coverage across the crown from front to back
+  const angle = (i / 30) * Math.PI * 1.8 + Math.PI * 0.1; // nearly full circle
+  const strand = createHairStrand(angle, 0.12 + Math.random() * 0.02, 0.12 + Math.random() * 0.1, 0.014 + Math.random() * 0.008);
+  strand.material.opacity = 0.85;
+  hairGroup.add(strand);
+  hairStrands.push(strand);
+}
 // Layer 1: thick base volume (fills out the hair mass)
 for (let i = 0; i < 35; i++) {
   const angle = (i / 35) * Math.PI * 1.4 + Math.PI * 0.3;
@@ -510,18 +521,13 @@ for (let i = 0; i < 25; i++) {
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
-// Layer 5: framing strands — a few that come forward along the sides of the face
-for (let i = 0; i < 6; i++) {
-  const side = i < 3 ? -1 : 1;
-  const idx = i % 3;
-  const angle = Math.PI * 0.25 + side * (0.05 + idx * 0.08); // near the temples
-  const strand = createHairStrand(angle, 0.12, 0.3 + idx * 0.1, 0.006 + Math.random() * 0.003);
-  // These curve forward alongside the face
-  const pts = strand.userData.curve.points;
-  if (pts && pts.length >= 3) {
-    pts[1].z += 0.08; // pull mid-point forward
-    pts[2].z += 0.05;
-  }
+// Layer 5: face-framing strands — flow from temples down alongside the face
+for (let i = 0; i < 10; i++) {
+  const side = i < 5 ? -1 : 1;
+  const idx = i % 5;
+  const angle = Math.PI * 0.15 + side * (0.03 + idx * 0.06);
+  const strand = createHairStrand(angle, 0.13, 0.25 + idx * 0.08, 0.006 + Math.random() * 0.004);
+  strand.material.opacity = 0.6 + Math.random() * 0.2;
   hairGroup.add(strand);
   hairStrands.push(strand);
 }
