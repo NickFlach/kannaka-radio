@@ -459,22 +459,22 @@ function createHairStrand(angle, r, length, thickness, isPonytail) {
   let midX, midY, midZ, endX, endY, endZ;
 
   if (isPonytail) {
-    // Ponytail: all strands converge at the back of the crown, then fall together
+    // Ponytail: converge at back of crown (head faces -Z due to 180° rotation, so back = +Z)
     const gatherX = (Math.random() - 0.5) * 0.02;
-    const gatherZ = -0.08 + (Math.random() - 0.5) * 0.02; // behind the head
+    const gatherZ = -0.10 + (Math.random() - 0.5) * 0.02; // behind the head in head-local space
     midX = gatherX;
     midZ = gatherZ;
-    midY = 0.10 + (Math.random() - 0.5) * 0.02; // gather point
+    midY = 0.08 + (Math.random() - 0.5) * 0.02;
     endX = gatherX + (Math.random() - 0.5) * 0.04;
-    endZ = gatherZ - 0.05 + (Math.random() - 0.5) * 0.03;
+    endZ = gatherZ - 0.06 + (Math.random() - 0.5) * 0.03;
     endY = midY - length;
   } else {
-    // Scalp strands: short, flat against the head, swept back
-    midX = startX * 0.8 + (Math.random() - 0.5) * 0.02;
-    midZ = startZ - 0.03;
+    // Scalp strands: short, flat, swept toward the back
+    midX = startX * 0.7 + (Math.random() - 0.5) * 0.02;
+    midZ = startZ - 0.04;
     midY = startY - length * 0.4;
-    endX = startX * 0.5 + (Math.random() - 0.5) * 0.02;
-    endZ = startZ - 0.06;
+    endX = startX * 0.4 + (Math.random() - 0.5) * 0.02;
+    endZ = startZ - 0.07;
     endY = startY - length;
   }
 
@@ -741,6 +741,9 @@ function animate() {
   particleMat.opacity = 0.2 + lf*0.6;
 
   // VRM bone animation
+  // Update VRM FIRST (resets pose), then apply our dance on top
+  if (vrm && vrm.update) vrm.update(dt);
+
   let hipSway = 0;
   if (bones.hips) {
     // ── Full dance animation ──────────────────────────
@@ -798,7 +801,6 @@ function animate() {
       bones.rightUpperLeg.rotation.x = Math.sin(beatPhase*0.5+Math.PI)*0.1*e;
       bones.rightUpperLeg.rotation.z = -Math.sin(beatPhase*0.5)*0.03*e;
     }
-    if (vrm && vrm.update) vrm.update(dt);
   }
 
   // ── Heart energy — pulses with the beat, fills the body ──
