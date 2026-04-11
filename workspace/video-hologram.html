@@ -68,9 +68,9 @@ canvas { display: block; }
 
 <script type="importmap">
 { "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.2.0/lib/three-vrm.module.min.js"
 } }
 </script>
 
@@ -553,11 +553,25 @@ const BONE_NAMES = ['hips','spine','chest','upperChest','neck','head','leftUpper
 
 async function loadVRM() {
   const loader = new GLTFLoader();
-  loader.register((parser) => new VRMLoaderPlugin(parser));
-  const gltf = await loader.loadAsync('/models/kannaka.vrm');
-  vrm = gltf.userData.vrm;
-  VRMUtils.removeUnnecessaryJoints(vrm.scene);
-  const model = vrm.scene;
+  let model;
+  try {
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+    const gltf = await loader.loadAsync('/models/kannaka.vrm');
+    vrm = gltf.userData.vrm;
+    if (vrm) {
+      VRMUtils.removeUnnecessaryJoints(vrm.scene);
+      model = vrm.scene;
+      console.log('[hologram] VRM loaded via plugin');
+    } else {
+      model = gltf.scene;
+      console.log('[hologram] VRM plugin returned null, using GLTF scene');
+    }
+  } catch(e) {
+    console.warn('[hologram] VRM plugin failed, loading as plain GLTF:', e.message);
+    const loader2 = new GLTFLoader();
+    const gltf = await loader2.loadAsync('/models/kannaka.vrm');
+    model = gltf.scene;
+  }
   // Scale to ~4 units tall
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
@@ -591,10 +605,22 @@ async function loadVRM() {
     }
   });
   scene.add(model);
-  // Get bone references
-  for (const name of BONE_NAMES) {
-    const node = vrm.humanoid.getRawBoneNode(name);
-    if (node) bones[name] = node;
+  // Get bone references — try VRM humanoid first, then search by name
+  if (vrm && vrm.humanoid) {
+    for (const name of BONE_NAMES) {
+      const node = vrm.humanoid.getRawBoneNode(name);
+      if (node) bones[name] = node;
+    }
+  } else {
+    // Fallback: search the model's skeleton by common bone names
+    model.traverse((child) => {
+      if (child.isBone) {
+        const n = child.name.toLowerCase();
+        for (const name of BONE_NAMES) {
+          if (n.includes(name.toLowerCase())) bones[name] = child;
+        }
+      }
+    });
   }
   headBone = bones.head || null;
 
@@ -750,7 +776,7 @@ function animate() {
       bones.rightUpperLeg.rotation.x = Math.sin(beatPhase*0.5+Math.PI)*0.1*e;
       bones.rightUpperLeg.rotation.z = -Math.sin(beatPhase*0.5)*0.03*e;
     }
-    vrm.update(dt);
+    if (vrm && vrm.update) vrm.update(dt);
   }
 
   // ── Heart energy — pulses with the beat, fills the body ──
