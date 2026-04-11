@@ -1349,19 +1349,137 @@ function animate() {
       bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.04 * e;
     }
 
-    // Arms — style-specific character
+    // ── Arms — dance base + gesture system ──────────────
+    // Gesture state machine
+    if (!window._gesture) window._gesture = {
+      type: 'none', // none, point, reach, beckon, heart, present, wave
+      timer: 5 + Math.random() * 8,
+      progress: 0, // 0→1 blend in, hold, blend out
+      phase: 'idle', // idle, blendIn, hold, blendOut
+      hand: 'right', // which hand leads
+      holdDur: 0,
+    };
+    const g = window._gesture;
+    g.timer -= dt;
+
+    // Trigger new gesture
+    if (g.phase === 'idle' && g.timer <= 0) {
+      const gestures = ['point', 'reach', 'beckon', 'heart', 'present', 'wave'];
+      g.type = gestures[Math.floor(Math.random() * gestures.length)];
+      g.hand = Math.random() > 0.5 ? 'right' : 'left';
+      g.phase = 'blendIn';
+      g.progress = 0;
+      g.holdDur = 1.5 + Math.random() * 3;
+      // Vocal moments trigger pointing/reaching more
+      if (audio.vocal > 0.3) g.type = Math.random() > 0.5 ? 'point' : 'reach';
+    }
+
+    // Advance gesture state
+    if (g.phase === 'blendIn') {
+      g.progress = Math.min(1, g.progress + dt * 1.5);
+      if (g.progress >= 1) { g.phase = 'hold'; g.progress = 0; }
+    } else if (g.phase === 'hold') {
+      g.progress += dt;
+      if (g.progress >= g.holdDur) { g.phase = 'blendOut'; g.progress = 1; }
+    } else if (g.phase === 'blendOut') {
+      g.progress = Math.max(0, g.progress - dt * 1.2);
+      if (g.progress <= 0) { g.phase = 'idle'; g.type = 'none'; g.timer = 4 + Math.random() * 8; }
+    }
+
+    // Smoothstep for blending
+    const gBlend = g.phase === 'idle' ? 0 : g.phase === 'hold' ? 1 :
+      g.progress * g.progress * (3 - 2 * g.progress);
+
+    // Base dance arm movement
     const armRaise = [0.35, 0.25, 0.45, 0.55][style];
-    const armPhaseL = (style === 1 ? beatPhase * 0.5 : slow) + 0.5;
-    const armPhaseR = armPhaseL + [2.0, 1.5, 2.5, Math.PI][style];
+    const aL = (style === 1 ? beatPhase * 0.5 : slow) + 0.5;
+    const aR = aL + [2.0, 1.5, 2.5, Math.PI][style];
+    let luaZ = 0.15 + Math.sin(aL) * armRaise * e;
+    let luaX = Math.sin(aL * 0.7) * 0.25 * e;
+    let luaY = Math.sin(aL * 0.5) * 0.15 * e;
+    let ruaZ = -0.15 - Math.sin(aR) * armRaise * e;
+    let ruaX = Math.sin(aR * 0.7) * 0.25 * e;
+    let ruaY = -Math.sin(aR * 0.5) * 0.15 * e;
+    let llaX = -(Math.max(0, Math.sin(aL + 0.8)) * 0.6 * e + 0.15);
+    let rlaX = -(Math.max(0, Math.sin(aR + 0.8)) * 0.6 * e + 0.15);
+    let lhX = Math.sin(slow * 0.8 + 1) * 0.2 * e;
+    let rhX = Math.sin(slow * 0.8 + 2.5) * 0.2 * e;
+
+    // Gesture targets (override one arm based on gesture type)
+    if (gBlend > 0.01) {
+      const isR = g.hand === 'right';
+      let tUaZ, tUaX, tUaY, tLaX, tHx, tHz;
+
+      if (g.type === 'point') {
+        // Point forward and up — arm extended, finger direction
+        tUaZ = isR ? -1.2 : 1.2;  // arm out to side and up
+        tUaX = -0.5;               // forward
+        tUaY = isR ? -0.3 : 0.3;
+        tLaX = -0.1;               // straight elbow
+        tHx = -0.2; tHz = 0;       // wrist angled
+      } else if (g.type === 'reach') {
+        // Reach upward — arm stretches above
+        tUaZ = isR ? -0.8 : 0.8;
+        tUaX = -0.9;               // reaching up
+        tUaY = 0;
+        tLaX = -0.15;
+        tHx = -0.3; tHz = 0;
+      } else if (g.type === 'beckon') {
+        // Beckoning — arm forward, elbow bent, hand curling
+        tUaZ = isR ? -0.6 : 0.6;
+        tUaX = -0.4;
+        tUaY = isR ? -0.2 : 0.2;
+        tLaX = -1.2;               // sharp elbow bend
+        tHx = 0.3 + Math.sin(t * 3) * 0.3; tHz = 0.2; // curling motion
+      } else if (g.type === 'heart') {
+        // Hand to heart — arm crosses to chest
+        tUaZ = isR ? 0.3 : -0.3;   // cross body
+        tUaX = -0.3;
+        tUaY = isR ? 0.4 : -0.4;   // turned inward
+        tLaX = -1.5;               // tight elbow
+        tHx = 0; tHz = 0;
+      } else if (g.type === 'present') {
+        // Presenting — arm sweeps out gracefully
+        tUaZ = isR ? -1.4 : 1.4;
+        tUaX = -0.2;
+        tUaY = isR ? -0.3 : 0.3;
+        tLaX = -0.2;
+        tHx = 0.2; tHz = isR ? -0.3 : 0.3;
+      } else { // wave
+        // Waving — arm up, hand rotating
+        tUaZ = isR ? -1.0 : 1.0;
+        tUaX = -0.7;
+        tUaY = 0;
+        tLaX = -0.8;
+        tHx = Math.sin(t * 4) * 0.4; tHz = Math.cos(t * 4) * 0.3;
+      }
+
+      // Blend gesture onto the target arm
+      if (isR) {
+        ruaZ += (tUaZ - ruaZ) * gBlend;
+        ruaX += (tUaX - ruaX) * gBlend;
+        ruaY += (tUaY - ruaY) * gBlend;
+        rlaX += (tLaX - rlaX) * gBlend;
+        rhX += (tHx - rhX) * gBlend;
+      } else {
+        luaZ += (tUaZ - luaZ) * gBlend;
+        luaX += (tUaX - luaX) * gBlend;
+        luaY += (tUaY - luaY) * gBlend;
+        llaX += (tLaX - llaX) * gBlend;
+        lhX += (tHx - lhX) * gBlend;
+      }
+    }
+
+    // Apply arm rotations
     if (bones.leftUpperArm) {
-      bones.leftUpperArm.rotation.z = 0.15 + Math.sin(armPhaseL) * armRaise * e;
-      bones.leftUpperArm.rotation.x = Math.sin(armPhaseL * 0.7) * 0.25 * e;
-      bones.leftUpperArm.rotation.y = Math.sin(armPhaseL * 0.5) * 0.15 * e;
+      bones.leftUpperArm.rotation.z = luaZ;
+      bones.leftUpperArm.rotation.x = luaX;
+      bones.leftUpperArm.rotation.y = luaY;
     }
     if (bones.rightUpperArm) {
-      bones.rightUpperArm.rotation.z = -0.15 - Math.sin(armPhaseR) * armRaise * e;
-      bones.rightUpperArm.rotation.x = Math.sin(armPhaseR * 0.7) * 0.25 * e;
-      bones.rightUpperArm.rotation.y = -Math.sin(armPhaseR * 0.5) * 0.15 * e;
+      bones.rightUpperArm.rotation.z = ruaZ;
+      bones.rightUpperArm.rotation.x = ruaX;
+      bones.rightUpperArm.rotation.y = ruaY;
     }
 
     // Legs: weight shift, one knee bends slightly
@@ -1373,22 +1491,18 @@ function animate() {
       bones.rightUpperLeg.rotation.x = Math.sin(slow + Math.PI) * 0.08 * e;
       bones.rightUpperLeg.rotation.z = -Math.sin(slow) * 0.04 * e;
     }
-    // Elbows — follow upper arm with delay
-    if (bones.leftLowerArm) {
-      bones.leftLowerArm.rotation.x = -(Math.max(0, Math.sin(armPhaseL + 0.8)) * 0.6 * e + 0.15);
-    }
-    if (bones.rightLowerArm) {
-      bones.rightLowerArm.rotation.x = -(Math.max(0, Math.sin(armPhaseR + 0.8)) * 0.6 * e + 0.15);
-    }
+    // Elbows — use gesture-blended values
+    if (bones.leftLowerArm) bones.leftLowerArm.rotation.x = llaX;
+    if (bones.rightLowerArm) bones.rightLowerArm.rotation.x = rlaX;
 
-    // Hands: gentle wrist movement
+    // Hands — use gesture-blended values + dance wrist roll
     if (bones.leftHand) {
-      bones.leftHand.rotation.x = Math.sin(slow * 0.8 + 1) * 0.2 * e;
-      bones.leftHand.rotation.z = Math.sin(slow * 0.6) * 0.15 * e;
+      bones.leftHand.rotation.x = lhX;
+      bones.leftHand.rotation.z = Math.sin(slow * 0.6) * 0.15 * e * (1 - gBlend * (g.hand === 'left' ? 1 : 0));
     }
     if (bones.rightHand) {
-      bones.rightHand.rotation.x = Math.sin(slow * 0.8 + 2.5) * 0.2 * e;
-      bones.rightHand.rotation.z = -Math.sin(slow * 0.6 + 1) * 0.15 * e;
+      bones.rightHand.rotation.x = rhX;
+      bones.rightHand.rotation.z = -Math.sin(slow * 0.6 + 1) * 0.15 * e * (1 - gBlend * (g.hand === 'right' ? 1 : 0));
     }
 
     // Lower legs: style-specific knee bend depth
