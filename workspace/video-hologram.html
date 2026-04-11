@@ -701,18 +701,61 @@ function animate() {
   // VRM bone animation
   let hipSway = 0;
   if (vrm && bones.hips) {
-    hipSway = Math.sin(beatPhase*0.5)*0.15*energy + Math.sin(beatPhase+0.5)*0.04*energy;
+    // ── Full dance animation ──────────────────────────
+    const e = Math.min(energy * 2, 1); // amplified energy response
+
+    // Hips: big sway with figure-8 harmonic
+    hipSway = Math.sin(beatPhase*0.5)*0.25*e + Math.sin(beatPhase+0.5)*0.08*e;
     bones.hips.rotation.y = hipSway;
-    const bounce = Math.abs(Math.sin(beatPhase))*0.04*energy;
+    // Hip tilt: weight shift side to side
+    bones.hips.rotation.z = Math.sin(beatPhase*0.5 + 0.3) * 0.06 * e;
+
+    // Bounce: real vertical movement
+    const bounce = Math.abs(Math.sin(beatPhase))*0.08*e;
     if (bones.hips.userData.restY === undefined) bones.hips.userData.restY = bones.hips.position.y;
     bones.hips.position.y = bones.hips.userData.restY + bounce;
-    if (bones.spine) { bones.spine.rotation.y = -hipSway*0.5; bones.spine.rotation.x = Math.sin(beatPhase*0.25)*0.03*energy; }
-    if (bones.chest) bones.chest.rotation.y = -hipSway*0.3;
-    if (bones.head) { bones.head.rotation.x = Math.sin(beatPhase)*0.04*energy; bones.head.rotation.z = Math.sin(beatPhase*0.5)*0.02*energy; }
-    if (bones.leftUpperArm) { bones.leftUpperArm.rotation.z = Math.sin(beatPhase*0.5+1)*0.15*energy; bones.leftUpperArm.rotation.x = Math.sin(beatPhase*0.25)*0.1*energy; }
-    if (bones.rightUpperArm) { bones.rightUpperArm.rotation.z = -Math.sin(beatPhase*0.5+1)*0.15*energy; bones.rightUpperArm.rotation.x = Math.sin(beatPhase*0.25+Math.PI)*0.1*energy; }
-    if (bones.leftUpperLeg) bones.leftUpperLeg.rotation.x = Math.sin(beatPhase*0.5)*0.06*energy;
-    if (bones.rightUpperLeg) bones.rightUpperLeg.rotation.x = Math.sin(beatPhase*0.5+Math.PI)*0.06*energy;
+
+    // Spine: counter-twist + slight forward lean with rhythm
+    if (bones.spine) {
+      bones.spine.rotation.y = -hipSway * 0.6;
+      bones.spine.rotation.x = Math.sin(beatPhase*0.25)*0.05*e + 0.02; // slight forward lean
+      bones.spine.rotation.z = Math.sin(beatPhase*0.5 + 1)*0.04*e;
+    }
+
+    // Chest: counter the hips more
+    if (bones.chest) {
+      bones.chest.rotation.y = -hipSway * 0.4;
+      bones.chest.rotation.x = Math.sin(beatPhase*0.5)*0.03*e;
+    }
+
+    // Head: TILTED UP slightly (-x = looking up), gentle sway with the music
+    if (bones.head) {
+      bones.head.rotation.x = -0.08 + Math.sin(beatPhase)*0.05*e; // -0.08 = lifted chin
+      bones.head.rotation.z = Math.sin(beatPhase*0.5)*0.04*e;
+      bones.head.rotation.y = Math.sin(beatPhase*0.25)*0.06*e; // head turns side to side
+    }
+
+    // Arms: expressive, asymmetric
+    if (bones.leftUpperArm) {
+      bones.leftUpperArm.rotation.z = 0.1 + Math.sin(beatPhase*0.5+1)*0.3*e;
+      bones.leftUpperArm.rotation.x = Math.sin(beatPhase*0.25)*0.2*e;
+      bones.leftUpperArm.rotation.y = Math.sin(beatPhase*0.5)*0.1*e;
+    }
+    if (bones.rightUpperArm) {
+      bones.rightUpperArm.rotation.z = -0.1 - Math.sin(beatPhase*0.5+1.5)*0.3*e;
+      bones.rightUpperArm.rotation.x = Math.sin(beatPhase*0.25+Math.PI)*0.2*e;
+      bones.rightUpperArm.rotation.y = -Math.sin(beatPhase*0.5+1)*0.1*e;
+    }
+
+    // Legs: alternating weight shift
+    if (bones.leftUpperLeg) {
+      bones.leftUpperLeg.rotation.x = Math.sin(beatPhase*0.5)*0.1*e;
+      bones.leftUpperLeg.rotation.z = Math.sin(beatPhase*0.5)*0.03*e;
+    }
+    if (bones.rightUpperLeg) {
+      bones.rightUpperLeg.rotation.x = Math.sin(beatPhase*0.5+Math.PI)*0.1*e;
+      bones.rightUpperLeg.rotation.z = -Math.sin(beatPhase*0.5)*0.03*e;
+    }
     vrm.update(dt);
   }
 
