@@ -1167,132 +1167,155 @@ function animate() {
     const t2 = beatPhase * 0.25;
 
     // Style 0=sensual, 1=groove, 2=wave, 3=fierce
-    const hipAmp = [0.30, 0.20, 0.15, 0.35][style];
-    const hipXAmp = [0.08, 0.06, 0.12, 0.10][style];
-    const hipZAmp = [0.10, 0.08, 0.06, 0.12][style];
     const hipPhase = style === 1 ? beatPhase * 0.5 : slow;
-    // Bass hits push the hips harder
     const bassKick = audio.bass * 0.15;
-    hipSway = Math.sin(hipPhase) * (hipAmp + bassKick) * e + Math.sin(hipPhase * 2 + 0.5) * 0.08 * e;
-    bones.hips.rotation.y = hipSway;
-    bones.hips.rotation.x = Math.sin(hipPhase) * (hipXAmp + bassKick * 0.5) * e;
-    bones.hips.rotation.z = Math.sin(hipPhase + 0.7) * hipZAmp * e;
-    // Beat hit: sharp hip pop
-    if (audio.beat) bones.hips.rotation.z += 0.06 * e;
+    // Micro-tremor: tiny random movement = she's alive
+    const micro = () => (Math.random() - 0.5) * 0.003 * e;
 
-    // Bounce varies by style
+    // ── Hips: figure-8 isolation with layered harmonics ──
+    const hipY1 = Math.sin(hipPhase) * [0.30, 0.20, 0.15, 0.35][style];
+    const hipY2 = Math.sin(hipPhase * 2 + 0.5) * 0.10;
+    const hipY3 = Math.sin(hipPhase * 3 + 1.2) * 0.03; // third harmonic
+    hipSway = (hipY1 + hipY2 + hipY3 + bassKick) * e;
+    bones.hips.rotation.y = hipSway;
+    // Figure-8 in X/Z plane (not just sine)
+    bones.hips.rotation.x = (Math.sin(hipPhase) * [0.08,0.06,0.12,0.10][style] + Math.sin(hipPhase * 2) * 0.03 + bassKick * 0.4) * e + micro();
+    bones.hips.rotation.z = (Math.cos(hipPhase + 0.7) * [0.10,0.08,0.06,0.12][style] + Math.sin(hipPhase * 1.5) * 0.04) * e + micro();
+    if (audio.beat) { bones.hips.rotation.z += 0.07 * e; bones.hips.rotation.x += 0.03 * e; }
+
+    // Bounce: layered
     const bounceAmp = [0.04, 0.10, 0.03, 0.12][style];
-    const bassBounce = audio.beat ? 0.04 : 0; // extra drop on beat
-    const bounce = Math.pow(Math.abs(Math.sin(beatPhase)), [2,1.5,3,1][style]) * bounceAmp * e + bassBounce;
+    const bounce1 = Math.pow(Math.abs(Math.sin(beatPhase)), [2,1.5,3,1][style]) * bounceAmp;
+    const bounce2 = Math.abs(Math.sin(beatPhase * 2)) * 0.015; // double-time micro-bounce
+    const bounce = (bounce1 + bounce2) * e + (audio.beat ? 0.05 : 0);
     if (bones.hips.userData.restY === undefined) bones.hips.userData.restY = bones.hips.position.y;
     bones.hips.position.y = bones.hips.userData.restY + bounce;
+    // Lateral hip shift (actually move sideways, not just rotate)
+    bones.hips.position.x = (bones.hips.userData.restX || 0) + Math.sin(hipPhase) * 0.02 * e;
 
-    // Spine: body roll — delayed wave traveling up from hips
+    // ── Spine: undulating body wave ──
     if (bones.spine) {
-      bones.spine.rotation.y = -hipSway * 0.5;
-      bones.spine.rotation.x = Math.sin(slow - 0.4) * (0.08 + audio.mid * 0.06) * e; // mids drive the body roll
-      bones.spine.rotation.z = Math.sin(slow + 0.8) * 0.06 * e;  // side lean
+      bones.spine.rotation.y = -hipSway * 0.5 + Math.sin(slow * 1.5 + 0.3) * 0.03 * e;
+      bones.spine.rotation.x = (Math.sin(slow - 0.4) * (0.08 + audio.mid * 0.06) + Math.sin(slow * 2 - 0.8) * 0.025) * e + micro();
+      bones.spine.rotation.z = (Math.sin(slow + 0.8) * 0.06 + Math.cos(slow * 0.7) * 0.02) * e;
     }
 
-    // Chest: isolation — moves independently, sensual chest circles
+    // ── Chest: independent isolation circles ──
     if (bones.chest) {
-      bones.chest.rotation.y = -hipSway * 0.3 + Math.sin(slow * 2 + 1) * 0.05 * e;
-      bones.chest.rotation.x = Math.sin(slow - 0.8) * 0.06 * e;  // chest push forward/back
-      bones.chest.rotation.z = Math.sin(slow + 1.2) * 0.05 * e;  // chest tilt
+      const chestCircle = slow * [1.3, 1.0, 0.8, 1.5][style];
+      bones.chest.rotation.y = -hipSway * 0.3 + Math.sin(chestCircle + 1) * 0.06 * e;
+      bones.chest.rotation.x = (Math.sin(chestCircle - 0.8) * 0.07 + Math.sin(chestCircle * 2) * 0.02) * e + micro();
+      bones.chest.rotation.z = (Math.sin(chestCircle + 1.2) * 0.06 + audio.mid * 0.03) * e;
     }
 
-    // Upper chest: continues the body roll wave
+    // ── Upper chest: continuation + breathing ──
     if (bones.upperChest) {
-      bones.upperChest.rotation.x = Math.sin(slow - 1.2) * 0.04 * e;
-      bones.upperChest.rotation.z = Math.sin(slow + 1.5) * 0.03 * e;
+      bones.upperChest.rotation.x = (Math.sin(slow - 1.2) * 0.04 + Math.sin(t * 0.8) * 0.01) * e; // breathing
+      bones.upperChest.rotation.z = Math.sin(slow + 1.5) * 0.03 * e + micro();
     }
 
-    // Neck: fluid, follows the wave
+    // ── Neck: fluid snake-like ──
     if (bones.neck) {
-      bones.neck.rotation.x = Math.sin(slow - 1.5) * 0.04 * e;
-      bones.neck.rotation.z = Math.sin(slow + 2.0) * 0.03 * e;
+      bones.neck.rotation.x = (Math.sin(slow - 1.5) * 0.05 + Math.sin(slow * 2 - 2) * 0.02) * e;
+      bones.neck.rotation.z = (Math.sin(slow + 2.0) * 0.04 + Math.cos(slow * 1.3) * 0.015) * e;
+      bones.neck.rotation.y = Math.sin(slow * 0.7 + 0.5) * 0.03 * e;
     }
 
-    // Head — reacts to highs + vocals
+    // ── Head: layered movement with character ──
     if (bones.head) {
-      const hTurn = [0.10, 0.06, 0.12, 0.15][style];
-      const hTilt = [0.06, 0.04, 0.08, 0.08][style];
-      const hNod = [0.06, 0.08, 0.05, 0.10][style];
       const hSpeed = style === 1 ? beatPhase : t2;
-      bones.head.rotation.x = -0.10 + Math.sin(hSpeed) * hNod * e + audio.vocal * 0.04;
-      bones.head.rotation.y = Math.sin(hSpeed * 0.7) * hTurn * e;
-      bones.head.rotation.z = Math.sin(hSpeed + 0.5) * hTilt * e + audio.high * 0.03;
-      // Beat nod
+      const hNod = [0.06,0.08,0.05,0.10][style];
+      bones.head.rotation.x = -0.10 + (Math.sin(hSpeed) * hNod + Math.sin(hSpeed * 2.3) * 0.015) * e + audio.vocal * 0.04;
+      bones.head.rotation.y = (Math.sin(hSpeed * 0.7) * [0.10,0.06,0.12,0.15][style] + Math.sin(hSpeed * 0.3 + 1) * 0.04) * e;
+      bones.head.rotation.z = (Math.sin(hSpeed + 0.5) * [0.06,0.04,0.08,0.08][style] + audio.high * 0.03) * e + micro();
       if (audio.beat) bones.head.rotation.x += 0.05;
     }
 
-    // Shoulders: rise and roll
+    // ── Shoulders: shimmy + roll with harmonics ──
+    const shBase = (0.08 + audio.high * 0.06);
     if (bones.leftShoulder) {
-      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * (0.08 + audio.high * 0.06) * e + (audio.beat ? 0.04 : 0);
+      bones.leftShoulder.rotation.z = (Math.sin(slow + 0.3) * shBase + Math.sin(slow * 2) * 0.03) * e + (audio.beat ? 0.04 : 0);
       bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.05 * e;
+      bones.leftShoulder.rotation.x = Math.sin(slow * 0.7 + 0.5) * 0.03 * e; // forward roll
     }
     if (bones.rightShoulder) {
-      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * (0.08 + audio.high * 0.06) * e - (audio.beat ? 0.04 : 0);
+      bones.rightShoulder.rotation.z = -(Math.sin(slow + 0.3) * shBase + Math.sin(slow * 2 + 0.5) * 0.03) * e - (audio.beat ? 0.04 : 0);
       bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.05 * e;
+      bones.rightShoulder.rotation.x = Math.sin(slow * 0.7 + 2) * 0.03 * e;
     }
 
-    // Arms — style-specific character
+    // ── Arms: flowing with wrist expression ──
     const armRaise = [0.35, 0.25, 0.45, 0.55][style];
-    const armPhaseL = (style === 1 ? beatPhase * 0.5 : slow) + 0.5;
-    const armPhaseR = armPhaseL + [2.0, 1.5, 2.5, Math.PI][style];
+    const aL = (style === 1 ? beatPhase * 0.5 : slow) + 0.5;
+    const aR = aL + [2.0, 1.5, 2.5, Math.PI][style];
     if (bones.leftUpperArm) {
-      bones.leftUpperArm.rotation.z = 0.15 + Math.sin(armPhaseL) * armRaise * e;
-      bones.leftUpperArm.rotation.x = Math.sin(armPhaseL * 0.7) * 0.25 * e;
-      bones.leftUpperArm.rotation.y = Math.sin(armPhaseL * 0.5) * 0.15 * e;
+      bones.leftUpperArm.rotation.z = 0.15 + (Math.sin(aL) * armRaise + Math.sin(aL * 1.7) * 0.06) * e;
+      bones.leftUpperArm.rotation.x = (Math.sin(aL * 0.7) * 0.25 + Math.sin(aL * 1.3 + 0.5) * 0.06) * e;
+      bones.leftUpperArm.rotation.y = (Math.sin(aL * 0.5) * 0.15 + audio.vocal * 0.05) * e;
     }
     if (bones.rightUpperArm) {
-      bones.rightUpperArm.rotation.z = -0.15 - Math.sin(armPhaseR) * armRaise * e;
-      bones.rightUpperArm.rotation.x = Math.sin(armPhaseR * 0.7) * 0.25 * e;
-      bones.rightUpperArm.rotation.y = -Math.sin(armPhaseR * 0.5) * 0.15 * e;
+      bones.rightUpperArm.rotation.z = -0.15 - (Math.sin(aR) * armRaise + Math.sin(aR * 1.7 + 0.3) * 0.06) * e;
+      bones.rightUpperArm.rotation.x = (Math.sin(aR * 0.7) * 0.25 + Math.sin(aR * 1.3 + 1) * 0.06) * e;
+      bones.rightUpperArm.rotation.y = -(Math.sin(aR * 0.5) * 0.15 + audio.vocal * 0.05) * e;
     }
 
-    // Legs: weight shift, one knee bends slightly
-    if (bones.leftUpperLeg) {
-      bones.leftUpperLeg.rotation.x = Math.sin(slow) * 0.08 * e;
-      bones.leftUpperLeg.rotation.z = Math.sin(slow) * 0.04 * e;
-    }
-    if (bones.rightUpperLeg) {
-      bones.rightUpperLeg.rotation.x = Math.sin(slow + Math.PI) * 0.08 * e;
-      bones.rightUpperLeg.rotation.z = -Math.sin(slow) * 0.04 * e;
-    }
-    // Elbows — follow upper arm with delay
+    // ── Elbows: fluid bend with secondary motion ──
     if (bones.leftLowerArm) {
-      bones.leftLowerArm.rotation.x = -(Math.max(0, Math.sin(armPhaseL + 0.8)) * 0.6 * e + 0.15);
+      const lBend = Math.max(0, Math.sin(aL + 0.8)) * 0.6 + Math.max(0, Math.sin(aL * 1.5 + 1)) * 0.1;
+      bones.leftLowerArm.rotation.x = -(lBend * e + 0.15);
+      bones.leftLowerArm.rotation.y = Math.sin(aL * 0.6 + 0.5) * 0.12 * e; // forearm twist
     }
     if (bones.rightLowerArm) {
-      bones.rightLowerArm.rotation.x = -(Math.max(0, Math.sin(armPhaseR + 0.8)) * 0.6 * e + 0.15);
+      const rBend = Math.max(0, Math.sin(aR + 0.8)) * 0.6 + Math.max(0, Math.sin(aR * 1.5 + 1)) * 0.1;
+      bones.rightLowerArm.rotation.x = -(rBend * e + 0.15);
+      bones.rightLowerArm.rotation.y = -Math.sin(aR * 0.6 + 2) * 0.12 * e;
     }
 
-    // Hands: gentle wrist movement
+    // ── Hands/wrists: circular rolls + expressive gestures ──
     if (bones.leftHand) {
-      bones.leftHand.rotation.x = Math.sin(slow * 0.8 + 1) * 0.2 * e;
-      bones.leftHand.rotation.z = Math.sin(slow * 0.6) * 0.15 * e;
+      const lw = slow * 0.8 + 1;
+      bones.leftHand.rotation.x = (Math.sin(lw) * 0.25 + Math.sin(lw * 2.1) * 0.08) * e;
+      bones.leftHand.rotation.y = Math.sin(lw * 1.3) * 0.2 * e; // wrist roll
+      bones.leftHand.rotation.z = (Math.sin(lw * 0.6) * 0.18 + Math.cos(lw * 1.7) * 0.06) * e;
     }
     if (bones.rightHand) {
-      bones.rightHand.rotation.x = Math.sin(slow * 0.8 + 2.5) * 0.2 * e;
-      bones.rightHand.rotation.z = -Math.sin(slow * 0.6 + 1) * 0.15 * e;
+      const rw = slow * 0.8 + 2.5;
+      bones.rightHand.rotation.x = (Math.sin(rw) * 0.25 + Math.sin(rw * 2.1 + 0.5) * 0.08) * e;
+      bones.rightHand.rotation.y = -Math.sin(rw * 1.3) * 0.2 * e;
+      bones.rightHand.rotation.z = -(Math.sin(rw * 0.6) * 0.18 + Math.cos(rw * 1.7) * 0.06) * e;
     }
 
-    // Lower legs: style-specific knee bend depth
+    // ── Legs: weight shift with hip connection ──
+    const legPhase = slow;
+    const weightShift = Math.sin(legPhase); // which leg bears weight
+    if (bones.leftUpperLeg) {
+      bones.leftUpperLeg.rotation.x = (Math.sin(legPhase) * 0.10 + Math.sin(legPhase * 2) * 0.03) * e;
+      bones.leftUpperLeg.rotation.z = (Math.sin(legPhase) * 0.05 + weightShift * 0.02) * e;
+      bones.leftUpperLeg.rotation.y = Math.sin(legPhase * 0.5) * 0.03 * e; // thigh twist
+    }
+    if (bones.rightUpperLeg) {
+      bones.rightUpperLeg.rotation.x = (Math.sin(legPhase + Math.PI) * 0.10 + Math.sin(legPhase * 2 + Math.PI) * 0.03) * e;
+      bones.rightUpperLeg.rotation.z = (-Math.sin(legPhase) * 0.05 - weightShift * 0.02) * e;
+      bones.rightUpperLeg.rotation.y = -Math.sin(legPhase * 0.5 + 1) * 0.03 * e;
+    }
+
+    // ── Knees: deep bend with style + secondary motion ──
     const kneeAmp = [0.25, 0.35, 0.15, 0.45][style];
     if (bones.leftLowerLeg) {
-      bones.leftLowerLeg.rotation.x = Math.max(0, Math.sin(slow)) * kneeAmp * e + 0.05;
+      bones.leftLowerLeg.rotation.x = Math.max(0, Math.sin(legPhase)) * kneeAmp * e + Math.max(0, Math.sin(legPhase * 2)) * 0.05 * e + 0.05;
     }
     if (bones.rightLowerLeg) {
-      bones.rightLowerLeg.rotation.x = Math.max(0, Math.sin(slow + Math.PI)) * kneeAmp * e + 0.05;
+      bones.rightLowerLeg.rotation.x = Math.max(0, Math.sin(legPhase + Math.PI)) * kneeAmp * e + Math.max(0, Math.sin(legPhase * 2 + Math.PI)) * 0.05 * e + 0.05;
     }
 
-    // Feet/ankles: point and flex
+    // ── Feet: point + flex + twist ──
     if (bones.leftFoot) {
-      bones.leftFoot.rotation.x = Math.sin(slow + 0.5) * 0.1 * e;
+      bones.leftFoot.rotation.x = Math.sin(legPhase + 0.5) * 0.12 * e;
+      bones.leftFoot.rotation.y = Math.sin(legPhase * 0.5) * 0.04 * e; // foot twist
     }
     if (bones.rightFoot) {
-      bones.rightFoot.rotation.x = Math.sin(slow + Math.PI + 0.5) * 0.1 * e;
+      bones.rightFoot.rotation.x = Math.sin(legPhase + Math.PI + 0.5) * 0.12 * e;
+      bones.rightFoot.rotation.y = -Math.sin(legPhase * 0.5 + 1) * 0.04 * e;
     }
   }
 
