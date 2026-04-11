@@ -533,6 +533,7 @@ html, body {
         <option value="ghost">Ghost Form</option>
         <option value="constellation">Constellation</option>
         <option value="waveform">Waveform Ocean</option>
+        <option value="hologram">3D Hologram</option>
       </select>
       <button class="util-btn" id="btn-fullscreen" onclick="doFullscreen()" title="Fullscreen">&#x26F6;</button>
       <button class="util-btn" id="btn-sidebar" onclick="toggleSidebar()" title="Library">&#9776;</button>
@@ -555,6 +556,7 @@ html, body {
     <div class="shortcut-row"><span class="shortcut-key">1</span><span>Ghost Form</span></div>
     <div class="shortcut-row"><span class="shortcut-key">2</span><span>Constellation</span></div>
     <div class="shortcut-row"><span class="shortcut-key">3</span><span>Waveform Ocean</span></div>
+    <div class="shortcut-row"><span class="shortcut-key">4</span><span>3D Hologram</span></div>
     <div class="shortcut-row"><span class="shortcut-key">?</span><span>Toggle this help</span></div>
   </div>
 </div>
@@ -1253,6 +1255,8 @@ document.addEventListener('keydown', function(e) {
     switchMode('constellation');
   } else if (e.code === 'Digit3') {
     switchMode('waveform');
+  } else if (e.code === 'Digit4') {
+    switchMode('hologram');
   } else if (e.key === '?') {
     toggleShortcuts();
   }

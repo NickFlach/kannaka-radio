@@ -124,6 +124,20 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // Music video — 3D Hologram visual
+    if (parsed.pathname === "/video/hologram") {
+      const videoPath = path.join(path.dirname(config.spaPath), "video-hologram.html");
+      try {
+        const html = fs.readFileSync(videoPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+      } catch {
+        res.writeHead(404);
+        res.end("workspace/video-hologram.html not found");
+      }
+      return;
+    }
+
     // Music video — Memory Constellation visual
     if (parsed.pathname === "/video/constellation") {
       const videoPath = path.join(path.dirname(config.spaPath), "video-constellation.html");
