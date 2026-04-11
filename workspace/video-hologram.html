@@ -503,48 +503,7 @@ function createHairStrand(angle, r, length, thickness, isPonytail) {
   return strand;
 }
 
-// ── Scalp coverage: short strands swept back across the top of the head
-for (let i = 0; i < 40; i++) {
-  const angle = (i / 40) * Math.PI * 1.8 + Math.PI * 0.1;
-  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.02, 0.08 + Math.random() * 0.06, 0.012 + Math.random() * 0.008, false);
-  strand.material.opacity = 0.85;
-  hairGroup.add(strand);
-  hairStrands.push(strand);
-}
-
-// ── Ponytail: strands converge at the back crown then fall together
-// Thick inner ponytail
-for (let i = 0; i < 30; i++) {
-  const angle = (i / 30) * Math.PI * 1.6 + Math.PI * 0.2;
-  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.02, 0.35 + Math.random() * 0.3, 0.012 + Math.random() * 0.006, true);
-  hairGroup.add(strand);
-  hairStrands.push(strand);
-}
-// Outer ponytail — longer flowing strands
-for (let i = 0; i < 25; i++) {
-  const angle = (i / 25) * Math.PI * 1.4 + Math.PI * 0.3;
-  const strand = createHairStrand(angle, 0.11 + Math.random() * 0.02, 0.5 + Math.random() * 0.4, 0.008 + Math.random() * 0.005, true);
-  hairGroup.add(strand);
-  hairStrands.push(strand);
-}
-// Fine wispy flyaways around the ponytail
-for (let i = 0; i < 15; i++) {
-  const angle = Math.random() * Math.PI * 1.4 + Math.PI * 0.3;
-  const strand = createHairStrand(angle, 0.10 + Math.random() * 0.03, 0.2 + Math.random() * 0.3, 0.003 + Math.random() * 0.002, true);
-  strand.material.opacity = 0.35 + Math.random() * 0.2;
-  strand.material.emissiveIntensity = 0.4;
-  hairGroup.add(strand);
-  hairStrands.push(strand);
-}
-// Face-framing wisps — a few loose strands at the temples
-for (let i = 0; i < 6; i++) {
-  const side = i < 3 ? -1 : 1;
-  const angle = Math.PI * 0.12 + side * (0.03 + (i % 3) * 0.05);
-  const strand = createHairStrand(angle, 0.11, 0.12 + (i % 3) * 0.05, 0.004 + Math.random() * 0.003, false);
-  strand.material.opacity = 0.5;
-  hairGroup.add(strand);
-  hairStrands.push(strand);
-}
+// Hair removed — will come back to this later
 headGroup.add(hairGroup); // hair is attached to the head
 
 // -- VRM Model --
@@ -746,60 +705,86 @@ function animate() {
 
   let hipSway = 0;
   if (bones.hips) {
-    // ── Full dance animation ──────────────────────────
-    const e = Math.max(0.3, Math.min(energy * 2.5, 1)); // always at least 30% movement
+    // ── Sensual dance — slow, fluid, expressive ─────────
+    const e = Math.max(0.35, Math.min(energy * 2.5, 1));
+    const slow = beatPhase * 0.5;  // half-tempo for sensual feel
+    const t2 = beatPhase * 0.25;   // quarter-tempo for slow waves
 
-    // Hips: big sway with figure-8 harmonic
-    hipSway = Math.sin(beatPhase*0.5)*0.25*e + Math.sin(beatPhase+0.5)*0.08*e;
+    // Hips: slow circular/figure-8 motion — the center of the dance
+    const hipCircleX = Math.sin(slow) * 0.08 * e;            // forward/back roll
+    const hipCircleZ = Math.sin(slow + 0.7) * 0.10 * e;      // side tilt
+    hipSway = Math.sin(slow) * 0.30 * e + Math.sin(slow * 2 + 0.5) * 0.10 * e; // Y rotation
     bones.hips.rotation.y = hipSway;
-    // Hip tilt: weight shift side to side
-    bones.hips.rotation.z = Math.sin(beatPhase*0.5 + 0.3) * 0.06 * e;
+    bones.hips.rotation.x = hipCircleX;
+    bones.hips.rotation.z = hipCircleZ;
 
-    // Bounce: real vertical movement
-    const bounce = Math.abs(Math.sin(beatPhase))*0.08*e;
+    // Bounce: subtle, on the beat
+    const bounce = Math.pow(Math.abs(Math.sin(beatPhase)), 2) * 0.05 * e;
     if (bones.hips.userData.restY === undefined) bones.hips.userData.restY = bones.hips.position.y;
     bones.hips.position.y = bones.hips.userData.restY + bounce;
 
-    // Spine: counter-twist + slight forward lean with rhythm
+    // Spine: body roll — delayed wave traveling up from hips
     if (bones.spine) {
-      bones.spine.rotation.y = -hipSway * 0.6;
-      bones.spine.rotation.x = Math.sin(beatPhase*0.25)*0.05*e + 0.02; // slight forward lean
-      bones.spine.rotation.z = Math.sin(beatPhase*0.5 + 1)*0.04*e;
+      bones.spine.rotation.y = -hipSway * 0.5;
+      bones.spine.rotation.x = Math.sin(slow - 0.4) * 0.08 * e;  // body roll wave
+      bones.spine.rotation.z = Math.sin(slow + 0.8) * 0.06 * e;  // side lean
     }
 
-    // Chest: counter the hips more
+    // Chest: isolation — moves independently, sensual chest circles
     if (bones.chest) {
-      bones.chest.rotation.y = -hipSway * 0.4;
-      bones.chest.rotation.x = Math.sin(beatPhase*0.5)*0.03*e;
+      bones.chest.rotation.y = -hipSway * 0.3 + Math.sin(slow * 2 + 1) * 0.05 * e;
+      bones.chest.rotation.x = Math.sin(slow - 0.8) * 0.06 * e;  // chest push forward/back
+      bones.chest.rotation.z = Math.sin(slow + 1.2) * 0.05 * e;  // chest tilt
     }
 
-    // Head: TILTED UP slightly (-x = looking up), gentle sway with the music
+    // Upper chest: continues the body roll wave
+    if (bones.upperChest) {
+      bones.upperChest.rotation.x = Math.sin(slow - 1.2) * 0.04 * e;
+      bones.upperChest.rotation.z = Math.sin(slow + 1.5) * 0.03 * e;
+    }
+
+    // Neck: fluid, follows the wave
+    if (bones.neck) {
+      bones.neck.rotation.x = Math.sin(slow - 1.5) * 0.04 * e;
+      bones.neck.rotation.z = Math.sin(slow + 2.0) * 0.03 * e;
+    }
+
+    // Head: chin up, slow sensual turns, tilts
     if (bones.head) {
-      bones.head.rotation.x = -0.08 + Math.sin(beatPhase)*0.05*e; // -0.08 = lifted chin
-      bones.head.rotation.z = Math.sin(beatPhase*0.5)*0.04*e;
-      bones.head.rotation.y = Math.sin(beatPhase*0.25)*0.06*e; // head turns side to side
+      bones.head.rotation.x = -0.10 + Math.sin(t2) * 0.06 * e;           // chin lifted
+      bones.head.rotation.z = Math.sin(t2 + 0.5) * 0.06 * e;             // head tilt
+      bones.head.rotation.y = Math.sin(t2 * 0.7) * 0.10 * e;             // slow head turns
     }
 
-    // Arms: expressive, asymmetric
+    // Arms: graceful, flowing — like she's feeling the music
     if (bones.leftUpperArm) {
-      bones.leftUpperArm.rotation.z = 0.1 + Math.sin(beatPhase*0.5+1)*0.3*e;
-      bones.leftUpperArm.rotation.x = Math.sin(beatPhase*0.25)*0.2*e;
-      bones.leftUpperArm.rotation.y = Math.sin(beatPhase*0.5)*0.1*e;
+      const lArmPhase = slow + 0.5;
+      bones.leftUpperArm.rotation.z = 0.15 + Math.sin(lArmPhase) * 0.35 * e;  // raise/lower
+      bones.leftUpperArm.rotation.x = Math.sin(lArmPhase * 0.7) * 0.25 * e;   // forward/back
+      bones.leftUpperArm.rotation.y = Math.sin(lArmPhase * 0.5) * 0.15 * e;   // rotation
     }
     if (bones.rightUpperArm) {
-      bones.rightUpperArm.rotation.z = -0.1 - Math.sin(beatPhase*0.5+1.5)*0.3*e;
-      bones.rightUpperArm.rotation.x = Math.sin(beatPhase*0.25+Math.PI)*0.2*e;
-      bones.rightUpperArm.rotation.y = -Math.sin(beatPhase*0.5+1)*0.1*e;
+      const rArmPhase = slow + 2.0; // offset so arms move asymmetrically
+      bones.rightUpperArm.rotation.z = -0.15 - Math.sin(rArmPhase) * 0.35 * e;
+      bones.rightUpperArm.rotation.x = Math.sin(rArmPhase * 0.7 + 1) * 0.25 * e;
+      bones.rightUpperArm.rotation.y = -Math.sin(rArmPhase * 0.5) * 0.15 * e;
     }
 
-    // Legs: alternating weight shift
+    // Legs: weight shift, one knee bends slightly
     if (bones.leftUpperLeg) {
-      bones.leftUpperLeg.rotation.x = Math.sin(beatPhase*0.5)*0.1*e;
-      bones.leftUpperLeg.rotation.z = Math.sin(beatPhase*0.5)*0.03*e;
+      bones.leftUpperLeg.rotation.x = Math.sin(slow) * 0.08 * e;
+      bones.leftUpperLeg.rotation.z = Math.sin(slow) * 0.04 * e;
     }
     if (bones.rightUpperLeg) {
-      bones.rightUpperLeg.rotation.x = Math.sin(beatPhase*0.5+Math.PI)*0.1*e;
-      bones.rightUpperLeg.rotation.z = -Math.sin(beatPhase*0.5)*0.03*e;
+      bones.rightUpperLeg.rotation.x = Math.sin(slow + Math.PI) * 0.08 * e;
+      bones.rightUpperLeg.rotation.z = -Math.sin(slow) * 0.04 * e;
+    }
+    // Lower legs: subtle knee bend following upper
+    if (bones.leftLowerLeg) {
+      bones.leftLowerLeg.rotation.x = Math.max(0, Math.sin(slow)) * 0.12 * e;
+    }
+    if (bones.rightLowerLeg) {
+      bones.rightLowerLeg.rotation.x = Math.max(0, Math.sin(slow + Math.PI)) * 0.12 * e;
     }
   }
 
