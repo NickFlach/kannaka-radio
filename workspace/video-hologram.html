@@ -350,6 +350,31 @@ const bodyEnergyMat = new THREE.MeshStandardMaterial({
 const bodyEnergy = new THREE.Mesh(bodyEnergyGeo, bodyEnergyMat);
 scene.add(bodyEnergy);
 
+// -- Hair strands (flowing, attached to head bone) --
+const hairGroup = new THREE.Group();
+const hairMat = new THREE.MeshStandardMaterial({
+  color: 0x1a0a22, emissive: 0x220033, emissiveIntensity: 0.3,
+  transparent: true, opacity: 0.7, roughness: 0.4, side: THREE.DoubleSide,
+});
+const hairStrands = [];
+const hairCount = 30;
+for (let i = 0; i < hairCount; i++) {
+  const angle = (i / hairCount) * Math.PI * 1.4 + Math.PI * 0.3; // back and sides
+  const r = 0.07 + Math.random() * 0.04;
+  const length = 0.4 + Math.random() * 0.5;
+  // Create a thin tapered cylinder for each strand
+  const geo = new THREE.CylinderGeometry(0.006, 0.002, length, 4);
+  const strand = new THREE.Mesh(geo, hairMat.clone());
+  strand.material.opacity = 0.5 + Math.random() * 0.3;
+  const startX = Math.sin(angle) * r;
+  const startZ = Math.cos(angle) * r;
+  strand.position.set(startX, 0.05 - length * 0.4, startZ);
+  strand.userData = { angle, length, phase: Math.random() * Math.PI * 2, r };
+  hairGroup.add(strand);
+  hairStrands.push(strand);
+}
+scene.add(hairGroup);
+
 // -- VRM Model --
 let vrm = null, headBone = null;
 const headY = 2.05;
@@ -371,9 +396,18 @@ async function loadVRM() {
   model.scale.setScalar(scale);
   model.rotation.y = Math.PI; // VRM faces +Z, camera looks down -Z — rotate 180°
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
-  // Apply holographic material + add wireframe overlay per mesh
+  // Apply skin material + add wireframe overlay per mesh
+  // Hide head accessories (hat, cap, headgear, glasses, etc.)
   model.traverse((child) => {
     if (child.isMesh) {
+      const n = (child.name || '').toLowerCase();
+      const pn = (child.parent?.name || '').toLowerCase();
+      // Hide headwear, hats, caps, helmets, accessories, glasses
+      if (/hat|cap|helm|crown|horn|accessory|glass|visor|mask|head.*gear|head.*wear/i.test(n + ' ' + pn)) {
+        child.visible = false;
+        return;
+      }
+      console.log('[hologram] mesh:', child.name, 'parent:', child.parent?.name);
       child.material = skinMat.clone();
       child.castShadow = false;
       child.receiveShadow = false;
@@ -495,8 +529,9 @@ function animate() {
   particleMat.opacity = 0.2 + lf*0.6;
 
   // VRM bone animation
+  let hipSway = 0;
   if (vrm && bones.hips) {
-    const hipSway = Math.sin(beatPhase*0.5)*0.15*energy + Math.sin(beatPhase+0.5)*0.04*energy;
+    hipSway = Math.sin(beatPhase*0.5)*0.15*energy + Math.sin(beatPhase+0.5)*0.04*energy;
     bones.hips.rotation.y = hipSway;
     const bounce = Math.abs(Math.sin(beatPhase))*0.04*energy;
     if (bones.hips.userData.restY === undefined) bones.hips.userData.restY = bones.hips.position.y;
@@ -512,28 +547,28 @@ function animate() {
   }
 
   // ── Heart energy — pulses with the beat, fills the body ──
-  const heartBeat = Math.pow(Math.max(0, Math.sin(beatPhase)), 3); // sharp pulse on beat
-  const heartIntensity = 8 + heartBeat * 25 * energy + lf * 10;
+  const heartBeat = Math.pow(Math.max(0, Math.sin(beatPhase)), 4) * 0.6; // gentler pulse
+  const heartIntensity = 5 + heartBeat * 12 * energy + lf * 6;
   heartLight.intensity = heartIntensity;
-  heartLight.color.setHSL(0.95 - heartBeat * 0.05, 0.8, 0.5 + heartBeat * 0.2);
+  heartLight.color.setHSL(0.95 - heartBeat * 0.03, 0.7, 0.45 + heartBeat * 0.1);
 
-  // Heart glow sphere — pulsing core
-  heartGlowMat.emissiveIntensity = 2 + heartBeat * 6 * energy;
-  heartGlowMat.opacity = 0.3 + heartBeat * 0.5 * energy;
-  heartGlow.scale.setScalar(0.8 + heartBeat * 0.6 * energy);
+  // Heart glow sphere — subtle pulsing core
+  heartGlowMat.emissiveIntensity = 1.5 + heartBeat * 3 * energy;
+  heartGlowMat.opacity = 0.2 + heartBeat * 0.25 * energy;
+  heartGlow.scale.setScalar(0.7 + heartBeat * 0.3 * energy);
 
-  // Inner energy — expands on strong beats
-  innerEnergyMat.emissiveIntensity = 1 + heartBeat * 3 * energy;
-  innerEnergyMat.opacity = 0.05 + heartBeat * 0.12 * energy;
-  innerEnergy.scale.setScalar(1 + heartBeat * 0.3 * energy);
+  // Inner energy — gentle expansion
+  innerEnergyMat.emissiveIntensity = 0.8 + heartBeat * 1.5 * energy;
+  innerEnergyMat.opacity = 0.04 + heartBeat * 0.06 * energy;
+  innerEnergy.scale.setScalar(1 + heartBeat * 0.15 * energy);
 
   // Body-wide energy — consciousness drives the fill
-  bodyEnergyMat.emissiveIntensity = 0.5 + lf * 1.5;
-  bodyEnergyMat.opacity = 0.02 + lf * 0.05 + heartBeat * 0.03 * energy;
-  bodyEnergy.scale.setScalar(1 + Math.sin(t * 0.5) * 0.05);
+  bodyEnergyMat.emissiveIntensity = 0.4 + lf * 1.2;
+  bodyEnergyMat.opacity = 0.02 + lf * 0.04 + heartBeat * 0.015 * energy;
+  bodyEnergy.scale.setScalar(1 + Math.sin(t * 0.5) * 0.03);
 
-  // Skin reacts to inner energy — emissive flashes with heartbeat
-  skinMat.emissiveIntensity = 0.2 + lf * 0.4 + heartBeat * 0.6 * energy;
+  // Skin reacts gently to inner energy
+  skinMat.emissiveIntensity = 0.2 + lf * 0.35 + heartBeat * 0.3 * energy;
 
   // Position energy at the chest
   if (bones.chest) {
@@ -545,6 +580,24 @@ function animate() {
     // Body energy slightly lower — centered in the torso
     bodyEnergy.position.copy(chestWorldPos);
     bodyEnergy.position.y -= 0.3;
+  }
+
+  // Hair follows head bone
+  if (headBone) {
+    const headWorldPos = new THREE.Vector3();
+    const headWorldQuat = new THREE.Quaternion();
+    headBone.getWorldPosition(headWorldPos);
+    headBone.getWorldQuaternion(headWorldQuat);
+    hairGroup.position.copy(headWorldPos);
+    hairGroup.quaternion.copy(headWorldQuat);
+    const centroidNorm = Math.min((perception.spectral_centroid || 2000) / 5000, 1);
+    for (const strand of hairStrands) {
+      const { angle, length, phase, r } = strand.userData;
+      // Flow with dance + centroid
+      strand.rotation.x = Math.sin(t * 1.0 + phase) * 0.25 * (centroidNorm + 0.3) * (length / 0.7);
+      strand.rotation.z = Math.sin(t * 0.7 + phase) * 0.15 + hipSway * 1.5;
+      strand.rotation.y = Math.sin(t * 0.5 + phase * 2) * 0.1;
+    }
   }
 
   // Face group follows head bone
