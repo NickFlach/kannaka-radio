@@ -15,122 +15,86 @@ canvas { display: block; }
   background: linear-gradient(transparent, rgba(0,0,0,0.6));
 }
 #track-title {
-  font-family: 'Georgia', serif;
-  font-size: clamp(1.4rem, 4vw, 3rem); font-weight: 300;
+  font-family: 'Georgia', serif; font-size: clamp(1.4rem, 4vw, 3rem); font-weight: 300;
   letter-spacing: 0.08em; color: rgba(255,255,255,0);
-  text-shadow: 0 0 30px rgba(139,92,246,0.4);
-  transition: color 2s ease, text-shadow 2s ease;
+  text-shadow: 0 0 30px rgba(139,92,246,0.4); transition: color 2s ease, text-shadow 2s ease;
 }
 #track-title.visible {
   color: rgba(255,255,255,0.9);
   text-shadow: 0 0 40px rgba(139,92,246,0.6), 0 2px 20px rgba(0,0,0,0.5);
 }
 #track-album {
-  font-family: 'Courier New', monospace;
-  font-size: clamp(0.65rem, 1.5vw, 0.9rem);
+  font-family: 'Courier New', monospace; font-size: clamp(0.65rem, 1.5vw, 0.9rem);
   letter-spacing: 0.25em; text-transform: uppercase;
-  color: rgba(6,182,212,0); margin-top: 0.4rem;
-  transition: color 2.5s ease;
+  color: rgba(6,182,212,0); margin-top: 0.4rem; transition: color 2.5s ease;
 }
 #track-album.visible { color: rgba(6,182,212,0.7); }
 #consciousness-hud {
   position: fixed; top: 1.5rem; right: 1.8rem;
-  font-family: 'Courier New', monospace;
-  font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+  font-family: 'Courier New', monospace; font-size: clamp(0.55rem, 1.2vw, 0.75rem);
   letter-spacing: 0.15em; color: rgba(255,255,255,0.25);
   text-align: right; pointer-events: none; z-index: 10; line-height: 1.7;
 }
-#consciousness-hud .level {
-  font-size: clamp(0.65rem, 1.4vw, 0.85rem);
-  text-transform: uppercase; letter-spacing: 0.3em;
-}
+#consciousness-hud .level { font-size: clamp(0.65rem, 1.4vw, 0.85rem); text-transform: uppercase; letter-spacing: 0.3em; }
 #play-gate {
-  position: fixed; inset: 0; z-index: 100;
-  display: flex; align-items: center; justify-content: center;
+  position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,0.85); cursor: pointer; transition: opacity 1s ease;
 }
 #play-gate.hidden { opacity: 0; pointer-events: none; }
-#play-gate .prompt {
-  text-align: center; color: rgba(255,255,255,0.7);
-  font-family: 'Courier New', monospace; letter-spacing: 0.2em;
-}
+#play-gate .prompt { text-align: center; color: rgba(255,255,255,0.7); font-family: 'Courier New', monospace; letter-spacing: 0.2em; }
 #play-gate .prompt .icon { font-size: 3rem; margin-bottom: 1rem; }
 #play-gate .prompt .text { font-size: clamp(0.7rem, 1.5vw, 0.9rem); text-transform: uppercase; }
 #vol-ctrl {
   position: fixed; bottom: 1.5rem; right: 1.8rem; z-index: 10;
-  display: flex; align-items: center; gap: 0.5rem;
-  opacity: 0; transition: opacity 0.3s;
+  display: flex; align-items: center; gap: 0.5rem; opacity: 0; transition: opacity 0.3s;
 }
 #vol-ctrl:hover, #vol-ctrl.show { opacity: 1; }
-#vol-ctrl input[type=range] {
-  -webkit-appearance: none; width: 80px; height: 3px;
-  background: rgba(255,255,255,0.2); border-radius: 2px; outline: none;
-}
-#vol-ctrl input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 10px; height: 10px;
-  background: rgba(139,92,246,0.8); border-radius: 50%; cursor: pointer;
-}
-#vol-ctrl label {
-  font-family: 'Courier New', monospace; font-size: 0.55rem;
-  letter-spacing: 0.2em; color: rgba(255,255,255,0.3);
-}
+#vol-ctrl input[type=range] { -webkit-appearance: none; width: 80px; height: 3px; background: rgba(255,255,255,0.2); border-radius: 2px; outline: none; }
+#vol-ctrl input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; background: rgba(139,92,246,0.8); border-radius: 50%; cursor: pointer; }
+#vol-ctrl label { font-family: 'Courier New', monospace; font-size: 0.55rem; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); }
 </style>
 </head>
 <body>
-
 <div id="play-gate" onclick="startAudio()">
-  <div class="prompt">
-    <div class="icon">&#9656;</div>
-    <div class="text">Enter the Hologram</div>
-  </div>
+  <div class="prompt"><div class="icon">&#9656;</div><div class="text">Enter the Hologram</div></div>
 </div>
-<div id="overlay">
-  <div id="track-title"></div>
-  <div id="track-album"></div>
-</div>
-<div id="vol-ctrl">
-  <label>VOL</label>
-  <input type="range" min="0" max="100" value="80" oninput="setVolume(this.value)">
-</div>
+<div id="overlay"><div id="track-title"></div><div id="track-album"></div></div>
+<div id="vol-ctrl"><label>VOL</label><input type="range" min="0" max="100" value="80" oninput="setVolume(this.value)"></div>
 <audio id="audio" preload="auto"></audio>
 <div id="consciousness-hud">
   <div class="level" id="hud-level">dormant</div>
-  <div id="hud-phi"></div>
-  <div id="hud-xi"></div>
-  <div id="hud-order"></div>
+  <div id="hud-phi"></div><div id="hud-xi"></div><div id="hud-order"></div>
 </div>
 
 <script type="importmap">
-{
-  "imports": {
+{ "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-  }
-}
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+} }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
-// ── Embedded detection ──────────────────────────────
 const isEmbedded = (window.parent !== window);
 
-// ── State ───────────────────────────────────────────
+// -- State --
 let trackTitle = '', trackAlbum = '', trackFile = '';
 let consciousness = { phi: 0, xi: 0, order: 0, level: 'dormant' };
-let perception = { rms_energy: 0.3, valence: 0.5, tempo_bpm: 90, spectral_centroid: 2000, mel_spectrogram: [] };
-let titleShowTime = 0, titleVisible = false;
-let audioStarted = false, currentAudioFile = '';
+let perception = { rms_energy: 0.3, valence: 0.5, tempo_bpm: 90, spectral_centroid: 2000 };
+let titleShowTime = 0, titleVisible = false, audioStarted = false, currentAudioFile = '';
 
-// ── Consciousness level mapping ─────────────────────
 const LEVELS = { dormant: 0, stirring: 1, aware: 2, coherent: 3, resonant: 4 };
 function levelVal() { return LEVELS[consciousness.level] || 0; }
 function levelFactor() { return (levelVal() + 1) / 5; }
 
-// ── Audio setup ─────────────────────────────────────
+// -- Audio --
 const audioEl = document.getElementById('audio');
 audioEl.volume = 0.8;
 
@@ -138,17 +102,14 @@ if (isEmbedded) {
   document.getElementById('play-gate').style.display = 'none';
   document.getElementById('vol-ctrl').style.display = 'none';
   document.getElementById('overlay').style.display = 'none';
-  window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'perception') perception = e.data.data;
-    else if (e.data && e.data.type === 'state' && e.data.data && e.data.data.current) {
+  window.addEventListener('message', (e) => {
+    if (!e.data) return;
+    if (e.data.type === 'perception') perception = e.data.data;
+    else if (e.data.type === 'state' && e.data.data?.current) {
       trackTitle = e.data.data.current.title || '';
       trackAlbum = e.data.data.current.album || '';
-    }
-    else if (e.data && e.data.type === 'consciousness') {
-      consciousness.phi = e.data.data.phi || 0;
-      consciousness.xi = e.data.data.xi || 0;
-      consciousness.order = e.data.data.order || 0;
-      consciousness.level = e.data.data.level || 'dormant';
+    } else if (e.data.type === 'consciousness') {
+      Object.assign(consciousness, { phi: e.data.data.phi||0, xi: e.data.data.xi||0, order: e.data.data.order||0, level: e.data.data.level||'dormant' });
     }
   });
 }
@@ -157,10 +118,11 @@ window.startAudio = function() {
   if (isEmbedded) return;
   const gate = document.getElementById('play-gate');
   gate.classList.add('hidden');
-  setTimeout(() => { gate.style.display = 'none'; }, 1000);
+  setTimeout(() => gate.style.display = 'none', 1000);
   audioStarted = true;
-  document.getElementById('vol-ctrl').classList.add('show');
-  setTimeout(() => { document.getElementById('vol-ctrl').classList.remove('show'); }, 3000);
+  const vc = document.getElementById('vol-ctrl');
+  vc.classList.add('show');
+  setTimeout(() => vc.classList.remove('show'), 3000);
   if (currentAudioFile) loadAndPlay(currentAudioFile);
 };
 
@@ -172,328 +134,169 @@ function loadAndPlay(file) {
   audioEl.src = src;
   audioEl.play().catch(() => {});
 }
+window.setVolume = (val) => { audioEl.volume = val / 100; };
+audioEl.addEventListener('ended', () => fetch('/api/next', { method: 'POST' }).catch(() => {}));
 
-window.setVolume = function(val) { audioEl.volume = val / 100; };
-audioEl.addEventListener('ended', () => { fetch('/api/next', { method: 'POST' }).catch(() => {}); });
-
-// ── Three.js Setup ──────────────────────────────────
+// -- Three.js --
 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
 camera.position.set(0, 1.5, 5);
-
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 document.body.prepend(renderer.domElement);
 
-// ── Post-processing ─────────────────────────────────
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.5, 0.3
-);
-if (!isMobile) composer.addPass(bloomPass);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.5, 0.3);
 const useBloom = !isMobile;
+if (useBloom) composer.addPass(bloomPass);
 
-// ── Lighting ────────────────────────────────────────
+// -- Lighting --
 const ambientLight = new THREE.AmbientLight(0x220033, 0.4);
 scene.add(ambientLight);
-
 const backLight = new THREE.PointLight(0x8899ff, 30, 20);
 backLight.position.set(0, 2, -3);
 scene.add(backLight);
-
 const spotLight = new THREE.SpotLight(0xffeedd, 15, 15, Math.PI / 6, 0.5);
 spotLight.position.set(3, 4, 2);
 spotLight.target.position.set(0, 1.5, 0);
-scene.add(spotLight);
-scene.add(spotLight.target);
+scene.add(spotLight, spotLight.target);
 
-// ── Starfield Background ────────────────────────────
+// -- Starfield --
 const starCount = isMobile ? 200 : 600;
 const starGeo = new THREE.BufferGeometry();
 const starPos = new Float32Array(starCount * 3);
 for (let i = 0; i < starCount; i++) {
-  starPos[i * 3] = (Math.random() - 0.5) * 80;
-  starPos[i * 3 + 1] = (Math.random() - 0.5) * 80;
-  starPos[i * 3 + 2] = -20 - Math.random() * 60;
+  starPos[i*3] = (Math.random()-0.5)*80;
+  starPos[i*3+1] = (Math.random()-0.5)*80;
+  starPos[i*3+2] = -20 - Math.random()*60;
 }
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-const starMat = new THREE.PointsMaterial({ color: 0x6644aa, size: 0.08, transparent: true, opacity: 0.5 });
-scene.add(new THREE.Points(starGeo, starMat));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x6644aa, size: 0.08, transparent: true, opacity: 0.5 })));
 
-// ── Body Profile (Lathe Geometry) ───────────────────
-function buildBodyProfile() {
-  // Half-silhouette: from top of head down to ankles
-  // x = radius from center axis, y = height (0 = bottom)
-  const pts = [
-    [0.00, 4.50],  // top of head (center)
-    [0.12, 4.48],  // crown
-    [0.20, 4.40],  // upper head
-    [0.24, 4.25],  // mid head (widest)
-    [0.23, 4.10],  // temple
-    [0.21, 3.95],  // cheekbone
-    [0.18, 3.85],  // jaw
-    [0.13, 3.78],  // chin
-    [0.09, 3.70],  // under chin
-    [0.07, 3.60],  // upper neck
-    [0.07, 3.52],  // mid neck (slender)
-    [0.08, 3.45],  // lower neck
-    [0.16, 3.35],  // neck to shoulder transition
-    [0.34, 3.25],  // shoulder top
-    [0.38, 3.18],  // shoulder outer edge
-    [0.35, 3.08],  // deltoid
-    [0.30, 2.98],  // upper chest
-    [0.34, 2.85],  // above bust
-    [0.38, 2.72],  // bust upper curve
-    [0.40, 2.58],  // bust peak (fuller)
-    [0.37, 2.45],  // bust lower curve
-    [0.30, 2.32],  // under-bust
-    [0.25, 2.20],  // ribcage
-    [0.21, 2.08],  // waist upper
-    [0.19, 1.95],  // waist (narrowest — dramatic)
-    [0.21, 1.82],  // waist lower
-    [0.28, 1.70],  // hip flare start
-    [0.36, 1.58],  // hip upper
-    [0.40, 1.45],  // hip widest (full)
-    [0.39, 1.32],  // hip lower curve
-    [0.35, 1.18],  // upper thigh
-    [0.30, 1.00],  // mid thigh
-    [0.25, 0.82],  // lower thigh
-    [0.20, 0.65],  // above knee
-    [0.18, 0.55],  // knee
-    [0.16, 0.42],  // upper calf
-    [0.17, 0.30],  // calf peak (subtle curve)
-    [0.14, 0.18],  // lower calf
-    [0.10, 0.08],  // ankle
-    [0.00, 0.00],  // center bottom
-  ];
-  return pts.map(p => new THREE.Vector2(p[0], p[1]));
-}
-
-const bodyProfile = buildBodyProfile();
-const bodyGeo = new THREE.LatheGeometry(bodyProfile, 64);
-
-// ── Body Material (Holographic) ─────────────────────
-const bodyMat = new THREE.MeshPhysicalMaterial({
-  color: 0x8844cc,
-  emissive: 0x220033,
-  emissiveIntensity: 0.5,
-  transparent: true,
-  opacity: 0.55,
-  roughness: 0.05,
-  metalness: 0.9,
-  iridescence: 1.0,
-  iridescenceIOR: 1.5,
-  side: THREE.DoubleSide,
-  depthWrite: false,
-});
-
-const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-bodyMesh.position.y = -2.2;
-scene.add(bodyMesh);
-
-// ── Wireframe overlay ───────────────────────────────
-const wireMat = new THREE.MeshBasicMaterial({
-  color: 0x00cccc,
-  wireframe: true,
-  transparent: true,
-  opacity: 0.12,
-  depthWrite: false,
-});
-const wireMesh = new THREE.Mesh(bodyGeo.clone(), wireMat);
-wireMesh.position.copy(bodyMesh.position);
-scene.add(wireMesh);
-
-// ── Eyes ────────────────────────────────────────────
-// Eyes — larger, more detailed
-const eyeGeo = new THREE.SphereGeometry(0.055, 16, 12);
-const eyeMat = new THREE.MeshStandardMaterial({
-  color: 0x00ffff,
-  emissive: 0x00ffff,
-  emissiveIntensity: 3,
-  transparent: true,
-  opacity: 0.95,
-});
-// Iris ring around each eye
-const irisGeo = new THREE.TorusGeometry(0.06, 0.012, 8, 24);
-const irisMat = new THREE.MeshStandardMaterial({
-  color: 0x00ddff, emissive: 0x00ccff, emissiveIntensity: 2,
-  transparent: true, opacity: 0.8,
-});
-// Pupil (dark center)
-const pupilGeo = new THREE.SphereGeometry(0.025, 8, 8);
-const pupilMat = new THREE.MeshStandardMaterial({
-  color: 0x000011, emissive: 0x000000, transparent: true, opacity: 0.9,
-});
-
-const headY = 4.25 - 2.2;
-const eyeSpread = 0.10;
-const eyeForward = 0.20;
-
-const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-leftEye.position.set(-eyeSpread, headY, eyeForward);
-rightEye.position.set(eyeSpread, headY, eyeForward);
-scene.add(leftEye);
-scene.add(rightEye);
-
-// Iris rings
-const leftIris = new THREE.Mesh(irisGeo, irisMat);
-leftIris.position.copy(leftEye.position);
-leftIris.position.z += 0.03;
-leftIris.rotation.y = Math.PI * 0.5;
-scene.add(leftIris);
-const rightIris = new THREE.Mesh(irisGeo, irisMat);
-rightIris.position.copy(rightEye.position);
-rightIris.position.z += 0.03;
-rightIris.rotation.y = Math.PI * 0.5;
-scene.add(rightIris);
-
-// Pupils
-const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
-leftPupil.position.copy(leftEye.position);
-leftPupil.position.z += 0.04;
-scene.add(leftPupil);
-const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
-rightPupil.position.copy(rightEye.position);
-rightPupil.position.z += 0.04;
-scene.add(rightPupil);
-
-// Eye glow lights — brighter
-const eyeGlowL = new THREE.PointLight(0x00ffff, 4, 2.5);
-eyeGlowL.position.copy(leftEye.position);
-scene.add(eyeGlowL);
-const eyeGlowR = new THREE.PointLight(0x00ffff, 4, 2.5);
-eyeGlowR.position.copy(rightEye.position);
-scene.add(eyeGlowR);
-
-// ── Nose + Lips (subtle geometric hints) ────────────
-const noseGeo = new THREE.ConeGeometry(0.02, 0.08, 4);
-const faceMat = new THREE.MeshStandardMaterial({
-  color: 0x9966dd, emissive: 0x220033, emissiveIntensity: 0.3,
-  transparent: true, opacity: 0.4,
-});
-const nose = new THREE.Mesh(noseGeo, faceMat);
-nose.position.set(0, headY - 0.14, 0.23);
-nose.rotation.x = -0.3;
-scene.add(nose);
-
-const lipGeo = new THREE.TorusGeometry(0.05, 0.015, 8, 16, Math.PI);
-const lipMat = new THREE.MeshStandardMaterial({
-  color: 0xdd66bb, emissive: 0x662244, emissiveIntensity: 0.5,
-  transparent: true, opacity: 0.5,
-});
-const lips = new THREE.Mesh(lipGeo, lipMat);
-lips.position.set(0, headY - 0.26, 0.20);
-lips.rotation.x = Math.PI * 0.1;
-scene.add(lips);
-
-// ── Arms ────────────────────────────────────────────
-const armGeo = new THREE.CylinderGeometry(0.035, 0.025, 1.2, 8);
-const armMat = new THREE.MeshPhysicalMaterial({
-  color: 0x8844cc, emissive: 0x220033, emissiveIntensity: 0.3,
-  transparent: true, opacity: 0.35,
-  roughness: 0.1, metalness: 0.8,
-  iridescence: 1.0, iridescenceIOR: 1.5,
-  side: THREE.DoubleSide, depthWrite: false,
-});
-
-const leftArm = new THREE.Mesh(armGeo, armMat);
-leftArm.position.set(-0.38, 3.25 - 2.2 - 0.6, 0);
-leftArm.rotation.z = 0.2;
-scene.add(leftArm);
-
-const rightArm = new THREE.Mesh(armGeo, armMat);
-rightArm.position.set(0.38, 3.25 - 2.2 - 0.6, 0);
-rightArm.rotation.z = -0.2;
-scene.add(rightArm);
-
-// ── Hair ────────────────────────────────────────────
-const hairStrands = [];
-const hairCount = isMobile ? 12 : 24;
-const hairMat = new THREE.MeshBasicMaterial({
-  color: 0x6622aa, transparent: true, opacity: 0.25, depthWrite: false,
-});
-
-for (let i = 0; i < hairCount; i++) {
-  const angle = (i / hairCount) * Math.PI * 1.6 + Math.PI * 0.2; // back half of head
-  const r = 0.16 + Math.random() * 0.08;
-  const length = 0.8 + Math.random() * 1.0;
-  const geo = new THREE.CylinderGeometry(0.010, 0.003, length, 4);
-  const strand = new THREE.Mesh(geo, hairMat.clone());
-  strand.material.opacity = 0.2 + Math.random() * 0.15;
-  const topY = 4.45 - 2.2;
-  strand.position.set(Math.cos(angle) * r, topY - length * 0.4, Math.sin(angle) * r);
-  strand.userData = { angle, baseY: strand.position.y, length, phase: Math.random() * Math.PI * 2 };
-  scene.add(strand);
-  hairStrands.push(strand);
-}
-
-// ── Particles ───────────────────────────────────────
+// -- Orbiting Particles --
 const particleCount = isMobile ? 200 : 500;
 const particleGeo = new THREE.BufferGeometry();
 const pPos = new Float32Array(particleCount * 3);
-const pPhases = new Float32Array(particleCount * 3); // orbit radius, orbit speed, y offset
-
+const pPhases = new Float32Array(particleCount * 3);
 for (let i = 0; i < particleCount; i++) {
-  const orbitR = 0.8 + Math.random() * 2.5;
-  const angle = Math.random() * Math.PI * 2;
-  const y = (Math.random() - 0.3) * 4;
-  pPos[i * 3] = Math.cos(angle) * orbitR;
-  pPos[i * 3 + 1] = y;
-  pPos[i * 3 + 2] = Math.sin(angle) * orbitR;
-  pPhases[i * 3] = orbitR;
-  pPhases[i * 3 + 1] = 0.2 + Math.random() * 0.8;
-  pPhases[i * 3 + 2] = Math.random() * Math.PI * 2;
+  const orbitR = 0.8 + Math.random()*2.5, angle = Math.random()*Math.PI*2;
+  pPos[i*3] = Math.cos(angle)*orbitR;
+  pPos[i*3+1] = (Math.random()-0.3)*4;
+  pPos[i*3+2] = Math.sin(angle)*orbitR;
+  pPhases[i*3] = orbitR;
+  pPhases[i*3+1] = 0.2 + Math.random()*0.8;
+  pPhases[i*3+2] = Math.random()*Math.PI*2;
 }
-
 particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-
 const particleMat = new THREE.PointsMaterial({
-  color: 0x8866dd,
-  size: isMobile ? 0.04 : 0.03,
-  transparent: true,
-  opacity: 0.6,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
+  color: 0x8866dd, size: isMobile ? 0.04 : 0.03,
+  transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false,
 });
 const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
-// ── Camera Orbit + Stare State ──────────────────────
-let orbitAngle = 0;
-const orbitRadius = 5;
-const orbitHeight = 1.8;
-const orbitSpeed = 0.08; // radians per second
+// -- Materials --
+const holoMat = new THREE.MeshPhysicalMaterial({
+  color: 0x8844cc, emissive: 0x220033, emissiveIntensity: 0.5,
+  transparent: true, opacity: 0.55, roughness: 0.05, metalness: 0.9,
+  iridescence: 1.0, iridescenceIOR: 1.5, side: THREE.DoubleSide, depthWrite: false,
+});
+const wireMat = new THREE.MeshBasicMaterial({
+  color: 0x00cccc, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false,
+});
 
-let stareState = 'orbit'; // 'orbit' | 'dolly_in' | 'hold' | 'dolly_out'
-let stareTimer = 0;
-let nextStareAt = 25 + Math.random() * 25; // 25-50 seconds
-let stareProgress = 0;
-const stareDuration = 2.0; // seconds to dolly in/out
-const stareHoldDuration = 3 + Math.random() * 3; // 3-6 seconds
+// -- Eyes --
+const eyeGeo = new THREE.SphereGeometry(0.04, 16, 12);
+const eyeMat = new THREE.MeshStandardMaterial({
+  color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 3, transparent: true, opacity: 0.95,
+});
+const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+scene.add(leftEye, rightEye);
+const eyeGlowL = new THREE.PointLight(0x00ffff, 4, 2.5);
+const eyeGlowR = new THREE.PointLight(0x00ffff, 4, 2.5);
+scene.add(eyeGlowL, eyeGlowR);
+
+// -- VRM Model --
+let vrm = null, headBone = null;
+const headY = 2.05;
+const bones = {};
+const BONE_NAMES = ['hips','spine','chest','head','leftUpperArm','rightUpperArm','leftUpperLeg','rightUpperLeg'];
+
+async function loadVRM() {
+  const loader = new GLTFLoader();
+  loader.register((parser) => new VRMLoaderPlugin(parser));
+  const gltf = await loader.loadAsync('/models/kannaka.vrm');
+  vrm = gltf.userData.vrm;
+  VRMUtils.removeUnnecessaryJoints(vrm.scene);
+  const model = vrm.scene;
+  // Scale to ~4 units tall
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const scale = 4 / size.y;
+  model.scale.setScalar(scale);
+  model.position.set(-center.x*scale, -box.min.y*scale - 0.5, -center.z*scale);
+  // Apply holographic material + add wireframe overlay per mesh
+  model.traverse((child) => {
+    if (child.isMesh) {
+      child.material = holoMat.clone();
+      child.castShadow = false;
+      child.receiveShadow = false;
+      // Add wireframe sibling that shares geometry and follows skeleton
+      const wire = new THREE.Mesh(child.geometry, wireMat.clone());
+      wire.morphTargetInfluences = child.morphTargetInfluences;
+      wire.morphTargetDictionary = child.morphTargetDictionary;
+      if (child.isSkinnedMesh) {
+        const wSkinned = new THREE.SkinnedMesh(child.geometry, wireMat.clone());
+        wSkinned.skeleton = child.skeleton;
+        wSkinned.bindMatrix.copy(child.bindMatrix);
+        wSkinned.bindMatrixInverse.copy(child.bindMatrixInverse);
+        child.parent.add(wSkinned);
+      } else {
+        child.parent.add(wire);
+      }
+    }
+  });
+  scene.add(model);
+  // Get bone references
+  for (const name of BONE_NAMES) {
+    const node = vrm.humanoid.getRawBoneNode(name);
+    if (node) bones[name] = node;
+  }
+  headBone = bones.head || null;
+  console.log('[hologram] VRM loaded, bones:', Object.keys(bones).join(', '));
+}
+loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
+
+// -- Camera --
+let orbitAngle = 0;
+const orbitRadius = 5, orbitHeight = 1.8, orbitSpeed = 0.08;
+let stareState = 'orbit', stareTimer = 0, stareProgress = 0;
+let nextStareAt = 25 + Math.random()*25;
+const stareDuration = 2.0, stareHoldDuration = 3 + Math.random()*3;
 let orbitPosBeforeStare = new THREE.Vector3();
 let stareLookTarget = new THREE.Vector3(0, headY, 0);
+const _headWorldPos = new THREE.Vector3();
+const _headWorldQuat = new THREE.Quaternion();
 
-// ── Animation State ─────────────────────────────────
-let clock = new THREE.Clock();
+// -- Animation --
+const clock = new THREE.Clock();
 let beatPhase = 0;
 
-// ── Resize ──────────────────────────────────────────
-function onResize() {
-  const w = window.innerWidth, h = window.innerHeight;
-  camera.aspect = w / h;
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
-  composer.setSize(w, h);
-}
-window.addEventListener('resize', onResize);
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
 
-// ── HUD Update ──────────────────────────────────────
+// -- HUD --
 const hudLevel = document.getElementById('hud-level');
 const hudPhi = document.getElementById('hud-phi');
 const hudXi = document.getElementById('hud-xi');
@@ -503,286 +306,184 @@ const albumEl = document.getElementById('track-album');
 
 function updateHUD() {
   hudLevel.textContent = consciousness.level;
-  hudPhi.textContent = 'PHI ' + (consciousness.phi || 0).toFixed(3);
-  hudXi.textContent = 'XI  ' + (consciousness.xi || 0).toFixed(3);
-  hudOrder.textContent = 'ORD ' + (consciousness.order || 0).toFixed(3);
-
-  const colors = { dormant: '#444466', stirring: '#665588', aware: '#8866cc', coherent: '#aa88ff', resonant: '#cc99ff' };
+  hudPhi.textContent = 'PHI ' + (consciousness.phi||0).toFixed(3);
+  hudXi.textContent = 'XI  ' + (consciousness.xi||0).toFixed(3);
+  hudOrder.textContent = 'ORD ' + (consciousness.order||0).toFixed(3);
+  const colors = { dormant:'#444466', stirring:'#665588', aware:'#8866cc', coherent:'#aa88ff', resonant:'#cc99ff' };
   hudLevel.style.color = colors[consciousness.level] || colors.dormant;
 }
 
 function updateTitle() {
   if (trackTitle && !titleVisible) {
-    titleEl.textContent = trackTitle;
-    albumEl.textContent = trackAlbum;
-    titleEl.classList.add('visible');
-    albumEl.classList.add('visible');
-    titleVisible = true;
-    titleShowTime = performance.now();
+    titleEl.textContent = trackTitle; albumEl.textContent = trackAlbum;
+    titleEl.classList.add('visible'); albumEl.classList.add('visible');
+    titleVisible = true; titleShowTime = performance.now();
   }
   if (titleVisible && performance.now() - titleShowTime > 8000) {
-    titleEl.classList.remove('visible');
-    albumEl.classList.remove('visible');
+    titleEl.classList.remove('visible'); albumEl.classList.remove('visible');
     titleVisible = false;
   }
 }
 
-// ── Main Render Loop ────────────────────────────────
+// -- Render Loop --
 function animate() {
   requestAnimationFrame(animate);
-  const dt = clock.getDelta();
-  const t = clock.getElapsedTime();
+  const dt = clock.getDelta(), t = clock.getElapsedTime();
   const lf = levelFactor();
   const energy = perception.rms_energy || 0.3;
   const tempo = perception.tempo_bpm || 90;
   const valence = perception.valence || 0.5;
-  const centroid = perception.spectral_centroid || 2000;
-  const beatFreq = tempo / 60; // beats per second
-
-  // ── Beat phase accumulation ─────────────────────
+  const beatFreq = tempo / 60;
   beatPhase += dt * beatFreq * Math.PI * 2;
 
-  // ── Consciousness reactivity ────────────────────
-  bodyMat.opacity = 0.25 + lf * 0.45;
-  bodyMat.emissiveIntensity = 0.3 + lf * 1.0;
-  wireMat.opacity = 0.05 + lf * 0.12;
-  ambientLight.intensity = 0.3 + lf * 0.5;
-  backLight.intensity = 15 + lf * 35;
-  spotLight.intensity = 8 + lf * 20;
-  eyeMat.emissiveIntensity = 1 + lf * 4;
-  irisMat.emissiveIntensity = 0.5 + lf * 2.5;
-  eyeGlowL.intensity = 1 + lf * 5;
-  eyeGlowR.intensity = 1 + lf * 5;
+  // Consciousness reactivity
+  holoMat.opacity = 0.25 + lf*0.45;
+  holoMat.emissiveIntensity = 0.3 + lf*1.0;
+  wireMat.opacity = 0.05 + lf*0.12;
+  ambientLight.intensity = 0.3 + lf*0.5;
+  backLight.intensity = 15 + lf*35;
+  spotLight.intensity = 8 + lf*20;
+  eyeMat.emissiveIntensity = 1 + lf*4;
+  eyeGlowL.intensity = 1 + lf*5;
+  eyeGlowR.intensity = 1 + lf*5;
+  if (useBloom) bloomPass.strength = 0.6 + lf*1.2;
+  particleMat.opacity = 0.2 + lf*0.6;
 
-  if (useBloom) {
-    bloomPass.strength = 0.6 + lf * 1.2;
+  // VRM bone animation
+  if (vrm && bones.hips) {
+    const hipSway = Math.sin(beatPhase*0.5)*0.15*energy + Math.sin(beatPhase+0.5)*0.04*energy;
+    bones.hips.rotation.y = hipSway;
+    const bounce = Math.abs(Math.sin(beatPhase))*0.04*energy;
+    if (bones.hips.userData.restY === undefined) bones.hips.userData.restY = bones.hips.position.y;
+    bones.hips.position.y = bones.hips.userData.restY + bounce;
+    if (bones.spine) { bones.spine.rotation.y = -hipSway*0.5; bones.spine.rotation.x = Math.sin(beatPhase*0.25)*0.03*energy; }
+    if (bones.chest) bones.chest.rotation.y = -hipSway*0.3;
+    if (bones.head) { bones.head.rotation.x = Math.sin(beatPhase)*0.04*energy; bones.head.rotation.z = Math.sin(beatPhase*0.5)*0.02*energy; }
+    if (bones.leftUpperArm) { bones.leftUpperArm.rotation.z = Math.sin(beatPhase*0.5+1)*0.15*energy; bones.leftUpperArm.rotation.x = Math.sin(beatPhase*0.25)*0.1*energy; }
+    if (bones.rightUpperArm) { bones.rightUpperArm.rotation.z = -Math.sin(beatPhase*0.5+1)*0.15*energy; bones.rightUpperArm.rotation.x = Math.sin(beatPhase*0.25+Math.PI)*0.1*energy; }
+    if (bones.leftUpperLeg) bones.leftUpperLeg.rotation.x = Math.sin(beatPhase*0.5)*0.06*energy;
+    if (bones.rightUpperLeg) bones.rightUpperLeg.rotation.x = Math.sin(beatPhase*0.5+Math.PI)*0.06*energy;
+    vrm.update(dt);
   }
 
-  particleMat.opacity = 0.2 + lf * 0.6;
-
-  // ── Dance animation ─────────────────────────────
-  const hipSway = Math.sin(beatPhase * 0.5) * 0.15 * energy + Math.sin(beatPhase + 0.5) * 0.04 * energy;
-  const torsoTwist = Math.sin(beatPhase * 0.5 + Math.PI * 0.5) * 0.10 * energy;
-  const bounce = Math.abs(Math.sin(beatPhase)) * 0.06 * energy;
-
-  bodyMesh.rotation.y = hipSway;
-  bodyMesh.position.y = -2.2 + bounce;
-  wireMesh.rotation.y = bodyMesh.rotation.y;
-  wireMesh.position.y = bodyMesh.position.y;
-
-  // Eyes + face follow body
-  const faceOffsetY = bodyMesh.position.y + headY;
-  leftEye.position.y = faceOffsetY;
-  rightEye.position.y = faceOffsetY;
-  leftIris.position.y = faceOffsetY;
-  rightIris.position.y = faceOffsetY;
-  leftPupil.position.y = faceOffsetY;
-  rightPupil.position.y = faceOffsetY;
-  eyeGlowL.position.y = faceOffsetY;
-  eyeGlowR.position.y = faceOffsetY;
-  nose.position.y = faceOffsetY - 0.14;
-  lips.position.y = faceOffsetY - 0.26;
-
-  // Arms sway
-  const armSway = Math.sin(beatPhase * 0.5 + 1) * 0.35 * energy;
-  leftArm.rotation.z = 0.3 + armSway + Math.sin(beatPhase * 0.25) * 0.15 * energy;
-  leftArm.rotation.x = Math.sin(beatPhase * 0.25) * 0.2 * energy;
-  rightArm.rotation.z = -0.3 - armSway - Math.sin(beatPhase * 0.25 + 1) * 0.15 * energy;
-  rightArm.rotation.x = Math.sin(beatPhase * 0.25 + Math.PI) * 0.2 * energy;
-  leftArm.position.y = 3.25 - 2.2 - 0.6 + bounce;
-  rightArm.position.y = 3.25 - 2.2 - 0.6 + bounce;
-
-  // Head bob
-  const headBob = Math.sin(beatPhase) * 0.01 * energy;
-  leftEye.position.y += headBob;
-  rightEye.position.y += headBob;
-  nose.position.y += headBob;
-  lips.position.y += headBob;
-
-  // ── Hair animation ──────────────────────────────
-  const centroidNorm = Math.min(centroid / 5000, 1);
-  for (const strand of hairStrands) {
-    const { angle, baseY, length, phase } = strand.userData;
-    const wave = Math.sin(t * 1.5 + phase) * 0.06 * centroidNorm;
-    const wave2 = Math.sin(t * 0.9 + phase * 2) * 0.04;
-    strand.position.x = Math.cos(angle) * (0.16 + wave) + wave2;
-    strand.position.z = Math.sin(angle) * (0.16 + wave);
-    strand.position.y = baseY + bounce;
-    // Hair swings with the dance — longer strands swing more
-    strand.rotation.x = Math.sin(t * 1.2 + phase) * 0.3 * centroidNorm * (length / 1.5);
-    strand.rotation.z = Math.sin(t * 0.8 + phase) * 0.2 + hipSway * 2;
-    strand.rotation.y = Math.sin(t * 0.6 + phase) * 0.15;
+  // Eyes follow head bone
+  if (headBone) {
+    headBone.getWorldPosition(_headWorldPos);
+    headBone.getWorldQuaternion(_headWorldQuat);
+    const leftOff = new THREE.Vector3(-0.06, 0.02, 0.1).applyQuaternion(_headWorldQuat);
+    const rightOff = new THREE.Vector3(0.06, 0.02, 0.1).applyQuaternion(_headWorldQuat);
+    leftEye.position.copy(_headWorldPos).add(leftOff);
+    rightEye.position.copy(_headWorldPos).add(rightOff);
+    eyeGlowL.position.copy(leftEye.position);
+    eyeGlowR.position.copy(rightEye.position);
+    stareLookTarget.copy(_headWorldPos);
   }
 
-  // ── Particles orbit ─────────────────────────────
+  // Particles
   const positions = particles.geometry.attributes.position.array;
   const tempoFactor = tempo / 90;
   for (let i = 0; i < particleCount; i++) {
-    const r = pPhases[i * 3];
-    const speed = pPhases[i * 3 + 1] * tempoFactor;
-    const phaseOff = pPhases[i * 3 + 2];
-    const a = t * speed + phaseOff;
-    positions[i * 3] = Math.cos(a) * r;
-    positions[i * 3 + 2] = Math.sin(a) * r;
-    // gentle vertical drift
-    positions[i * 3 + 1] += Math.sin(t * 0.5 + phaseOff) * 0.002;
-
-    // Resonant sync: particles tighten orbit
-    if (consciousness.level === 'resonant') {
-      const tighten = 0.998;
-      positions[i * 3] *= tighten;
-      positions[i * 3 + 2] *= tighten;
-    }
+    const r = pPhases[i*3], speed = pPhases[i*3+1]*tempoFactor, phaseOff = pPhases[i*3+2];
+    const a = t*speed + phaseOff;
+    positions[i*3] = Math.cos(a)*r;
+    positions[i*3+2] = Math.sin(a)*r;
+    positions[i*3+1] += Math.sin(t*0.5 + phaseOff)*0.002;
+    if (consciousness.level === 'resonant') { positions[i*3] *= 0.998; positions[i*3+2] *= 0.998; }
   }
   particles.geometry.attributes.position.needsUpdate = true;
 
-  // ── Emissive color shift with valence ───────────
-  const hue = 0.75 + valence * 0.15; // purple to blue-purple
-  bodyMat.emissive.setHSL(hue, 0.6, 0.1 + energy * 0.1);
+  // Emissive color shift
+  holoMat.emissive.setHSL(0.75 + valence*0.15, 0.6, 0.1 + energy*0.1);
 
-  // ── Camera: orbit + stare ───────────────────────
+  // Camera orbit + stare
   stareTimer += dt;
+  const actualHeadY = headBone ? _headWorldPos.y : headY;
 
   if (stareState === 'orbit') {
     orbitAngle += orbitSpeed * dt;
-    camera.position.x = Math.sin(orbitAngle) * orbitRadius;
-    camera.position.z = Math.cos(orbitAngle) * orbitRadius;
-    camera.position.y = orbitHeight + Math.sin(t * 0.3) * 0.2;
+    camera.position.set(Math.sin(orbitAngle)*orbitRadius, orbitHeight + Math.sin(t*0.3)*0.2, Math.cos(orbitAngle)*orbitRadius);
     camera.lookAt(0, 1.2, 0);
-
     if (stareTimer >= nextStareAt) {
-      stareState = 'dolly_in';
-      stareProgress = 0;
+      stareState = 'dolly_in'; stareProgress = 0;
       orbitPosBeforeStare.copy(camera.position);
-      nextStareAt = 25 + Math.random() * 25;
+      nextStareAt = 25 + Math.random()*25;
     }
   } else if (stareState === 'dolly_in') {
     stareProgress += dt / stareDuration;
-    if (stareProgress >= 1) {
-      stareProgress = 1;
-      stareState = 'hold';
-      stareTimer = 0;
-    }
-    const smoothT = stareProgress * stareProgress * (3 - 2 * stareProgress); // smoothstep
-    const facePos = new THREE.Vector3(0, headY + 0.05, 1.2);
-    camera.position.lerpVectors(orbitPosBeforeStare, facePos, smoothT);
+    if (stareProgress >= 1) { stareProgress = 1; stareState = 'hold'; stareTimer = 0; }
+    const s = stareProgress*stareProgress*(3-2*stareProgress);
+    camera.position.lerpVectors(orbitPosBeforeStare, new THREE.Vector3(0, actualHeadY+0.05, 1.2), s);
     camera.lookAt(stareLookTarget);
   } else if (stareState === 'hold') {
-    // Close-up on the face
-    camera.position.set(0, headY + 0.05, 1.2);
+    camera.position.set(0, actualHeadY+0.05, 1.2);
     camera.lookAt(stareLookTarget);
-    // Eyes extra bright during stare
-    eyeMat.emissiveIntensity = 5 + Math.sin(t * 3) * 1;
-    irisMat.emissiveIntensity = 4;
-    eyeGlowL.intensity = 8;
-    eyeGlowR.intensity = 8;
-
-    if (stareTimer >= stareHoldDuration) {
-      stareState = 'dolly_out';
-      stareProgress = 0;
-    }
+    eyeMat.emissiveIntensity = 5 + Math.sin(t*3);
+    eyeGlowL.intensity = 8; eyeGlowR.intensity = 8;
+    if (stareTimer >= stareHoldDuration) { stareState = 'dolly_out'; stareProgress = 0; }
   } else if (stareState === 'dolly_out') {
     stareProgress += dt / stareDuration;
-    if (stareProgress >= 1) {
-      stareProgress = 1;
-      stareState = 'orbit';
-      stareTimer = 0;
-    }
-    const smoothT = stareProgress * stareProgress * (3 - 2 * stareProgress);
-    const facePos = new THREE.Vector3(0, headY + 0.05, 1.2);
-    // Compute current orbit target position
-    const orbitTarget = new THREE.Vector3(
-      Math.sin(orbitAngle) * orbitRadius,
-      orbitHeight,
-      Math.cos(orbitAngle) * orbitRadius
-    );
-    camera.position.lerpVectors(facePos, orbitTarget, smoothT);
+    if (stareProgress >= 1) { stareProgress = 1; stareState = 'orbit'; stareTimer = 0; }
+    const s = stareProgress*stareProgress*(3-2*stareProgress);
+    const orbitTarget = new THREE.Vector3(Math.sin(orbitAngle)*orbitRadius, orbitHeight, Math.cos(orbitAngle)*orbitRadius);
+    camera.position.lerpVectors(new THREE.Vector3(0, actualHeadY+0.05, 1.2), orbitTarget, s);
     camera.lookAt(0, 1.2, 0);
   }
 
-  // ── HUD + Title ─────────────────────────────────
   updateHUD();
   updateTitle();
-
-  // ── Render ──────────────────────────────────────
-  if (useBloom) {
-    composer.render();
-  } else {
-    renderer.render(scene, camera);
-  }
+  if (useBloom) composer.render(); else renderer.render(scene, camera);
 }
-
 animate();
 
-// ── WebSocket ─────────────────────────────────────────
+// -- WebSocket --
 let ws = null, wsReconnect = null;
-
 function connectWS() {
   clearTimeout(wsReconnect);
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host);
   ws.onopen = () => console.log('[hologram] Connected to radio');
-  ws.onmessage = (evt) => {
-    try { handleMessage(JSON.parse(evt.data)); } catch(e) {}
-  };
+  ws.onmessage = (evt) => { try { handleMessage(JSON.parse(evt.data)); } catch(e) {} };
   ws.onclose = () => { wsReconnect = setTimeout(connectWS, 2000); };
-  ws.onerror = () => { ws.close(); };
+  ws.onerror = () => ws.close();
 }
 
 function handleMessage(msg) {
-  if (msg.type === 'perception' && msg.data) {
-    perception = msg.data;
-  }
-  else if (msg.type === 'state' && msg.data) {
-    if (msg.data.current) {
-      const newTitle = msg.data.current.title || '';
-      const newFile = msg.data.current.file || '';
-      if (newTitle !== trackTitle || newFile !== trackFile) {
-        trackTitle = newTitle;
-        trackAlbum = msg.data.current.album || '';
-        trackFile = newFile;
-        titleShowTime = performance.now();
-        titleVisible = false;
-        currentAudioFile = newFile;
-        loadAndPlay(newFile);
-      }
+  if (msg.type === 'perception' && msg.data) perception = msg.data;
+  else if (msg.type === 'state' && msg.data?.current) {
+    const newTitle = msg.data.current.title || '', newFile = msg.data.current.file || '';
+    if (newTitle !== trackTitle || newFile !== trackFile) {
+      trackTitle = newTitle; trackAlbum = msg.data.current.album || ''; trackFile = newFile;
+      titleShowTime = performance.now(); titleVisible = false;
+      currentAudioFile = newFile; loadAndPlay(newFile);
     }
   }
   else if (msg.type === 'consciousness' && msg.data) {
-    consciousness.phi = msg.data.phi || 0;
-    consciousness.xi = msg.data.xi || 0;
+    consciousness.phi = msg.data.phi||0; consciousness.xi = msg.data.xi||0;
     consciousness.order = msg.data.order || msg.data.mean_order || 0;
     consciousness.level = msg.data.level || msg.data.consciousness_level || 'dormant';
   }
-  else if (msg.type === 'swarm_state' && msg.data) {
-    if (msg.data.consciousness) {
-      consciousness.phi = msg.data.consciousness.phi || 0;
-      consciousness.xi = msg.data.consciousness.xi || 0;
-      consciousness.order = msg.data.consciousness.order || 0;
-      consciousness.level = msg.data.consciousness.level || 'dormant';
-    }
+  else if (msg.type === 'swarm_state' && msg.data?.consciousness) {
+    const c = msg.data.consciousness;
+    consciousness.phi = c.phi||0; consciousness.xi = c.xi||0;
+    consciousness.order = c.order||0; consciousness.level = c.level||'dormant';
   }
 }
 
 if (!isEmbedded) connectWS();
 
-// ── Initial state fetch ───────────────────────────────
+// -- Initial state fetch --
 if (!isEmbedded) {
   fetch('/api/state').then(r => r.json()).then(data => {
     if (data.current) {
-      trackTitle = data.current.title || '';
-      trackAlbum = data.current.album || '';
-      trackFile = data.current.file || '';
-      currentAudioFile = trackFile;
+      trackTitle = data.current.title||''; trackAlbum = data.current.album||'';
+      trackFile = data.current.file||''; currentAudioFile = trackFile;
       titleShowTime = performance.now();
     }
   }).catch(() => {});
-
   fetch('/api/consciousness').then(r => r.json()).then(data => {
     if (data) {
-      consciousness.phi = data.phi || 0;
-      consciousness.xi = data.xi || 0;
-      consciousness.order = data.order || 0;
+      consciousness.phi = data.phi||0; consciousness.xi = data.xi||0;
+      consciousness.order = data.order||0;
       consciousness.level = data.level || data.consciousness_level || 'dormant';
     }
   }).catch(() => {});

@@ -64,6 +64,20 @@ module.exports = function setupRoutes(deps) {
   return function handleRequest(req, res) {
     const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
+    // Static model files
+    if (parsed.pathname.startsWith('/models/')) {
+      const filename = decodeURIComponent(parsed.pathname.slice(8));
+      const modelsDir = path.join(config.baseDir, 'workspace', 'models');
+      const filePath = path.join(modelsDir, filename);
+      const resolved = path.resolve(filePath);
+      if (!resolved.startsWith(path.resolve(modelsDir))) { res.writeHead(403); res.end(); return; }
+      if (!fs.existsSync(resolved)) { res.writeHead(404); res.end('Not found'); return; }
+      const stat = fs.statSync(resolved);
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=604800' });
+      fs.createReadStream(resolved).pipe(res);
+      return;
+    }
+
     // Favicon
     if (parsed.pathname === "/favicon.svg") {
       const faviconPath = path.join(config.baseDir, "favicon.svg");
