@@ -165,6 +165,10 @@ const spotLight = new THREE.SpotLight(0xffeedd, 15, 15, Math.PI / 6, 0.5);
 spotLight.position.set(3, 4, 2);
 spotLight.target.position.set(0, 1.5, 0);
 scene.add(spotLight, spotLight.target);
+// Front fill — warm light to show skin detail
+const fillLight = new THREE.PointLight(0xffddcc, 8, 12);
+fillLight.position.set(-1, 2.5, 4);
+scene.add(fillLight);
 
 // -- Starfield --
 const starCount = isMobile ? 200 : 600;
@@ -201,25 +205,114 @@ const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
 // -- Materials --
-const holoMat = new THREE.MeshPhysicalMaterial({
-  color: 0x8844cc, emissive: 0x220033, emissiveIntensity: 0.5,
-  transparent: true, opacity: 0.55, roughness: 0.05, metalness: 0.9,
-  iridescence: 1.0, iridescenceIOR: 1.5, side: THREE.DoubleSide, depthWrite: false,
+// -- Skin material — warm, slightly translucent, with iridescent sheen --
+const skinMat = new THREE.MeshPhysicalMaterial({
+  color: 0xd4a088,            // warm skin tone
+  emissive: 0x331122,         // subtle warm self-glow
+  emissiveIntensity: 0.3,
+  transparent: true,
+  opacity: 0.7,
+  roughness: 0.35,            // skin-like roughness
+  metalness: 0.1,             // mostly dielectric
+  iridescence: 0.4,           // subtle holographic sheen (not full blast)
+  iridescenceIOR: 1.3,
+  sheen: 1.0,                 // soft sheen for skin
+  sheenRoughness: 0.4,
+  sheenColor: new THREE.Color(0xeeccdd), // warm sheen
+  clearcoat: 0.3,             // subtle wet/gloss look
+  clearcoatRoughness: 0.2,
+  side: THREE.DoubleSide,
+  depthWrite: false,
 });
 const wireMat = new THREE.MeshBasicMaterial({
-  color: 0x00cccc, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false,
+  color: 0x6644aa, wireframe: true, transparent: true, opacity: 0.06, depthWrite: false,
 });
 
-// -- Eyes --
-const eyeGeo = new THREE.SphereGeometry(0.04, 16, 12);
-const eyeMat = new THREE.MeshStandardMaterial({
-  color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 3, transparent: true, opacity: 0.95,
-});
-const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-scene.add(leftEye, rightEye);
-const eyeGlowL = new THREE.PointLight(0x00ffff, 4, 2.5);
-const eyeGlowR = new THREE.PointLight(0x00ffff, 4, 2.5);
+// -- Face features (attached to head bone after load) --
+// Eyes: white sclera + colored iris + dark pupil + catchlight
+const scleraGeo = new THREE.SphereGeometry(0.032, 16, 12);
+const scleraMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, emissive: 0x222222, emissiveIntensity: 0.3, roughness: 0.3 });
+const irisGeo = new THREE.SphereGeometry(0.018, 16, 12);
+const irisMat = new THREE.MeshStandardMaterial({ color: 0x44aacc, emissive: 0x00aacc, emissiveIntensity: 2.0, roughness: 0.1 });
+const pupilGeo = new THREE.SphereGeometry(0.008, 8, 8);
+const pupilMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x000000, roughness: 0.9 });
+const catchGeo = new THREE.SphereGeometry(0.004, 6, 6);
+const catchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3 });
+
+// Lip geometry
+const lipGeo = new THREE.TorusGeometry(0.025, 0.008, 8, 16, Math.PI);
+const upperLipMat = new THREE.MeshStandardMaterial({ color: 0xcc6677, emissive: 0x662233, emissiveIntensity: 0.4, roughness: 0.3 });
+const lowerLipGeo = new THREE.TorusGeometry(0.022, 0.009, 8, 16, Math.PI);
+const lowerLipMat = new THREE.MeshStandardMaterial({ color: 0xdd7788, emissive: 0x663344, emissiveIntensity: 0.3, roughness: 0.25 });
+
+// Eyebrow geometry
+const browGeo = new THREE.CylinderGeometry(0.002, 0.001, 0.04, 4);
+const browMat = new THREE.MeshStandardMaterial({ color: 0x443355, emissive: 0x221133, emissiveIntensity: 0.3 });
+
+// Nose highlight
+const noseGeo = new THREE.SphereGeometry(0.006, 6, 6);
+const noseMat = new THREE.MeshStandardMaterial({ color: 0xddaa99, emissive: 0x332222, emissiveIntensity: 0.2, roughness: 0.4 });
+
+// Face group — all face parts go here, attached to head bone
+const faceGroup = new THREE.Group();
+
+// Build face
+function buildFace() {
+  // Left eye
+  const lSclera = new THREE.Mesh(scleraGeo, scleraMat);
+  lSclera.position.set(-0.045, 0.02, 0.08);
+  const lIris = new THREE.Mesh(irisGeo, irisMat);
+  lIris.position.set(-0.045, 0.02, 0.105);
+  const lPupil = new THREE.Mesh(pupilGeo, pupilMat);
+  lPupil.position.set(-0.045, 0.02, 0.115);
+  const lCatch = new THREE.Mesh(catchGeo, catchMat);
+  lCatch.position.set(-0.038, 0.028, 0.118);
+
+  // Right eye
+  const rSclera = new THREE.Mesh(scleraGeo, scleraMat);
+  rSclera.position.set(0.045, 0.02, 0.08);
+  const rIris = new THREE.Mesh(irisGeo, irisMat);
+  rIris.position.set(0.045, 0.02, 0.105);
+  const rPupil = new THREE.Mesh(pupilGeo, pupilMat);
+  rPupil.position.set(0.045, 0.02, 0.115);
+  const rCatch = new THREE.Mesh(catchGeo, catchMat);
+  rCatch.position.set(0.052, 0.028, 0.118);
+
+  // Upper lip (cupid's bow, rotated to face forward)
+  const uLip = new THREE.Mesh(lipGeo, upperLipMat);
+  uLip.position.set(0, -0.035, 0.07);
+  uLip.rotation.x = Math.PI * 0.5;
+  uLip.rotation.z = Math.PI;
+
+  // Lower lip
+  const lLip = new THREE.Mesh(lowerLipGeo, lowerLipMat);
+  lLip.position.set(0, -0.045, 0.068);
+  lLip.rotation.x = -Math.PI * 0.5;
+
+  // Nose tip
+  const noseTip = new THREE.Mesh(noseGeo, noseMat);
+  noseTip.position.set(0, -0.01, 0.10);
+
+  // Eyebrows
+  const lBrow = new THREE.Mesh(browGeo, browMat);
+  lBrow.position.set(-0.045, 0.055, 0.075);
+  lBrow.rotation.z = -0.15;
+  const rBrow = new THREE.Mesh(browGeo, browMat);
+  rBrow.position.set(0.045, 0.055, 0.075);
+  rBrow.rotation.z = 0.15;
+
+  faceGroup.add(lSclera, lIris, lPupil, lCatch, rSclera, rIris, rPupil, rCatch,
+                uLip, lLip, noseTip, lBrow, rBrow);
+
+  // Store iris/pupil refs for animation
+  faceGroup.userData = { lIris, rIris, lPupil, rPupil, lCatch, rCatch };
+}
+buildFace();
+scene.add(faceGroup);
+
+// Eye glow lights
+const eyeGlowL = new THREE.PointLight(0x44ccdd, 2, 1.5);
+const eyeGlowR = new THREE.PointLight(0x44ccdd, 2, 1.5);
 scene.add(eyeGlowL, eyeGlowR);
 
 // -- VRM Model --
@@ -246,7 +339,7 @@ async function loadVRM() {
   // Apply holographic material + add wireframe overlay per mesh
   model.traverse((child) => {
     if (child.isMesh) {
-      child.material = holoMat.clone();
+      child.material = skinMat.clone();
       child.castShadow = false;
       child.receiveShadow = false;
       // Add wireframe sibling that shares geometry and follows skeleton
@@ -354,15 +447,15 @@ function animate() {
   beatPhase += dt * beatFreq * Math.PI * 2;
 
   // Consciousness reactivity
-  holoMat.opacity = 0.25 + lf*0.45;
-  holoMat.emissiveIntensity = 0.3 + lf*1.0;
+  skinMat.opacity = 0.4 + lf*0.45;
+  skinMat.emissiveIntensity = 0.15 + lf*0.5;
   wireMat.opacity = 0.05 + lf*0.12;
   ambientLight.intensity = 0.3 + lf*0.5;
   backLight.intensity = 15 + lf*35;
   spotLight.intensity = 8 + lf*20;
-  eyeMat.emissiveIntensity = 1 + lf*4;
-  eyeGlowL.intensity = 1 + lf*5;
-  eyeGlowR.intensity = 1 + lf*5;
+  irisMat.emissiveIntensity = 1.0 + lf*3;
+  eyeGlowL.intensity = 1 + lf*4;
+  eyeGlowR.intensity = 1 + lf*4;
   if (useBloom) bloomPass.strength = 0.6 + lf*1.2;
   particleMat.opacity = 0.2 + lf*0.6;
 
@@ -383,17 +476,25 @@ function animate() {
     vrm.update(dt);
   }
 
-  // Eyes follow head bone
+  // Face group follows head bone
   if (headBone) {
     headBone.getWorldPosition(_headWorldPos);
     headBone.getWorldQuaternion(_headWorldQuat);
-    const leftOff = new THREE.Vector3(-0.06, 0.02, -0.1).applyQuaternion(_headWorldQuat);
-    const rightOff = new THREE.Vector3(0.06, 0.02, -0.1).applyQuaternion(_headWorldQuat);
-    leftEye.position.copy(_headWorldPos).add(leftOff);
-    rightEye.position.copy(_headWorldPos).add(rightOff);
-    eyeGlowL.position.copy(leftEye.position);
-    eyeGlowR.position.copy(rightEye.position);
+    faceGroup.position.copy(_headWorldPos);
+    faceGroup.quaternion.copy(_headWorldQuat);
+    // Eye glow lights track face
+    const lEyeWorld = new THREE.Vector3(-0.045, 0.02, 0.11).applyQuaternion(_headWorldQuat).add(_headWorldPos);
+    const rEyeWorld = new THREE.Vector3(0.045, 0.02, 0.11).applyQuaternion(_headWorldQuat).add(_headWorldPos);
+    eyeGlowL.position.copy(lEyeWorld);
+    eyeGlowR.position.copy(rEyeWorld);
     stareLookTarget.copy(_headWorldPos);
+    // Pupil dilation with energy
+    const fd = faceGroup.userData;
+    if (fd.lPupil) {
+      const pupilScale = 0.8 + energy * 0.5;
+      fd.lPupil.scale.setScalar(pupilScale);
+      fd.rPupil.scale.setScalar(pupilScale);
+    }
   }
 
   // Particles
@@ -410,7 +511,7 @@ function animate() {
   particles.geometry.attributes.position.needsUpdate = true;
 
   // Emissive color shift
-  holoMat.emissive.setHSL(0.75 + valence*0.15, 0.6, 0.1 + energy*0.1);
+  skinMat.emissive.setHSL(0.95 + valence*0.05, 0.3, 0.05 + energy*0.05);
 
   // Camera orbit + stare
   stareTimer += dt;
@@ -434,8 +535,8 @@ function animate() {
   } else if (stareState === 'hold') {
     camera.position.set(0, actualHeadY+0.05, 1.2);
     camera.lookAt(stareLookTarget);
-    eyeMat.emissiveIntensity = 5 + Math.sin(t*3);
-    eyeGlowL.intensity = 8; eyeGlowR.intensity = 8;
+    irisMat.emissiveIntensity = 5 + Math.sin(t*3);
+    eyeGlowL.intensity = 6; eyeGlowR.intensity = 6;
     if (stareTimer >= stareHoldDuration) { stareState = 'dolly_out'; stareProgress = 0; }
   } else if (stareState === 'dolly_out') {
     stareProgress += dt / stareDuration;
