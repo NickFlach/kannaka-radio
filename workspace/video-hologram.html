@@ -792,47 +792,27 @@ scene.add(headGroup);
 const hairGroup = new THREE.Group();
 const hairRibbons = [];
 const RIBBON_COUNT = 30;
-const FACE_FRAME_COUNT = 4; // strands that come forward past the temples
 
 for (let i = 0; i < RIBBON_COUNT; i++) {
-  // Varying lengths — 0.3 to 0.8 units (much more variation)
   const ribbonLength = 0.3 + Math.random() * 0.5;
   const ribbonWidth = 0.022 + Math.random() * 0.018;
-  const geo = new THREE.PlaneGeometry(ribbonWidth, ribbonLength, 1, 8); // 8 segments for smoother wave
+  const geo = new THREE.PlaneGeometry(ribbonWidth, ribbonLength, 1, 8);
   const mat = new THREE.MeshPhysicalMaterial({
-    color: 0x080412,           // near black with subtle purple
-    emissive: 0x0f0520,
-    emissiveIntensity: 0.15,
-    transparent: true,
-    opacity: 0.8 + Math.random() * 0.15,
-    roughness: 0.25,
-    metalness: 0.05,
-    sheen: 0.6,
-    sheenRoughness: 0.3,
-    sheenColor: new THREE.Color(0x332244), // subtle purple highlight sheen
-    side: THREE.DoubleSide,
-    depthWrite: false,
+    color: 0x080412, emissive: 0x0f0520, emissiveIntensity: 0.15,
+    transparent: true, opacity: 0.8 + Math.random() * 0.15,
+    roughness: 0.25, metalness: 0.05,
+    sheen: 0.6, sheenRoughness: 0.3, sheenColor: new THREE.Color(0x332244),
+    side: THREE.DoubleSide, depthWrite: false,
   });
   const ribbon = new THREE.Mesh(geo, mat);
 
-  const isFaceFrame = i >= RIBBON_COUNT - FACE_FRAME_COUNT;
-  let spreadX, spreadZ, startY, rotX;
-
-  if (isFaceFrame) {
-    // Face-framing strands — come forward past the temples
-    const side = (i % 2 === 0) ? -1 : 1;
-    spreadX = side * (0.10 + Math.random() * 0.03);
-    spreadZ = 0.04 + Math.random() * 0.03; // in front of the head
-    startY = 0.08 + Math.random() * 0.04;
-    rotX = -0.15 - Math.random() * 0.1; // tilt forward
-  } else {
-    // Start from the crown area, spread across back of head
-    const angle = (i / (RIBBON_COUNT - FACE_FRAME_COUNT)) * Math.PI * 1.7 - Math.PI * 0.85;
-    spreadX = Math.sin(angle) * (0.06 + Math.random() * 0.05);
-    spreadZ = -0.04 - Math.random() * 0.07; // behind the head
-    startY = 0.10 + Math.random() * 0.05;
-    rotX = 0.2 + Math.random() * 0.15; // tilt backward
-  }
+  // ALL hair behind the head — never in front of the face
+  // Spread across the BACK arc only (no face-framing)
+  const angle = (i / RIBBON_COUNT) * Math.PI * 1.4 - Math.PI * 0.7; // back 180° arc
+  const spreadX = Math.sin(angle) * (0.07 + Math.random() * 0.05);
+  const spreadZ = -0.06 - Math.random() * 0.06; // firmly BEHIND the head
+  const startY = 0.10 + Math.random() * 0.04;
+  const rotX = 0.25 + Math.random() * 0.2; // tilted backward, away from face
 
   ribbon.position.set(spreadX, startY - ribbonLength * 0.5, spreadZ);
   ribbon.rotation.x = rotX;
@@ -846,7 +826,6 @@ for (let i = 0; i < RIBBON_COUNT; i++) {
     baseX: spreadX,
     baseZ: spreadZ,
     baseRotX: rotX,
-    isFaceFrame: isFaceFrame,
   };
   hairGroup.add(ribbon);
   hairRibbons.push(ribbon);
@@ -1268,16 +1247,16 @@ function animate() {
     window._ds.timer -= dt;
     if (window._ds.timer <= 0) {
       window._ds.style = Math.floor(Math.random() * 4);
-      window._ds.timer = 20 + Math.random() * 20;
+      window._ds.timer = 12 + Math.random() * 15;
     }
     const style = window._ds.style;
     const slow = beatPhase * 0.5;
     const t2 = beatPhase * 0.25;
 
     // Style 0=sensual, 1=groove, 2=wave, 3=fierce
-    const hipAmp = [0.38, 0.28, 0.22, 0.42][style];
-    const hipXAmp = [0.12, 0.09, 0.15, 0.14][style];
-    const hipZAmp = [0.14, 0.11, 0.09, 0.16][style];
+    const hipAmp = [0.48, 0.36, 0.30, 0.55][style];
+    const hipXAmp = [0.16, 0.12, 0.20, 0.18][style];
+    const hipZAmp = [0.18, 0.14, 0.12, 0.20][style];
     const hipPhase = style === 1 ? beatPhase * 0.5 : slow;
     // Bass hits push the hips harder
     const bassKick = audio.bass * 0.15;
@@ -1298,7 +1277,7 @@ function animate() {
     // Spine: body roll — delayed wave traveling up from hips
     if (bones.spine) {
       bones.spine.rotation.y = -hipSway * 0.5;
-      bones.spine.rotation.x = Math.sin(slow - 0.4) * (0.08 + audio.mid * 0.06) * e; // mids drive the body roll
+      bones.spine.rotation.x = Math.sin(slow - 0.4) * (0.12 + audio.mid * 0.08) * e; // mids drive the body roll
       bones.spine.rotation.z = Math.sin(slow + 0.8) * 0.06 * e;  // side lean
     }
 
@@ -1353,7 +1332,7 @@ function animate() {
     // Gesture state machine
     if (!window._gesture) window._gesture = {
       type: 'none', // none, point, reach, beckon, heart, present, wave
-      timer: 5 + Math.random() * 8,
+      timer: 2 + Math.random() * 3,
       progress: 0, // 0→1 blend in, hold, blend out
       phase: 'idle', // idle, blendIn, hold, blendOut
       hand: 'right', // which hand leads
@@ -1383,7 +1362,7 @@ function animate() {
       if (g.progress >= g.holdDur) { g.phase = 'blendOut'; g.progress = 1; }
     } else if (g.phase === 'blendOut') {
       g.progress = Math.max(0, g.progress - dt * 1.2);
-      if (g.progress <= 0) { g.phase = 'idle'; g.type = 'none'; g.timer = 4 + Math.random() * 8; }
+      if (g.progress <= 0) { g.phase = 'idle'; g.type = 'none'; g.timer = 1.5 + Math.random() * 3; }
     }
 
     // Smoothstep for blending
