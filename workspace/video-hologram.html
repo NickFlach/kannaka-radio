@@ -1462,16 +1462,92 @@ function animate() {
   // Skin glow — gentle, warm, not white
   skinMat.emissiveIntensity = 0.15 + lf * 0.2 + heartBeat * 0.1 * energy;
 
-  // Position energy at the chest
+  // ── Energy flow — travels through her body based on movement ──
+  // Core energy stays at the heart but SHIFTS toward whichever body part is moving most
   if (bones.chest) {
-    const chestWorldPos = new THREE.Vector3();
-    bones.chest.getWorldPosition(chestWorldPos);
-    heartLight.position.copy(chestWorldPos);
-    heartGlow.position.copy(chestWorldPos);
-    innerEnergy.position.copy(chestWorldPos);
-    // Body energy slightly lower — centered in the torso
-    bodyEnergy.position.copy(chestWorldPos);
-    bodyEnergy.position.y -= 0.3;
+    const chestWP = new THREE.Vector3(); bones.chest.getWorldPosition(chestWP);
+    const hipsWP = new THREE.Vector3(); bones.hips && bones.hips.getWorldPosition(hipsWP);
+    const headWP = new THREE.Vector3(); bones.head && bones.head.getWorldPosition(headWP);
+    const lHandWP = new THREE.Vector3(); bones.leftHand && bones.leftHand.getWorldPosition(lHandWP);
+    const rHandWP = new THREE.Vector3(); bones.rightHand && bones.rightHand.getWorldPosition(rHandWP);
+    const lFootWP = new THREE.Vector3(); bones.leftFoot && bones.leftFoot.getWorldPosition(lFootWP);
+    const rFootWP = new THREE.Vector3(); bones.rightFoot && bones.rightFoot.getWorldPosition(rFootWP);
+
+    // Track previous positions to measure movement velocity
+    if (!window._prevPos) window._prevPos = { chest: chestWP.clone(), lHand: lHandWP.clone(), rHand: rHandWP.clone(), lFoot: lFootWP.clone(), rFoot: rFootWP.clone(), head: headWP.clone(), hips: hipsWP.clone() };
+    const pp = window._prevPos;
+    const velChest = chestWP.distanceTo(pp.chest) / dt;
+    const velLHand = lHandWP.distanceTo(pp.lHand) / dt;
+    const velRHand = rHandWP.distanceTo(pp.rHand) / dt;
+    const velHips  = hipsWP.distanceTo(pp.hips) / dt;
+    const velHead  = headWP.distanceTo(pp.head) / dt;
+
+    // Find center of mass of movement — weighted by velocity
+    const totalVel = velChest + velLHand + velRHand + velHips + velHead + 0.01;
+    const flowCenter = new THREE.Vector3();
+    flowCenter.addScaledVector(chestWP, (velChest + 1.5) / totalVel); // chest has base weight
+    flowCenter.addScaledVector(hipsWP,  velHips  / totalVel);
+    flowCenter.addScaledVector(headWP,  velHead  / totalVel);
+    flowCenter.addScaledVector(lHandWP, velLHand / totalVel);
+    flowCenter.addScaledVector(rHandWP, velRHand / totalVel);
+    flowCenter.multiplyScalar(1 / 2.5); // normalize
+
+    // Heart light slowly drifts toward the movement center
+    if (!window._heartPos) window._heartPos = chestWP.clone();
+    window._heartPos.lerp(flowCenter, dt * 2);
+    window._heartPos.lerp(chestWP, dt * 3); // but always pulled back to chest
+    heartLight.position.copy(window._heartPos);
+    heartGlow.position.copy(window._heartPos);
+
+    // Inner energy sphere — follows the chest but stretches toward fast-moving limbs
+    innerEnergy.position.copy(chestWP);
+    innerEnergy.position.lerp(flowCenter, 0.3);
+
+    // Body energy — follows the body center (between hips and chest)
+    bodyEnergy.position.copy(chestWP).lerp(hipsWP, 0.5);
+
+    // ── Energy trail orbs — small glowing spheres that flow along limbs ──
+    if (!window._energyOrbs) {
+      window._energyOrbs = [];
+      const orbGeo = new THREE.SphereGeometry(0.035, 8, 8);
+      for (let i = 0; i < 6; i++) {
+        const orbMat = new THREE.MeshStandardMaterial({
+          color: 0xffaa44, emissive: 0xff8822, emissiveIntensity: 2,
+          transparent: true, opacity: 0.7, depthWrite: false,
+        });
+        const orb = new THREE.Mesh(orbGeo, orbMat);
+        orb.userData = { target: i % 6, progress: Math.random(), speed: 0.3 + Math.random() * 0.3 };
+        scene.add(orb);
+        window._energyOrbs.push(orb);
+      }
+    }
+    // Orb targets: chest->hips, chest->lHand, chest->rHand, hips->lFoot, hips->rFoot, chest->head
+    const orbRoutes = [
+      [chestWP, hipsWP],
+      [chestWP, lHandWP],
+      [chestWP, rHandWP],
+      [hipsWP,  lFootWP],
+      [hipsWP,  rFootWP],
+      [chestWP, headWP],
+    ];
+    for (const orb of window._energyOrbs) {
+      const [from, to] = orbRoutes[orb.userData.target];
+      orb.userData.progress += dt * orb.userData.speed * (1 + energy);
+      if (orb.userData.progress >= 1) {
+        orb.userData.progress = 0;
+        orb.userData.target = Math.floor(Math.random() * orbRoutes.length);
+      }
+      const p = orb.userData.progress;
+      orb.position.lerpVectors(from, to, p);
+      // Fade in/out at endpoints
+      const fadeI = Math.sin(p * Math.PI); // 0 at endpoints, 1 at middle
+      orb.material.opacity = 0.8 * fadeI * (0.5 + energy * 0.5);
+      orb.material.emissiveIntensity = 1.5 + energy * 2 + heartBeat * 2;
+    }
+
+    // Update previous positions
+    pp.chest.copy(chestWP); pp.lHand.copy(lHandWP); pp.rHand.copy(rHandWP);
+    pp.lFoot.copy(lFootWP); pp.rFoot.copy(rFootWP); pp.head.copy(headWP); pp.hips.copy(hipsWP);
   }
 
   // Head group follows neck bone (head bone is scaled to 0, so use neck)
