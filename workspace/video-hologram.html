@@ -784,7 +784,10 @@ for (let i = 0; i < RIBBON_COUNT; i++) {
   // Start from the crown area, spread slightly
   const angle = (i / RIBBON_COUNT) * Math.PI * 1.6 - Math.PI * 0.8; // arc across back of head
   const spreadX = Math.sin(angle) * (0.06 + Math.random() * 0.04);
-  const spreadZ = -0.04 - Math.random() * 0.06; // behind the head
+  // Behind-the-head Z — hairGroup has its Z flipped at update time to match
+  // whichever side of the head bone is "behind" for this model. We store a
+  // magnitude here and apply the sign dynamically.
+  const spreadZ = 0.04 + Math.random() * 0.06;
   const startY = 0.10 + Math.random() * 0.04;
 
   ribbon.position.set(spreadX, startY - ribbonLength * 0.5, spreadZ);
@@ -1021,8 +1024,24 @@ async function loadVRM() {
   }
 
   console.log('[hologram] Final bones:', Object.keys(bones).join(','), '— missing:', BONE_NAMES.filter(n=>!bones[n]).join(','));
-  // Tag bones with their logical name for debug
-  for (const [name, b] of Object.entries(bones)) { if (b) b.userData.kannakaRole = name; }
+  // Tag bones with their logical name for debug + record REST rotations.
+  // Critical: most VRM models are authored in A-pose, not T-pose. The rest
+  // rotation of arm bones is non-zero. If we just SET rotation.z, we overwrite
+  // the A-pose and the arms snap to a worse pose. Instead we add deltas to rest.
+  for (const [name, b] of Object.entries(bones)) {
+    if (b) {
+      b.userData.kannakaRole = name;
+      b.userData.restRotX = b.rotation.x;
+      b.userData.restRotY = b.rotation.y;
+      b.userData.restRotZ = b.rotation.z;
+    }
+  }
+  // Log non-zero rest rotations so we can see the A-pose
+  const restInfo = {};
+  for (const n of ['leftUpperArm','rightUpperArm','leftLowerArm','rightLowerArm','leftUpperLeg','rightUpperLeg']) {
+    if (bones[n]) restInfo[n] = { x: +bones[n].userData.restRotX.toFixed(3), y: +bones[n].userData.restRotY.toFixed(3), z: +bones[n].userData.restRotZ.toFixed(3) };
+  }
+  console.log('[hologram] Rest rotations (A-pose?):', restInfo);
 }
 loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
 
@@ -1441,6 +1460,16 @@ function animate() {
 
   let hipSway = 0;
   if (bones.hips) {
+    // Reset all mapped bones to their REST rotation at the start of each frame.
+    // Dance code then uses += to add deltas. This way the A-pose stays intact
+    // and our movements are relative, not absolute overwrites.
+    for (const [name, b] of Object.entries(bones)) {
+      if (b) {
+        b.rotation.x = b.userData.restRotX || 0;
+        b.rotation.y = b.userData.restRotY || 0;
+        b.rotation.z = b.userData.restRotZ || 0;
+      }
+    }
     // ── Dance routines — randomly switches styles ─────────
     const e = Math.max(0.35, Math.min(energy * 2.5, 1));
     if (!window._ds) window._ds = { style: 0, timer: 12 + Math.random() * 8 };
@@ -1460,134 +1489,120 @@ function animate() {
     const hipPhase = style === 1 ? beatPhase * 0.5 : slow;
     // Bass hits push the hips harder
     const bassKick = audio.bass * 0.15;
+    // All rotations below use += so they ADD to the rest pose (A-pose tolerated).
     hipSway = Math.sin(hipPhase) * (hipAmp + bassKick) * e + Math.sin(hipPhase * 2 + 0.5) * 0.08 * e;
-    bones.hips.rotation.y = hipSway;
-    bones.hips.rotation.x = Math.sin(hipPhase) * (hipXAmp + bassKick * 0.5) * e;
-    bones.hips.rotation.z = Math.sin(hipPhase + 0.7) * hipZAmp * e;
-    // Beat hit: sharp hip pop
+    bones.hips.rotation.y += hipSway;
+    bones.hips.rotation.x += Math.sin(hipPhase) * (hipXAmp + bassKick * 0.5) * e;
+    bones.hips.rotation.z += Math.sin(hipPhase + 0.7) * hipZAmp * e;
     if (audio.beat) bones.hips.rotation.z += 0.06 * e;
 
     // Bounce varies by style
     const bounceAmp = [0.04, 0.10, 0.03, 0.12][style];
-    const bassBounce = audio.beat ? 0.04 : 0; // extra drop on beat
+    const bassBounce = audio.beat ? 0.04 : 0;
     const bounce = Math.pow(Math.abs(Math.sin(beatPhase)), [2,1.5,3,1][style]) * bounceAmp * e + bassBounce;
     if (bones.hips.userData.restY === undefined) bones.hips.userData.restY = bones.hips.position.y;
     bones.hips.position.y = bones.hips.userData.restY + bounce;
 
-    // Spine: body roll — delayed wave traveling up from hips
     if (bones.spine) {
-      bones.spine.rotation.y = -hipSway * 0.5;
-      // Forward/back lean: ±0.15 rad slowly + mids reaction
-      bones.spine.rotation.x = Math.sin(slow - 0.4) * (0.08 + audio.mid * 0.06) * e + Math.sin(t * 0.4) * 0.15 * e;
-      // Side bend: ±0.10 rad slowly + existing sway
-      bones.spine.rotation.z = Math.sin(slow + 0.8) * 0.06 * e + Math.sin(t * 0.3 + 1.0) * 0.10 * e;
+      bones.spine.rotation.y += -hipSway * 0.5;
+      bones.spine.rotation.x += Math.sin(slow - 0.4) * (0.08 + audio.mid * 0.06) * e + Math.sin(t * 0.4) * 0.15 * e;
+      bones.spine.rotation.z += Math.sin(slow + 0.8) * 0.06 * e + Math.sin(t * 0.3 + 1.0) * 0.10 * e;
     }
 
-    // Chest: isolation — moves independently, sensual chest circles
     if (bones.chest) {
-      bones.chest.rotation.y = -hipSway * 0.3 + Math.sin(slow * 2 + 1) * 0.05 * e;
-      bones.chest.rotation.x = Math.sin(slow - 0.8) * 0.06 * e;  // chest push forward/back
-      bones.chest.rotation.z = Math.sin(slow + 1.2) * 0.05 * e;  // chest tilt
+      bones.chest.rotation.y += -hipSway * 0.3 + Math.sin(slow * 2 + 1) * 0.05 * e;
+      bones.chest.rotation.x += Math.sin(slow - 0.8) * 0.06 * e;
+      bones.chest.rotation.z += Math.sin(slow + 1.2) * 0.05 * e;
     }
 
-    // Upper chest: continues the body roll wave
     if (bones.upperChest) {
-      bones.upperChest.rotation.x = Math.sin(slow - 1.2) * 0.04 * e;
-      bones.upperChest.rotation.z = Math.sin(slow + 1.5) * 0.03 * e;
+      bones.upperChest.rotation.x += Math.sin(slow - 1.2) * 0.04 * e;
+      bones.upperChest.rotation.z += Math.sin(slow + 1.5) * 0.03 * e;
     }
 
-    // Neck: fluid, follows the wave
     if (bones.neck) {
-      bones.neck.rotation.x = Math.sin(slow - 1.5) * 0.04 * e;
-      bones.neck.rotation.z = Math.sin(slow + 2.0) * 0.03 * e;
+      bones.neck.rotation.x += Math.sin(slow - 1.5) * 0.04 * e;
+      bones.neck.rotation.z += Math.sin(slow + 2.0) * 0.03 * e;
     }
 
-    // Head — reacts to highs + vocals, more expressive
     if (bones.head) {
       const hTurn = [0.18, 0.12, 0.20, 0.25][style];
       const hTilt = [0.12, 0.08, 0.14, 0.15][style];
       const hNod = [0.12, 0.14, 0.10, 0.18][style];
       const hSpeed = style === 1 ? beatPhase : t2;
-      bones.head.rotation.x = -0.12 + Math.sin(hSpeed) * hNod * e + audio.vocal * 0.07;
-      bones.head.rotation.y = Math.sin(hSpeed * 0.7) * hTurn * e + Math.sin(t * 0.25) * 0.06 * e;
-      bones.head.rotation.z = Math.sin(hSpeed + 0.5) * hTilt * e + audio.high * 0.05;
-      // Beat nod
+      bones.head.rotation.x += Math.sin(hSpeed) * hNod * e + audio.vocal * 0.07;
+      bones.head.rotation.y += Math.sin(hSpeed * 0.7) * hTurn * e + Math.sin(t * 0.25) * 0.06 * e;
+      bones.head.rotation.z += Math.sin(hSpeed + 0.5) * hTilt * e + audio.high * 0.05;
       if (audio.beat) bones.head.rotation.x += 0.08;
     }
 
-    // Shoulders: rise and roll — now noticeable
+    // Shoulders
     const shoulderAmp = [0.12, 0.18, 0.15, 0.22][style];
     const shoulderHighReact = [0.08, 0.12, 0.10, 0.14][style];
     if (bones.leftShoulder) {
-      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e + (audio.beat ? 0.08 : 0);
-      bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.10 * e;
-      bones.leftShoulder.rotation.x = Math.sin(slow * 0.7 + 0.5) * 0.16 * e;
+      bones.leftShoulder.rotation.z += Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e + (audio.beat ? 0.08 : 0);
+      bones.leftShoulder.rotation.y += Math.sin(slow * 0.5) * 0.10 * e;
+      bones.leftShoulder.rotation.x += Math.sin(slow * 0.7 + 0.5) * 0.16 * e;
     }
     if (bones.rightShoulder) {
-      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e - (audio.beat ? 0.08 : 0);
-      bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.10 * e;
-      bones.rightShoulder.rotation.x = Math.sin(slow * 0.7 + 2.0) * 0.16 * e;
+      bones.rightShoulder.rotation.z += -Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e - (audio.beat ? 0.08 : 0);
+      bones.rightShoulder.rotation.y += -Math.sin(slow * 0.5) * 0.10 * e;
+      bones.rightShoulder.rotation.x += Math.sin(slow * 0.7 + 2.0) * 0.16 * e;
     }
 
-    // Arms — bigger reach, elbows break the line of the torso
-    // Base pose: arms angled slightly outward (z=±0.7) so they swing freely
+    // Upper arms — big swings. These ADD to the A-pose so the arms swing from rest.
     const armRaise = [0.85, 0.70, 1.00, 1.20][style];
     const armPhaseL = (style === 1 ? beatPhase * 0.5 : slow) + 0.5;
     const armPhaseR = armPhaseL + [2.0, 1.5, 2.5, Math.PI][style];
     if (bones.leftUpperArm) {
-      bones.leftUpperArm.rotation.z = 0.70 + Math.sin(armPhaseL) * armRaise * e;
-      bones.leftUpperArm.rotation.x = Math.sin(armPhaseL * 0.7) * 0.70 * e;
-      bones.leftUpperArm.rotation.y = Math.sin(armPhaseL * 0.5) * 0.40 * e;
+      bones.leftUpperArm.rotation.z += Math.sin(armPhaseL) * armRaise * e;
+      bones.leftUpperArm.rotation.x += Math.sin(armPhaseL * 0.7) * 0.70 * e;
+      bones.leftUpperArm.rotation.y += Math.sin(armPhaseL * 0.5) * 0.40 * e;
     }
     if (bones.rightUpperArm) {
-      bones.rightUpperArm.rotation.z = -0.70 - Math.sin(armPhaseR) * armRaise * e;
-      bones.rightUpperArm.rotation.x = Math.sin(armPhaseR * 0.7) * 0.70 * e;
-      bones.rightUpperArm.rotation.y = -Math.sin(armPhaseR * 0.5) * 0.40 * e;
+      bones.rightUpperArm.rotation.z += -Math.sin(armPhaseR) * armRaise * e;
+      bones.rightUpperArm.rotation.x += Math.sin(armPhaseR * 0.7) * 0.70 * e;
+      bones.rightUpperArm.rotation.y += -Math.sin(armPhaseR * 0.5) * 0.40 * e;
     }
 
-    // Legs: weight shift visible — hip flexion and abduction
+    // Upper legs
     if (bones.leftUpperLeg) {
-      bones.leftUpperLeg.rotation.x = Math.sin(slow) * 0.22 * e;
-      bones.leftUpperLeg.rotation.z = Math.sin(slow) * 0.12 * e;
+      bones.leftUpperLeg.rotation.x += Math.sin(slow) * 0.22 * e;
+      bones.leftUpperLeg.rotation.z += Math.sin(slow) * 0.12 * e;
     }
     if (bones.rightUpperLeg) {
-      bones.rightUpperLeg.rotation.x = Math.sin(slow + Math.PI) * 0.22 * e;
-      bones.rightUpperLeg.rotation.z = -Math.sin(slow) * 0.12 * e;
+      bones.rightUpperLeg.rotation.x += Math.sin(slow + Math.PI) * 0.22 * e;
+      bones.rightUpperLeg.rotation.z += -Math.sin(slow) * 0.12 * e;
     }
-    // Elbows — real bend. Min 0.4 rad, peak at ~1.7 rad (nearly right angle)
+
+    // Elbows — additive bend
     if (bones.leftLowerArm) {
-      bones.leftLowerArm.rotation.x = -(0.40 + Math.max(0, Math.sin(armPhaseL + 0.8)) * 1.30 * e);
+      bones.leftLowerArm.rotation.x += -(0.40 + Math.max(0, Math.sin(armPhaseL + 0.8)) * 1.30 * e);
     }
     if (bones.rightLowerArm) {
-      bones.rightLowerArm.rotation.x = -(0.40 + Math.max(0, Math.sin(armPhaseR + 0.8)) * 1.30 * e);
+      bones.rightLowerArm.rotation.x += -(0.40 + Math.max(0, Math.sin(armPhaseR + 0.8)) * 1.30 * e);
     }
 
-    // Hands: gentle wrist movement
     if (bones.leftHand) {
-      bones.leftHand.rotation.x = Math.sin(slow * 0.8 + 1) * 0.2 * e;
-      bones.leftHand.rotation.z = Math.sin(slow * 0.6) * 0.15 * e;
+      bones.leftHand.rotation.x += Math.sin(slow * 0.8 + 1) * 0.2 * e;
+      bones.leftHand.rotation.z += Math.sin(slow * 0.6) * 0.15 * e;
     }
     if (bones.rightHand) {
-      bones.rightHand.rotation.x = Math.sin(slow * 0.8 + 2.5) * 0.2 * e;
-      bones.rightHand.rotation.z = -Math.sin(slow * 0.6 + 1) * 0.15 * e;
+      bones.rightHand.rotation.x += Math.sin(slow * 0.8 + 2.5) * 0.2 * e;
+      bones.rightHand.rotation.z += -Math.sin(slow * 0.6 + 1) * 0.15 * e;
     }
 
-    // Lower legs: style-specific knee bend depth — clearly visible
+    // Knees — additive bend
     const kneeAmp = [0.55, 0.70, 0.40, 0.85][style];
     if (bones.leftLowerLeg) {
-      bones.leftLowerLeg.rotation.x = 0.15 + Math.max(0, Math.sin(slow)) * kneeAmp * e;
+      bones.leftLowerLeg.rotation.x += Math.max(0, Math.sin(slow)) * kneeAmp * e;
     }
     if (bones.rightLowerLeg) {
-      bones.rightLowerLeg.rotation.x = 0.15 + Math.max(0, Math.sin(slow + Math.PI)) * kneeAmp * e;
+      bones.rightLowerLeg.rotation.x += Math.max(0, Math.sin(slow + Math.PI)) * kneeAmp * e;
     }
 
-    // Feet/ankles: point and flex
-    if (bones.leftFoot) {
-      bones.leftFoot.rotation.x = Math.sin(slow + 0.5) * 0.1 * e;
-    }
-    if (bones.rightFoot) {
-      bones.rightFoot.rotation.x = Math.sin(slow + Math.PI + 0.5) * 0.1 * e;
-    }
+    if (bones.leftFoot) bones.leftFoot.rotation.x += Math.sin(slow + 0.5) * 0.1 * e;
+    if (bones.rightFoot) bones.rightFoot.rotation.x += Math.sin(slow + Math.PI + 0.5) * 0.1 * e;
 
     // ── Dance Memory: capture + recall + blend ────────────
     const DM_MAP = [[bones.hips,'y','hipsY'],[bones.hips,'x','hipsX'],[bones.hips,'z','hipsZ'],[bones.spine,'y','spineY'],[bones.spine,'x','spineX'],[bones.spine,'z','spineZ'],[bones.chest,'y','chestY'],[bones.chest,'x','chestX'],[bones.chest,'z','chestZ'],[bones.head,'y','headY'],[bones.head,'x','headX'],[bones.head,'z','headZ'],[bones.leftUpperArm,'z','lArmZ'],[bones.leftUpperArm,'x','lArmX'],[bones.leftUpperArm,'y','lArmY'],[bones.rightUpperArm,'z','rArmZ'],[bones.rightUpperArm,'x','rArmX'],[bones.rightUpperArm,'y','rArmY'],[bones.leftLowerArm,'x','lElbow'],[bones.rightLowerArm,'x','rElbow'],[bones.leftUpperLeg,'x','lLegX'],[bones.leftUpperLeg,'z','lLegZ'],[bones.rightUpperLeg,'x','rLegX'],[bones.rightUpperLeg,'z','rLegZ'],[bones.leftLowerLeg,'x','lKnee'],[bones.rightLowerLeg,'x','rKnee']];
@@ -1792,17 +1807,44 @@ function animate() {
     pp.lFoot.copy(lFootWP); pp.rFoot.copy(rFootWP); pp.head.copy(headWP); pp.hips.copy(hipsWP);
   }
 
-  // Head group follows neck bone (head bone is scaled to 0, so use neck)
-  const trackBone = bones.neck || headBone;
+  // Head group follows the HEAD bone (or neck as fallback). Scaling doesn't
+  // affect rotation, so using a scaled-to-0.001 head bone is fine for tracking.
+  const trackBone = bones.head || bones.neck || headBone;
   if (trackBone) {
     trackBone.getWorldPosition(_headWorldPos);
     trackBone.getWorldQuaternion(_headWorldQuat);
-    // Offset up from neck to head position
-    _headWorldPos.y += 0.15;
+    // Offset up from neck → head if we fell back to neck
+    if (trackBone === bones.neck) _headWorldPos.y += 0.15;
 
     headGroup.position.copy(_headWorldPos);
     headGroup.position.y += 0.02;
     headGroup.quaternion.copy(_headWorldQuat);
+
+    // ── Hair face-direction correction ────────────────────
+    // Face is wherever the camera is (approximately, when she stares). But
+    // the true "face direction" is stable: it's the head bone's forward axis.
+    // VRM 1.0 = +Z, VRM 0.x = -Z. We can auto-detect by checking which local
+    // axis (+Z or -Z), when transformed to world, points farther from where
+    // the camera is behind her. Simpler: just dot head-forward with head→camera;
+    // hair should go OPPOSITE of whichever local Z points toward the camera.
+    if (hairGroup && !hairGroup.userData.zSignDetected) {
+      // Sample once after first dance frame so head has been oriented
+      const headLocalZ = new THREE.Vector3(0, 0, 1).applyQuaternion(_headWorldQuat);
+      const headToCam = camera.position.clone().sub(_headWorldPos).normalize();
+      // If local +Z points toward camera, face is at +Z → hair should be at -Z.
+      // If local +Z points away from camera, face is at -Z → hair should be at +Z.
+      const zDotCam = headLocalZ.dot(headToCam);
+      // Hair Z positions are stored as positive magnitudes. Set sign so hair
+      // is OPPOSITE the face direction.
+      hairGroup.userData.zSign = zDotCam > 0 ? -1 : 1;
+      hairGroup.userData.zSignDetected = true;
+      for (const r of hairRibbons) {
+        const m = Math.abs(r.userData.baseZ);
+        r.userData.baseZ = m * hairGroup.userData.zSign;
+        r.position.z = r.userData.baseZ;
+      }
+      console.log('[hologram] Hair Z sign:', hairGroup.userData.zSign, '(dot=' + zDotCam.toFixed(3) + ')');
+    }
 
     // Eye glow lights track face
     const lEyeWorld = new THREE.Vector3(-0.042, 0.01, 0.11).applyQuaternion(_headWorldQuat).add(_headWorldPos);
