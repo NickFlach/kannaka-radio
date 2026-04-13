@@ -866,18 +866,74 @@ async function loadVRM() {
     }
   });
   scene.add(model);
-  // Get bone references — try VRM humanoid first, then search by name
-  if (vrm && vrm.humanoid) {
-    // Prefer NORMALIZED bones — their rest pose is a guaranteed T-pose, so setting
-    // rotations directly produces predictable joint articulation. vrm.update() then
-    // syncs normalized → raw once per frame. (Raw bones have the model's authored
-    // rest rotations baked in, which fights against setting rotation.x/.y/.z.)
-    for (const name of BONE_NAMES) {
-      const node = (vrm.humanoid.getNormalizedBoneNode && vrm.humanoid.getNormalizedBoneNode(name))
-                || vrm.humanoid.getRawBoneNode(name);
-      if (node) bones[name] = node;
+  // ── Primary bone acquisition: the SkinnedMesh skeleton itself ──
+  // Bypass the humanoid abstraction entirely — walk the SkinnedMesh.skeleton and
+  // find bones by name. These are the EXACT bones the renderer uses for skinning,
+  // so setting their rotation is guaranteed to deform the mesh.
+  let primarySkinnedMesh = null;
+  model.traverse(o => { if (o.isSkinnedMesh && !primarySkinnedMesh) primarySkinnedMesh = o; });
+  if (primarySkinnedMesh && primarySkinnedMesh.skeleton) {
+    const skelBones = primarySkinnedMesh.skeleton.bones;
+    console.log('[hologram] Skeleton has', skelBones.length, 'bones');
+    const aliases = {
+      hips: ['hips','hip','pelvis','j_bip_c_hips'],
+      spine: ['spine','j_bip_c_spine'],
+      chest: ['chest','j_bip_c_chest'],
+      upperChest: ['upperchest','upper_chest','j_bip_c_upperchest'],
+      neck: ['neck','j_bip_c_neck'],
+      head: ['head','j_bip_c_head'],
+      leftShoulder: ['leftshoulder','l_shoulder','j_bip_l_shoulder'],
+      rightShoulder: ['rightshoulder','r_shoulder','j_bip_r_shoulder'],
+      leftUpperArm: ['leftupperarm','l_upperarm','l_arm','j_bip_l_upperarm'],
+      rightUpperArm: ['rightupperarm','r_upperarm','r_arm','j_bip_r_upperarm'],
+      leftLowerArm: ['leftlowerarm','l_lowerarm','l_forearm','leftforearm','j_bip_l_lowerarm'],
+      rightLowerArm: ['rightlowerarm','r_lowerarm','r_forearm','rightforearm','j_bip_r_lowerarm'],
+      leftHand: ['lefthand','l_hand','j_bip_l_hand'],
+      rightHand: ['righthand','r_hand','j_bip_r_hand'],
+      leftUpperLeg: ['leftupperleg','l_upperleg','l_thigh','leftthigh','j_bip_l_upperleg'],
+      rightUpperLeg: ['rightupperleg','r_upperleg','r_thigh','rightthigh','j_bip_r_upperleg'],
+      leftLowerLeg: ['leftlowerleg','l_lowerleg','l_shin','l_calf','leftshin','j_bip_l_lowerleg'],
+      rightLowerLeg: ['rightlowerleg','r_lowerleg','r_shin','r_calf','rightshin','j_bip_r_lowerleg'],
+      leftFoot: ['leftfoot','l_foot','j_bip_l_foot'],
+      rightFoot: ['rightfoot','r_foot','j_bip_r_foot'],
+    };
+    for (const logical of BONE_NAMES) {
+      const candidates = aliases[logical] || [logical.toLowerCase()];
+      let found = null;
+      for (const c of candidates) {
+        found = skelBones.find(b => b.name.toLowerCase() === c);
+        if (found) break;
+        found = skelBones.find(b => b.name.toLowerCase().includes(c));
+        if (found) break;
+      }
+      if (found) bones[logical] = found;
     }
-  } else {
+    console.log('[hologram] Skeleton bones matched:', Object.keys(bones).join(','));
+  }
+  // Secondary: fill from VRM humanoid for any bones still missing
+  if (vrm && vrm.humanoid) {
+    // CRITICAL: disable humanoid auto-sync so our direct bone writes persist across
+    // vrm.update() calls. Without this, humanoid.update() copies normalized→raw
+    // every frame and wipes out our dance rotations.
+    if ('autoUpdateHumanBones' in vrm.humanoid) {
+      vrm.humanoid.autoUpdateHumanBones = false;
+      console.log('[hologram] Disabled humanoid.autoUpdateHumanBones');
+    } else {
+      // Older API: try to null out the update method
+      try {
+        const orig = vrm.humanoid.update?.bind(vrm.humanoid);
+        vrm.humanoid.update = () => {};
+        console.log('[hologram] Stubbed humanoid.update()');
+      } catch(e) { console.warn('[hologram] Could not stub humanoid.update:', e.message); }
+    }
+    for (const name of BONE_NAMES) {
+      if (!bones[name]) {
+        const node = vrm.humanoid.getRawBoneNode(name);
+        if (node) bones[name] = node;
+      }
+    }
+  }
+  if (false) { /* legacy fallback block below, disabled */
     // Fallback: search the model's skeleton by common VRM/mixamo bone names
     const boneAliases = {
       hips: ['hips','hip','pelvis','root'],
@@ -951,21 +1007,22 @@ async function loadVRM() {
     });
   }
 
-  // Try VRM humanoid with additional bone names that might exist
+  // Try VRM humanoid raw bones for any bones still missing
   if (vrm && vrm.humanoid) {
     const extraNames = ['leftShoulder','rightShoulder','leftLowerArm','rightLowerArm','leftHand','rightHand','leftLowerLeg','rightLowerLeg','leftFoot','rightFoot'];
     for (const name of extraNames) {
       if (!bones[name]) {
         try {
-          const node = (vrm.humanoid.getNormalizedBoneNode && vrm.humanoid.getNormalizedBoneNode(name))
-                    || vrm.humanoid.getRawBoneNode(name);
-          if (node) { bones[name] = node; console.log('[hologram] Found extra bone (normalized):', name); }
+          const node = vrm.humanoid.getRawBoneNode(name);
+          if (node) { bones[name] = node; console.log('[hologram] Found extra raw bone:', name); }
         } catch(e) {}
       }
     }
   }
 
-  console.log('[hologram] Final bones:', Object.keys(bones).join(', '));
+  console.log('[hologram] Final bones:', Object.keys(bones).join(','), '— missing:', BONE_NAMES.filter(n=>!bones[n]).join(','));
+  // Tag bones with their logical name for debug
+  for (const [name, b] of Object.entries(bones)) { if (b) b.userData.kannakaRole = name; }
 }
 loadVRM().catch((err) => console.error('[hologram] VRM load failed:', err));
 
@@ -1082,6 +1139,29 @@ const DanceMemory = (() => {
   };
 })();
 window.kannakaDance = { count: () => DanceMemory.count(), clear: () => DanceMemory.clear(), export: () => DanceMemory.exportAll() };
+// Debug: `kannakaDebug.bones()` prints live rotations of all mapped bones.
+window.kannakaDebug = {
+  bones() {
+    const out = {};
+    for (const [k, b] of Object.entries(bones)) if (b) out[k] = { name: b.name, x: +b.rotation.x.toFixed(3), y: +b.rotation.y.toFixed(3), z: +b.rotation.z.toFixed(3) };
+    console.table(out);
+    return out;
+  },
+  skel() {
+    let sm = null; if (vrm && vrm.scene) vrm.scene.traverse(o => { if (o.isSkinnedMesh && !sm) sm = o; });
+    return sm ? sm.skeleton.bones.map(b => b.name) : [];
+  },
+  verifySync() {
+    // Confirm that bones[k] IS a bone in the actual skeleton used for skinning
+    let sm = null; if (vrm && vrm.scene) vrm.scene.traverse(o => { if (o.isSkinnedMesh && !sm) sm = o; });
+    if (!sm) return 'no skinned mesh';
+    const skelSet = new Set(sm.skeleton.bones);
+    const out = {};
+    for (const [k, b] of Object.entries(bones)) if (b) out[k] = { inSkeleton: skelSet.has(b), name: b.name };
+    console.table(out);
+    return out;
+  },
+};
 
 // -- Animation --
 const clock = new THREE.Clock();
@@ -1354,9 +1434,11 @@ function animate() {
   // Particles color shifts with the music — bass=warm, highs=cool
   particleMat.color.setHSL(0.75 - audio.bass * 0.15 + audio.high * 0.1, 0.6, 0.5 + audio.overall * 0.2);
 
-  // VRM bone animation
-  // We set rotations on NORMALIZED bones, then vrm.update() syncs normalized → raw
-  // AFTER the dance code runs. This is the canonical flow for three-vrm 3.x.
+  // VRM bone animation — autoUpdateHumanBones is disabled at load time, so
+  // vrm.update(dt) only runs spring bones / look-at / expressions and does NOT
+  // overwrite our dance rotations. Safe to call before dance code.
+  if (vrm && vrm.update) vrm.update(dt);
+
   let hipSway = 0;
   if (bones.hips) {
     // ── Dance routines — randomly switches styles ─────────
@@ -1597,10 +1679,6 @@ function animate() {
       }
     }
   }
-
-  // VRM update AFTER all bone rotations are set — syncs normalized → raw skeleton
-  // and runs spring bones / look-at / expressions. Must come after dance code.
-  if (vrm && vrm.update) vrm.update(dt);
 
   // ── Heart energy — pulses with the beat, fills the body ──
   const heartBeat = Math.pow(Math.max(0, Math.sin(beatPhase)), 4) * 0.4; // subtle pulse
