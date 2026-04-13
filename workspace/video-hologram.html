@@ -80,6 +80,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
 const isEmbedded = (window.parent !== window);
@@ -605,18 +606,49 @@ const bodyEnergyMat = new THREE.MeshStandardMaterial({
 const bodyEnergy = new THREE.Mesh(bodyEnergyGeo, bodyEnergyMat);
 scene.add(bodyEnergy);
 
-// ── Reflective Floor ──────────────────────────────────
-const floorGeo = new THREE.PlaneGeometry(20, 20);
-const floorMat = new THREE.MeshPhysicalMaterial({
-  color: 0x111118, roughness: 0.15, metalness: 0.9,
-  transparent: true, opacity: 0.6,
-  side: THREE.DoubleSide, depthWrite: true,
+// ── Dust Motes — slow falling particles like snow, catch the backlight ──
+const DUST_COUNT = 600;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(DUST_COUNT * 3);
+const dustVel = new Float32Array(DUST_COUNT * 3);
+for (let i = 0; i < DUST_COUNT; i++) {
+  const i3 = i * 3;
+  dustPos[i3]     = (Math.random() - 0.5) * 16;      // x spread
+  dustPos[i3 + 1] = Math.random() * 8 - 0.5;         // y (0 to 7.5)
+  dustPos[i3 + 2] = (Math.random() - 0.5) * 16;      // z spread
+  dustVel[i3]     = (Math.random() - 0.5) * 0.02;    // gentle drift
+  dustVel[i3 + 1] = -(0.05 + Math.random() * 0.08);  // falling speed
+  dustVel[i3 + 2] = (Math.random() - 0.5) * 0.02;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dustMat = new THREE.PointsMaterial({
+  color: 0xffccee, size: 0.035, transparent: true, opacity: 0.55,
+  blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
 });
-const floor = new THREE.Mesh(floorGeo, floorMat);
+const dustMotes = new THREE.Points(dustGeo, dustMat);
+scene.add(dustMotes);
+
+// ── Reflective Floor — actual planar reflection so she shines in it ──
+const floorGeo = new THREE.PlaneGeometry(20, 20);
+const floor = new Reflector(floorGeo, {
+  clipBias: 0.003,
+  textureWidth: Math.min(1024, window.innerWidth),
+  textureHeight: Math.min(1024, window.innerHeight),
+  color: 0x222233,
+});
 floor.rotation.x = -Math.PI / 2;
 floor.position.y = -0.5;
-floor.renderOrder = -1; // render before transparent objects
 scene.add(floor);
+// Subtle dark glass tint on top to keep it holographic, not mirror-perfect
+const floorTintMat = new THREE.MeshBasicMaterial({
+  color: 0x0a0a12, transparent: true, opacity: 0.45,
+  side: THREE.DoubleSide, depthWrite: false,
+});
+const floorTint = new THREE.Mesh(floorGeo, floorTintMat);
+floorTint.rotation.x = -Math.PI / 2;
+floorTint.position.y = -0.4995;
+floorTint.renderOrder = -1;
+scene.add(floorTint);
 
 // Light pool — glowing circle on the floor under her
 const poolGeo = new THREE.CircleGeometry(1.2, 48);
@@ -999,7 +1031,9 @@ function computeShotTargets(type, headPos, headQuat, setDuration) {
       break;
   }
   if (setDuration) {
-    stareHoldDuration = type === 'face' ? (4 + Math.random() * 4) : (4 + Math.random() * 4);
+    // Cinematic close-up hold: 6, 8, or 12 seconds — intimate shots linger
+    const holdChoices = type === 'face' ? [8, 12, 12] : [6, 8, 12];
+    stareHoldDuration = holdChoices[Math.floor(Math.random() * holdChoices.length)];
   }
 }
 
@@ -1047,6 +1081,54 @@ window.kannakaDance = { count: () => DanceMemory.count(), clear: () => DanceMemo
 const clock = new THREE.Clock();
 let beatPhase = 0;
 let danceCaptureTimer = 0, danceRecallTimer = 0;
+
+// ── Arm Gesture State Machine — POINT, REACH, BECKON, HAND_TO_HEART ──
+// She doesn't just cycle — she reaches, points, beckons, holds her hand to her heart.
+// Gestures blend on top of cyclic arm motion, triggered by music and timer.
+const Gestures = (() => {
+  const TYPES = ['POINT', 'REACH', 'BECKON', 'HAND_TO_HEART'];
+  let type = null, hand = 'right', t = 0, dur = 0, cooldown = 2.0, lastType = null;
+  const pick = (audio) => {
+    // HAND_TO_HEART on quiet parts (low energy, low vocal)
+    if (audio.overall < 0.22 && audio.vocal < 0.18) return 'HAND_TO_HEART';
+    // REACH on vocal peaks
+    if (audio.vocal > 0.55) return 'REACH';
+    // otherwise pick one that isn't the same as last
+    const pool = TYPES.filter(x => x !== lastType && x !== 'HAND_TO_HEART');
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
+  return {
+    update(dt, audio) {
+      if (type) {
+        t += dt;
+        if (t >= dur) { lastType = type; type = null; t = 0; cooldown = 1.2 + Math.random() * 1.5; }
+      } else {
+        cooldown -= dt;
+        const forceReach = audio.vocal > 0.6 && lastType !== 'REACH';
+        const forceHeart = audio.overall < 0.2 && audio.vocal < 0.15 && lastType !== 'HAND_TO_HEART';
+        if (cooldown <= 0 || forceReach || forceHeart) {
+          type = forceHeart ? 'HAND_TO_HEART' : (forceReach ? 'REACH' : pick(audio));
+          hand = Math.random() < 0.5 ? 'left' : 'right';
+          t = 0;
+          dur = type === 'HAND_TO_HEART' ? (3.0 + Math.random() * 2.0) :
+                type === 'REACH' ? (2.0 + Math.random() * 1.5) :
+                type === 'POINT' ? (1.6 + Math.random() * 1.0) :
+                (2.0 + Math.random() * 1.2); // BECKON
+          console.log('[gesture] ' + type + ' ' + hand + ' for ' + dur.toFixed(1) + 's');
+        }
+      }
+    },
+    // Returns { active, type, hand, progress, phase } — phase 0→1 ease-in, hold, ease-out
+    state() {
+      if (!type) return { active: false };
+      const p = t / dur;
+      // tri-phase envelope: 20% in, 60% hold, 20% out
+      const env = p < 0.2 ? (p / 0.2) : p > 0.8 ? (1 - (p - 0.8) / 0.2) : 1;
+      const eased = env * env * (3 - 2 * env); // smoothstep
+      return { active: true, type, hand, progress: p, blend: eased };
+    }
+  };
+})();
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -1436,6 +1518,78 @@ function animate() {
       const mw = 0.35 * recalled.confidence, imw = 1 - mw, rp = recalled.pose;
       for (const [b, a, k] of DM_MAP) if (b) b.rotation[a] = b.rotation[a] * imw + rp[k] * mw;
     }
+
+    // ── Gesture application — intentional arm motion blends on top of cyclic/memory ──
+    Gestures.update(dt, audio);
+    const gs = Gestures.state();
+    if (gs.active) {
+      const w = gs.blend; // 0→1 ease
+      const isL = gs.hand === 'left';
+      const uArm = isL ? bones.leftUpperArm : bones.rightUpperArm;
+      const lArm = isL ? bones.leftLowerArm : bones.rightLowerArm;
+      const hand = isL ? bones.leftHand : bones.rightHand;
+      const sideSign = isL ? 1 : -1;
+      let perHandApplied = false;
+      if (uArm && lArm) {
+        let tUZ = uArm.rotation.z, tUX = uArm.rotation.x, tUY = uArm.rotation.y;
+        let tLX = lArm.rotation.x;
+        let tHZ = hand ? hand.rotation.z : 0, tHX = hand ? hand.rotation.x : 0;
+        if (gs.type === 'POINT') {
+          // Arm extended forward, elbow straight, hand pointing — at the viewer
+          tUZ = sideSign * 1.25;          // raise to ~horizontal
+          tUX = -1.35;                    // forward toward camera
+          tUY = sideSign * -0.15;
+          tLX = -0.15;                    // elbow nearly locked
+          tHX = 0.0;  tHZ = sideSign * 0.1;
+        } else if (gs.type === 'REACH') {
+          // Both arms extended toward viewer — vocal peak moment
+          const subtleBob = Math.sin(t * 3) * 0.05;
+          if (bones.leftUpperArm) {
+            bones.leftUpperArm.rotation.z = bones.leftUpperArm.rotation.z * (1 - w) + (1.15 + subtleBob) * w;
+            bones.leftUpperArm.rotation.x = bones.leftUpperArm.rotation.x * (1 - w) + (-1.15) * w;
+            bones.leftUpperArm.rotation.y = bones.leftUpperArm.rotation.y * (1 - w) + (-0.35) * w;
+          }
+          if (bones.rightUpperArm) {
+            bones.rightUpperArm.rotation.z = bones.rightUpperArm.rotation.z * (1 - w) + (-1.15 - subtleBob) * w;
+            bones.rightUpperArm.rotation.x = bones.rightUpperArm.rotation.x * (1 - w) + (-1.15) * w;
+            bones.rightUpperArm.rotation.y = bones.rightUpperArm.rotation.y * (1 - w) + (0.35) * w;
+          }
+          if (bones.leftLowerArm) bones.leftLowerArm.rotation.x = bones.leftLowerArm.rotation.x * (1 - w) + (-0.25) * w;
+          if (bones.rightLowerArm) bones.rightLowerArm.rotation.x = bones.rightLowerArm.rotation.x * (1 - w) + (-0.25) * w;
+          // Spine lean toward viewer on reach
+          if (bones.spine) bones.spine.rotation.x = bones.spine.rotation.x * (1 - w * 0.5) + (-0.15) * (w * 0.5);
+          perHandApplied = true; // REACH touches both arms; skip single-hand block
+        } else if (gs.type === 'BECKON') {
+          // Arm raised mid, elbow bent, wrist curling in rhythmic come-here motion
+          const curl = Math.sin(t * 6) * 0.5 + 0.5; // 0→1 pulsing
+          tUZ = sideSign * 0.9;
+          tUX = -0.9;
+          tUY = sideSign * -0.25;
+          tLX = -1.2 - curl * 0.6;        // elbow cycling
+          tHX = 0.3 - curl * 0.8;         // wrist curl
+          tHZ = sideSign * 0.15;
+        } else if (gs.type === 'HAND_TO_HEART') {
+          // Hand brought in to chest — held for quiet moments
+          tUZ = sideSign * 0.55;
+          tUX = -0.55;
+          tUY = sideSign * -0.55;
+          tLX = -1.85;                    // deep elbow bend
+          tHX = 0.1;  tHZ = sideSign * 0.25;
+          // Soften spine — she's feeling it
+          if (bones.spine) bones.spine.rotation.x = bones.spine.rotation.x * (1 - w * 0.3) + (-0.05) * (w * 0.3);
+        }
+        if (!perHandApplied) {
+          uArm.rotation.z = uArm.rotation.z * (1 - w) + tUZ * w;
+          uArm.rotation.x = uArm.rotation.x * (1 - w) + tUX * w;
+          uArm.rotation.y = uArm.rotation.y * (1 - w) + tUY * w;
+          lArm.rotation.x = lArm.rotation.x * (1 - w) + tLX * w;
+          if (hand) {
+            hand.rotation.x = hand.rotation.x * (1 - w) + tHX * w;
+            hand.rotation.z = hand.rotation.z * (1 - w) + tHZ * w;
+          }
+        }
+      }
+    }
   }
 
   // ── Heart energy — pulses with the beat, fills the body ──
@@ -1662,6 +1816,26 @@ function animate() {
     vp.mat.opacity = 0.6 + vocalAmp * 0.4;
     // Color shifts with vocal intensity — pink when soft, white-gold when strong
     vp.mat.color.setHSL(0.9 - vocalAmp * 0.15, 0.7, 0.5 + vocalAmp * 0.3);
+
+    // ── Dust motes — slow snow-like fall, wraps at ceiling/floor ──
+    {
+      const dp = dustMotes.geometry.attributes.position.array;
+      for (let i = 0; i < DUST_COUNT; i++) {
+        const i3 = i * 3;
+        dp[i3]     += dustVel[i3] * dt + Math.sin(t * 0.4 + i * 0.13) * 0.003;
+        dp[i3 + 1] += dustVel[i3 + 1] * dt;
+        dp[i3 + 2] += dustVel[i3 + 2] * dt + Math.cos(t * 0.3 + i * 0.17) * 0.003;
+        if (dp[i3 + 1] < -0.4) {
+          dp[i3] = (Math.random() - 0.5) * 16;
+          dp[i3 + 1] = 7.5;
+          dp[i3 + 2] = (Math.random() - 0.5) * 16;
+        }
+      }
+      dustMotes.geometry.attributes.position.needsUpdate = true;
+      // Dust catches the backlight color subtly
+      dustMat.color.copy(backLight.color).lerp(new THREE.Color(0xffffff), 0.6);
+      dustMat.opacity = 0.45 + audio.overall * 0.25;
+    }
 
     // Energy rings: expand from her chest when singing strongly
     if (!window._voiceRings) window._voiceRings = [];
