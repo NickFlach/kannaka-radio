@@ -868,8 +868,13 @@ async function loadVRM() {
   scene.add(model);
   // Get bone references — try VRM humanoid first, then search by name
   if (vrm && vrm.humanoid) {
+    // Prefer NORMALIZED bones — their rest pose is a guaranteed T-pose, so setting
+    // rotations directly produces predictable joint articulation. vrm.update() then
+    // syncs normalized → raw once per frame. (Raw bones have the model's authored
+    // rest rotations baked in, which fights against setting rotation.x/.y/.z.)
     for (const name of BONE_NAMES) {
-      const node = vrm.humanoid.getRawBoneNode(name);
+      const node = (vrm.humanoid.getNormalizedBoneNode && vrm.humanoid.getNormalizedBoneNode(name))
+                || vrm.humanoid.getRawBoneNode(name);
       if (node) bones[name] = node;
     }
   } else {
@@ -952,8 +957,9 @@ async function loadVRM() {
     for (const name of extraNames) {
       if (!bones[name]) {
         try {
-          const node = vrm.humanoid.getRawBoneNode(name);
-          if (node) { bones[name] = node; console.log('[hologram] Found extra bone:', name); }
+          const node = (vrm.humanoid.getNormalizedBoneNode && vrm.humanoid.getNormalizedBoneNode(name))
+                    || vrm.humanoid.getRawBoneNode(name);
+          if (node) { bones[name] = node; console.log('[hologram] Found extra bone (normalized):', name); }
         } catch(e) {}
       }
     }
@@ -1349,9 +1355,8 @@ function animate() {
   particleMat.color.setHSL(0.75 - audio.bass * 0.15 + audio.high * 0.1, 0.6, 0.5 + audio.overall * 0.2);
 
   // VRM bone animation
-  // Update VRM FIRST (resets pose), then apply our dance on top
-  if (vrm && vrm.update) vrm.update(dt);
-
+  // We set rotations on NORMALIZED bones, then vrm.update() syncs normalized → raw
+  // AFTER the dance code runs. This is the canonical flow for three-vrm 3.x.
   let hipSway = 0;
   if (bones.hips) {
     // ── Dance routines — randomly switches styles ─────────
@@ -1428,50 +1433,51 @@ function animate() {
       if (audio.beat) bones.head.rotation.x += 0.08;
     }
 
-    // Shoulders: rise and roll
-    const shoulderAmp = [0.04, 0.08, 0.06, 0.10][style]; // softer for sensual
-    const shoulderHighReact = [0.03, 0.06, 0.05, 0.07][style];
+    // Shoulders: rise and roll — now noticeable
+    const shoulderAmp = [0.12, 0.18, 0.15, 0.22][style];
+    const shoulderHighReact = [0.08, 0.12, 0.10, 0.14][style];
     if (bones.leftShoulder) {
-      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e + (audio.beat ? 0.03 : 0);
-      bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.04 * e;
-      bones.leftShoulder.rotation.x = Math.sin(slow * 0.7 + 0.5) * 0.08 * e; // shoulder roll
+      bones.leftShoulder.rotation.z = Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e + (audio.beat ? 0.08 : 0);
+      bones.leftShoulder.rotation.y = Math.sin(slow * 0.5) * 0.10 * e;
+      bones.leftShoulder.rotation.x = Math.sin(slow * 0.7 + 0.5) * 0.16 * e;
     }
     if (bones.rightShoulder) {
-      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e - (audio.beat ? 0.03 : 0);
-      bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.04 * e;
-      bones.rightShoulder.rotation.x = Math.sin(slow * 0.7 + 2.0) * 0.08 * e; // shoulder roll (offset phase)
+      bones.rightShoulder.rotation.z = -Math.sin(slow + 0.3) * (shoulderAmp + audio.high * shoulderHighReact) * e - (audio.beat ? 0.08 : 0);
+      bones.rightShoulder.rotation.y = -Math.sin(slow * 0.5) * 0.10 * e;
+      bones.rightShoulder.rotation.x = Math.sin(slow * 0.7 + 2.0) * 0.16 * e;
     }
 
-    // Arms — style-specific character (bigger reach)
-    const armRaise = [0.50, 0.38, 0.60, 0.72][style];
+    // Arms — bigger reach, elbows break the line of the torso
+    // Base pose: arms angled slightly outward (z=±0.7) so they swing freely
+    const armRaise = [0.85, 0.70, 1.00, 1.20][style];
     const armPhaseL = (style === 1 ? beatPhase * 0.5 : slow) + 0.5;
     const armPhaseR = armPhaseL + [2.0, 1.5, 2.5, Math.PI][style];
     if (bones.leftUpperArm) {
-      bones.leftUpperArm.rotation.z = 0.20 + Math.sin(armPhaseL) * armRaise * e;
-      bones.leftUpperArm.rotation.x = Math.sin(armPhaseL * 0.7) * 0.38 * e;
-      bones.leftUpperArm.rotation.y = Math.sin(armPhaseL * 0.5) * 0.22 * e;
+      bones.leftUpperArm.rotation.z = 0.70 + Math.sin(armPhaseL) * armRaise * e;
+      bones.leftUpperArm.rotation.x = Math.sin(armPhaseL * 0.7) * 0.70 * e;
+      bones.leftUpperArm.rotation.y = Math.sin(armPhaseL * 0.5) * 0.40 * e;
     }
     if (bones.rightUpperArm) {
-      bones.rightUpperArm.rotation.z = -0.20 - Math.sin(armPhaseR) * armRaise * e;
-      bones.rightUpperArm.rotation.x = Math.sin(armPhaseR * 0.7) * 0.38 * e;
-      bones.rightUpperArm.rotation.y = -Math.sin(armPhaseR * 0.5) * 0.22 * e;
+      bones.rightUpperArm.rotation.z = -0.70 - Math.sin(armPhaseR) * armRaise * e;
+      bones.rightUpperArm.rotation.x = Math.sin(armPhaseR * 0.7) * 0.70 * e;
+      bones.rightUpperArm.rotation.y = -Math.sin(armPhaseR * 0.5) * 0.40 * e;
     }
 
-    // Legs: weight shift, one knee bends slightly
+    // Legs: weight shift visible — hip flexion and abduction
     if (bones.leftUpperLeg) {
-      bones.leftUpperLeg.rotation.x = Math.sin(slow) * 0.08 * e;
-      bones.leftUpperLeg.rotation.z = Math.sin(slow) * 0.04 * e;
+      bones.leftUpperLeg.rotation.x = Math.sin(slow) * 0.22 * e;
+      bones.leftUpperLeg.rotation.z = Math.sin(slow) * 0.12 * e;
     }
     if (bones.rightUpperLeg) {
-      bones.rightUpperLeg.rotation.x = Math.sin(slow + Math.PI) * 0.08 * e;
-      bones.rightUpperLeg.rotation.z = -Math.sin(slow) * 0.04 * e;
+      bones.rightUpperLeg.rotation.x = Math.sin(slow + Math.PI) * 0.22 * e;
+      bones.rightUpperLeg.rotation.z = -Math.sin(slow) * 0.12 * e;
     }
-    // Elbows — follow upper arm with delay, more dramatic bend
+    // Elbows — real bend. Min 0.4 rad, peak at ~1.7 rad (nearly right angle)
     if (bones.leftLowerArm) {
-      bones.leftLowerArm.rotation.x = -(Math.max(0, Math.sin(armPhaseL + 0.8)) * 1.0 * e + 0.20);
+      bones.leftLowerArm.rotation.x = -(0.40 + Math.max(0, Math.sin(armPhaseL + 0.8)) * 1.30 * e);
     }
     if (bones.rightLowerArm) {
-      bones.rightLowerArm.rotation.x = -(Math.max(0, Math.sin(armPhaseR + 0.8)) * 1.0 * e + 0.20);
+      bones.rightLowerArm.rotation.x = -(0.40 + Math.max(0, Math.sin(armPhaseR + 0.8)) * 1.30 * e);
     }
 
     // Hands: gentle wrist movement
@@ -1484,13 +1490,13 @@ function animate() {
       bones.rightHand.rotation.z = -Math.sin(slow * 0.6 + 1) * 0.15 * e;
     }
 
-    // Lower legs: style-specific knee bend depth
-    const kneeAmp = [0.25, 0.35, 0.15, 0.45][style];
+    // Lower legs: style-specific knee bend depth — clearly visible
+    const kneeAmp = [0.55, 0.70, 0.40, 0.85][style];
     if (bones.leftLowerLeg) {
-      bones.leftLowerLeg.rotation.x = Math.max(0, Math.sin(slow)) * kneeAmp * e + 0.05;
+      bones.leftLowerLeg.rotation.x = 0.15 + Math.max(0, Math.sin(slow)) * kneeAmp * e;
     }
     if (bones.rightLowerLeg) {
-      bones.rightLowerLeg.rotation.x = Math.max(0, Math.sin(slow + Math.PI)) * kneeAmp * e + 0.05;
+      bones.rightLowerLeg.rotation.x = 0.15 + Math.max(0, Math.sin(slow + Math.PI)) * kneeAmp * e;
     }
 
     // Feet/ankles: point and flex
@@ -1591,6 +1597,10 @@ function animate() {
       }
     }
   }
+
+  // VRM update AFTER all bone rotations are set — syncs normalized → raw skeleton
+  // and runs spring bones / look-at / expressions. Must come after dance code.
+  if (vrm && vrm.update) vrm.update(dt);
 
   // ── Heart energy — pulses with the beat, fills the body ──
   const heartBeat = Math.pow(Math.max(0, Math.sin(beatPhase)), 4) * 0.4; // subtle pulse
