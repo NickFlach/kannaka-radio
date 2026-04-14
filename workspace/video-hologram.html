@@ -1818,15 +1818,17 @@ function animate() {
     const velHips  = hipsWP.distanceTo(pp.hips) / dt;
     const velHead  = headWP.distanceTo(pp.head) / dt;
 
-    // Find center of mass of movement — weighted by velocity
-    const totalVel = velChest + velLHand + velRHand + velHips + velHead + 0.01;
+    // Proper weighted average — chest carries a base weight of 1.5 so the
+    // heart light rests at chest when she's still, then drifts toward fast
+    // limbs when they move.
+    const chestBase = 1.5;
+    const totalVel = velChest + velLHand + velRHand + velHips + velHead + chestBase;
     const flowCenter = new THREE.Vector3();
-    flowCenter.addScaledVector(chestWP, (velChest + 1.5) / totalVel); // chest has base weight
+    flowCenter.addScaledVector(chestWP, (velChest + chestBase) / totalVel);
     flowCenter.addScaledVector(hipsWP,  velHips  / totalVel);
     flowCenter.addScaledVector(headWP,  velHead  / totalVel);
     flowCenter.addScaledVector(lHandWP, velLHand / totalVel);
     flowCenter.addScaledVector(rHandWP, velRHand / totalVel);
-    flowCenter.multiplyScalar(1 / 2.5); // normalize
 
     // Heart light slowly drifts toward the movement center
     if (!window._heartPos) window._heartPos = chestWP.clone();
