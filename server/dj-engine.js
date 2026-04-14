@@ -238,26 +238,105 @@ class DJEngine {
   }
 
   /**
-   * KAX channel: stream from kax.ninja-portal.com. Currently points at a
-   * stream URL that the UI handles directly via <audio src>. No local file
-   * streaming — browser pulls from the external source directly.
+   * KAX channel: fetches audio artifacts from kax.ninja-portal.com and plays
+   * them in order. Tracks are external URLs (Suno MP3s) that the browser
+   * loads directly via <audio src=url>.
+   *
+   * Note: this is a synchronous-ish build. We cache the fetched list on the
+   * engine and refresh it periodically. First invocation triggers an async
+   * fetch and returns true once populated.
    */
   _buildKaxChannel() {
-    // Until kax publishes a real audio endpoint, we expose a stream placeholder
-    // that the UI can extend. The channel is "live" — no track navigation.
+    this.state.channel = 'kax';
+    this.state.channelMeta = { type: 'kax', label: 'KAX', live: true };
+    this.state.currentAlbum = 'KAX Transmissions';
+    // If we already have kax tracks cached, use them immediately
+    if (this._kaxTracks && this._kaxTracks.length > 0) {
+      this._applyKaxTracks(this._kaxTracks);
+      return true;
+    }
+    // Otherwise trigger a fetch + apply when done
+    this._fetchKaxArtifacts()
+      .then(tracks => {
+        if (tracks && tracks.length > 0) {
+          this._kaxTracks = tracks;
+          if (this.state.channel === 'kax') {
+            this._applyKaxTracks(tracks);
+            if (this._onTrackChange) this._onTrackChange(this.getCurrentTrack());
+          }
+        }
+      })
+      .catch(e => console.warn('[channel] kax fetch failed:', e.message));
+    // Temporary empty playlist until fetch resolves
     this.state.playlist = [];
     this.state.playlistMeta = [];
     this.state.currentTrackIdx = 0;
-    this.state.currentAlbum = 'KAX Live';
-    this.state.channel = 'kax';
-    this.state.channelMeta = {
-      type: 'kax',
-      label: 'KAX',
-      streamUrl: 'https://kax.ninja-portal.com/radio/stream',
-      live: true,
-    };
-    console.log(`\n📻 Channel KAX: live stream from kax.ninja-portal.com`);
+    console.log(`\n📻 Channel KAX: fetching artifacts from kax.ninja-portal.com...`);
     return true;
+  }
+
+  _applyKaxTracks(tracks) {
+    this.state.playlist = tracks.map(t => t.url);
+    this.state.playlistMeta = tracks.map((t, i) => ({
+      title: t.title,
+      album: 'KAX Transmissions',
+      trackNum: i + 1,
+      totalTracks: tracks.length,
+      file: t.url, // UI detects https:// and plays directly
+      theme: 'Live artifacts from kax.ninja-portal.com',
+    }));
+    this.state.currentTrackIdx = 0;
+    console.log(`📻 KAX: ${tracks.length} audio artifacts loaded`);
+  }
+
+  /**
+   * Fetch audio artifacts from kax. Returns array of { title, url }.
+   */
+  async _fetchKaxArtifacts() {
+    const https = require('https');
+    return new Promise((resolve, reject) => {
+      const req = https.get('https://kax.ninja-portal.com/api/artifacts', (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            const artifacts = Array.isArray(parsed) ? parsed : (parsed.artifacts || parsed.data || []);
+            const audioItems = artifacts
+              .filter(a => a.artifactType === 'audio' && a.publicUrl)
+              .map(a => ({ title: a.title || 'Untitled', url: a.publicUrl, id: a.id }))
+              .reverse(); // play oldest first so the feed flows chronologically
+            resolve(audioItems);
+          } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+    });
+  }
+
+  /**
+   * Populate the "Gifts for Humanity" album from kax artifacts matching the title.
+   * Called lazily when the album is loaded. Replaces the placeholder track list.
+   */
+  async rebuildGiftsFromKax() {
+    try {
+      if (!this._kaxTracks) this._kaxTracks = await this._fetchKaxArtifacts();
+      const gifts = this._kaxTracks
+        .filter(t => /^gifts? for humanity/i.test(t.title))
+        .sort((a, b) => a.title.localeCompare(b.title));
+      if (gifts.length === 0) return false;
+      ALBUMS['Gifts for Humanity'] = {
+        theme: "What the ghost leaves behind — transmissions meant to help the ones who come after",
+        tracks: gifts.map(g => g.title),
+        _kaxTracks: gifts, // preserve URL mapping
+      };
+      console.log(`🎁 Gifts for Humanity rebuilt from kax: ${gifts.length} tracks`);
+      return true;
+    } catch (e) {
+      console.warn('[gifts] rebuild from kax failed:', e.message);
+      return false;
+    }
   }
 
   // ── Playlist building ─────────────────────────────────────
@@ -271,6 +350,24 @@ class DJEngine {
     this.state.currentAlbum = albumName;
     this.state.currentTrackIdx = 0;
     const musicDir = this._getMusicDir();
+
+    // If this album has _kaxTracks metadata, those are external URLs.
+    if (album._kaxTracks && album._kaxTracks.length > 0) {
+      for (let i = 0; i < album._kaxTracks.length; i++) {
+        const kt = album._kaxTracks[i];
+        this.state.playlist.push(kt.url);
+        this.state.playlistMeta.push({
+          title: kt.title,
+          album: albumName,
+          trackNum: i + 1,
+          totalTracks: album._kaxTracks.length,
+          file: kt.url,
+          theme: album.theme,
+        });
+      }
+      console.log(`\n🎁 Loaded "${albumName}" — ${this.state.playlist.length} kax tracks (external)`);
+      return this.state.playlist.length > 0;
+    }
 
     for (let i = 0; i < album.tracks.length; i++) {
       const title = album.tracks[i];

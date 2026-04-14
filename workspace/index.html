@@ -2745,7 +2745,12 @@ function applyState(s) {
 
       currentFile = c.file;
       var audio = document.getElementById('audio');
-      audio.src = '/audio/' + encodeURIComponent(c.file);
+      // External URLs (kax, suno, etc.) play directly; local files go through /audio/
+      if (c.file && /^https?:\/\//i.test(c.file)) {
+        audio.src = c.file;
+      } else {
+        audio.src = '/audio/' + encodeURIComponent(c.file);
+      }
       audio.load();
       audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
     }

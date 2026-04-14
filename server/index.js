@@ -346,6 +346,10 @@ wss.on('connection', (ws) => {
 // DJ picks the opening set: start with Ghost Signals (album 1)
 djEngine.buildPlaylist("Ghost Signals");
 
+// Lazily rebuild Gifts for Humanity from kax artifacts (populates the album
+// with real external URLs — won't affect startup if kax is unreachable).
+djEngine.rebuildGiftsFromKax().catch(() => {});
+
 const first = djEngine.getCurrentTrack();
 if (first) {
   flux.publishTrackChange(first);
