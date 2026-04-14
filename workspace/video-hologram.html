@@ -1121,43 +1121,94 @@ function computeShotTargets(type, headPos, headQuat, setDuration) {
 
 // ── Dance Memory — she learns to dance by remembering what worked ──
 const DanceMemory = (() => {
-  const MAX = 500, KEY = 'kannaka_dance_memory';
+  const MAX = 500, KEY = 'kannaka_dance_memory_v2'; // v2 — v1 had degenerate all-zero captures
+  // Purge v1 if present
+  try { localStorage.removeItem('kannaka_dance_memory'); } catch(e) {}
   const BK = ['hipsY','hipsX','hipsZ','spineY','spineX','spineZ','chestY','chestX','chestZ','headY','headX','headZ','lArmZ','lArmX','lArmY','rArmZ','rArmX','rArmY','lElbow','rElbow','lLegX','lLegZ','rLegX','rLegZ','lKnee','rKnee'];
-  let snaps = [], dirty = 0, last = null, lastT = 0;
-  try { const raw = localStorage.getItem(KEY); if (raw) { snaps = JSON.parse(raw) || []; console.log('[dance-memory] Loaded', snaps.length, 'snapshots'); } } catch(e) { console.warn('[dance-memory] localStorage unavailable:', e.message); }
+  let snaps = [], dirty = 0, last = null, lastT = 0, lastLoggedSim = -1;
+  try { const raw = localStorage.getItem(KEY); if (raw) { snaps = JSON.parse(raw) || []; console.log('[dance-memory] Loaded', snaps.length, 'snapshots (v2)'); } } catch(e) { console.warn('[dance-memory] localStorage unavailable:', e.message); }
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(snaps)); } catch(e) {} };
-  const sim = (a, b) => {
-    const av = [a.tempo/180, a.bass, a.mid, a.high, a.vocal, a.energy], bv = [b.tempo/180, b.bass, b.mid, b.high, b.vocal, b.energy], w = [1.5, 1.2, 1.0, 1.0, 1.3, 1.1];
-    let d = 0, na = 0, nb = 0;
-    for (let i = 0; i < 6; i++) { d += av[i]*bv[i]*w[i]; na += av[i]*av[i]*w[i]; nb += bv[i]*bv[i]*w[i]; }
-    return (na <= 0 || nb <= 0) ? 0 : d / Math.sqrt(na * nb);
+
+  // Music feature "richness" — magnitude of the audio portion. If this is tiny,
+  // audio is effectively silent and the snapshot has no learning value.
+  const richness = (f) => {
+    const m2 = f.bass*f.bass + f.mid*f.mid + f.high*f.high + f.vocal*f.vocal + f.energy*f.energy;
+    return Math.sqrt(m2 / 5); // 0..1-ish
   };
+
+  // Cosine similarity over the audio-only portion (tempo excluded from magnitude
+  // so a default tempo doesn't dominate). Returns 0 when either vector is silent.
+  const sim = (a, b) => {
+    const av = [a.bass, a.mid, a.high, a.vocal, a.energy];
+    const bv = [b.bass, b.mid, b.high, b.vocal, b.energy];
+    const w  = [1.2, 1.0, 1.0, 1.3, 1.1];
+    let d = 0, na = 0, nb = 0;
+    for (let i = 0; i < 5; i++) { d += av[i]*bv[i]*w[i]; na += av[i]*av[i]*w[i]; nb += bv[i]*bv[i]*w[i]; }
+    // Tempo influence as a multiplicative factor (soft match)
+    const tempoDiff = Math.abs((a.tempo || 90) - (b.tempo || 90)) / 180;
+    const tempoFactor = Math.max(0.3, 1 - tempoDiff);
+    if (na <= 1e-6 || nb <= 1e-6) return 0;
+    return (d / Math.sqrt(na * nb)) * tempoFactor;
+  };
+
   return {
     capture(f, pose) {
+      // Gate 1: require real audio signal (not silence, not default stubs)
+      const r = richness(f);
+      if (r < 0.08) return false; // silent — useless to learn from
+      // Gate 2: dedupe — don't capture a moment that is nearly identical to the
+      // last capture (prevents 500 copies of the same pose when a song has a
+      // steady section).
+      if (snaps.length > 0) {
+        const lastSnap = snaps[snaps.length - 1];
+        if (sim(f, lastSnap) > 0.985) return false;
+      }
       snaps.push({ ...f, pose, timestamp: Date.now() });
       if (snaps.length > MAX) snaps.shift();
       if (++dirty >= 10) { persist(); dirty = 0; }
-      if (snaps.length % 25 === 0) console.log('[dance-memory] Captured snapshot', snaps.length);
+      if (snaps.length % 25 === 0) console.log('[dance-memory] Captured snapshot', snaps.length, 'richness=' + r.toFixed(3));
+      return true;
     },
     recall(f) {
-      if (snaps.length < 3) return null;
+      if (snaps.length < 5) return null;
+      if (richness(f) < 0.08) return null; // don't recall during silence
       const scored = snaps.map(s => ({ s, v: sim(f, s) })).sort((a, b) => b.v - a.v).slice(0, 3);
       const tot = scored.reduce((a, x) => a + Math.max(0, x.v), 0);
       if (tot <= 0) return null;
+      // Diversity check: if the top match is also the oldest thing we recalled,
+      // bump it down and use the 2nd best. Keeps the dance evolving.
       const pose = {};
       for (const k of BK) pose[k] = 0;
       for (const { s, v } of scored) { const w = Math.max(0, v) / tot; for (const k of BK) pose[k] += (s.pose[k] || 0) * w; }
-      last = { pose, confidence: Math.min(1, scored[0].v) * Math.min(1, snaps.length / 50) };
+      // Confidence = top sim * corpus-saturation, but CAPPED below 1 if the
+      // top sim is suspiciously perfect (dedup should prevent this now).
+      const topSim = scored[0].v;
+      const rawConf = Math.min(1, topSim) * Math.min(1, snaps.length / 50);
+      last = { pose, confidence: topSim > 0.995 ? rawConf * 0.4 : rawConf };
       lastT = performance.now();
-      console.log('[dance-memory] Recall top sim=' + scored[0].v.toFixed(3) + ' conf=' + last.confidence.toFixed(3) + ' (' + snaps.length + ' memories)');
+      // Only log when the similarity actually changed meaningfully
+      if (Math.abs(topSim - lastLoggedSim) > 0.05) {
+        console.log('[dance-memory] recall sim=' + topSim.toFixed(3) + ' conf=' + last.confidence.toFixed(3) + ' n=' + snaps.length);
+        lastLoggedSim = topSim;
+      }
       return last;
     },
     getLast: () => last, getLastT: () => lastT, count: () => snaps.length,
+    richness,
     clear: () => { snaps = []; last = null; persist(); console.log('[dance-memory] Cleared'); },
     exportAll: () => JSON.stringify(snaps),
   };
 })();
-window.kannakaDance = { count: () => DanceMemory.count(), clear: () => DanceMemory.clear(), export: () => DanceMemory.exportAll() };
+window.kannakaDance = {
+  count: () => DanceMemory.count(),
+  clear: () => DanceMemory.clear(),
+  export: () => DanceMemory.exportAll(),
+  // Sample the first/last few snapshots so we can see what's stored
+  peek: () => {
+    const all = JSON.parse(DanceMemory.exportAll() || '[]');
+    return { total: all.length, first: all.slice(0, 2), last: all.slice(-2) };
+  },
+};
 // Debug: `kannakaDebug.bones()` prints live rotations of all mapped bones.
 window.kannakaDebug = {
   bones() {
@@ -1605,21 +1656,35 @@ function animate() {
     if (bones.rightFoot) bones.rightFoot.rotation.x += Math.sin(slow + Math.PI + 0.5) * 0.1 * e;
 
     // ── Dance Memory: capture + recall + blend ────────────
+    // IMPORTANT: pose values are stored as DELTAS from rest, so recall blending
+    // doesn't pollute the A-pose with rest-absolute values.
     const DM_MAP = [[bones.hips,'y','hipsY'],[bones.hips,'x','hipsX'],[bones.hips,'z','hipsZ'],[bones.spine,'y','spineY'],[bones.spine,'x','spineX'],[bones.spine,'z','spineZ'],[bones.chest,'y','chestY'],[bones.chest,'x','chestX'],[bones.chest,'z','chestZ'],[bones.head,'y','headY'],[bones.head,'x','headX'],[bones.head,'z','headZ'],[bones.leftUpperArm,'z','lArmZ'],[bones.leftUpperArm,'x','lArmX'],[bones.leftUpperArm,'y','lArmY'],[bones.rightUpperArm,'z','rArmZ'],[bones.rightUpperArm,'x','rArmX'],[bones.rightUpperArm,'y','rArmY'],[bones.leftLowerArm,'x','lElbow'],[bones.rightLowerArm,'x','rElbow'],[bones.leftUpperLeg,'x','lLegX'],[bones.leftUpperLeg,'z','lLegZ'],[bones.rightUpperLeg,'x','rLegX'],[bones.rightUpperLeg,'z','rLegZ'],[bones.leftLowerLeg,'x','lKnee'],[bones.rightLowerLeg,'x','rKnee']];
+    const restKey = (ax) => 'restRot' + ax.toUpperCase();
     const musicFeatures = { tempo, bass: audio.bass, mid: audio.mid, high: audio.high, vocal: audio.vocal, energy: audio.overall };
-    const isPlaying = (audio.vocal > 0.1 || audio.overall > 0.1);
+    // isPlaying is just a cheap skip-check — the DanceMemory itself gates on richness.
+    const isPlaying = (audio.vocal > 0.08 || audio.overall > 0.12 || audio.bass > 0.15);
     danceCaptureTimer += dt; danceRecallTimer += dt;
     if (danceCaptureTimer >= 2.0 && isPlaying) {
       danceCaptureTimer = 0;
       const pose = {};
-      for (const [b, a, k] of DM_MAP) pose[k] = b ? b.rotation[a] : 0;
+      for (const [b, ax, k] of DM_MAP) {
+        if (!b) { pose[k] = 0; continue; }
+        const rest = b.userData[restKey(ax)] || 0;
+        pose[k] = b.rotation[ax] - rest;   // delta from rest
+      }
       DanceMemory.capture(musicFeatures, pose);
     }
     if (danceRecallTimer >= 4.0 && isPlaying) { danceRecallTimer = 0; DanceMemory.recall(musicFeatures); }
     const recalled = DanceMemory.getLast();
-    if (recalled && recalled.confidence > 0.05) {
-      const mw = 0.35 * recalled.confidence, imw = 1 - mw, rp = recalled.pose;
-      for (const [b, a, k] of DM_MAP) if (b) b.rotation[a] = b.rotation[a] * imw + rp[k] * mw;
+    if (recalled && recalled.confidence > 0.10) {
+      const mw = 0.30 * recalled.confidence, imw = 1 - mw, rp = recalled.pose;
+      for (const [b, ax, k] of DM_MAP) {
+        if (!b) continue;
+        const rest = b.userData[restKey(ax)] || 0;
+        const curDelta = b.rotation[ax] - rest;
+        const memDelta = rp[k] || 0;
+        b.rotation[ax] = rest + (curDelta * imw + memDelta * mw);
+      }
     }
 
     // ── Gesture application — intentional arm motion blends on top of cyclic/memory ──
