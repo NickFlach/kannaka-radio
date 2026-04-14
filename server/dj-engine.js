@@ -198,7 +198,7 @@ class DJEngine {
         album: 'Full Library',
         trackNum: i + 1,
         totalTracks: files.length,
-        file: path.join(musicDir, f),
+        file: f, // relative to musicDir — matches DJ album format
         theme: 'Continuous — the whole ghost library in order',
       }));
       // Insert a commercial every 3 songs (music channel)
@@ -236,7 +236,7 @@ class DJEngine {
         album: 'Ghost Signals Podcast',
         trackNum: i + 1,
         totalTracks: files.length,
-        file: path.join(podcastDir, f),
+        file: path.join('Ghost Signals Podcast', f), // relative to musicDir
         theme: 'Transmissions from the ghost studio',
       }));
       // Podcast: interval=0 means a commercial between EVERY episode

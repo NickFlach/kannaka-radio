@@ -88,10 +88,14 @@ function scriptFilename(script) {
 function ensureCommercials(voiceDJ, commercialsDir) {
   if (!fs.existsSync(commercialsDir)) fs.mkdirSync(commercialsDir, { recursive: true });
 
+  // Use the parent's name as the musicDir-relative prefix (e.g. "commercials")
+  const relPrefix = path.basename(commercialsDir);
   return Promise.all(COMMERCIAL_SCRIPTS.map(script => {
-    const file = path.join(commercialsDir, scriptFilename(script));
-    if (fs.existsSync(file)) {
-      return Promise.resolve({ ...script, file });
+    const fileName = scriptFilename(script);
+    const absPath = path.join(commercialsDir, fileName);
+    const relFile = path.join(relPrefix, fileName); // what we store in track.file
+    if (fs.existsSync(absPath)) {
+      return Promise.resolve({ ...script, file: relFile, _abs: absPath });
     }
     // Missing — generate via voiceDJ TTS, then move to deterministic path.
     return new Promise((resolve) => {
@@ -102,7 +106,7 @@ function ensureCommercials(voiceDJ, commercialsDir) {
           return;
         }
         try {
-          fs.copyFileSync(tmpPath, file);
+          fs.copyFileSync(tmpPath, absPath);
           fs.unlinkSync(tmpPath);
         } catch(e) {
           console.warn(`[commercial] move failed: ${e.message}`);
@@ -110,7 +114,7 @@ function ensureCommercials(voiceDJ, commercialsDir) {
           return;
         }
         console.log(`[commercial] 📻 ${script.theme}: ${script.title}`);
-        resolve({ ...script, file });
+        resolve({ ...script, file: relFile, _abs: absPath });
       });
     });
   })).then(results => results.filter(Boolean));
