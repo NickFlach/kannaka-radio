@@ -874,7 +874,11 @@ async function loadVRM() {
   const center = box.getCenter(new THREE.Vector3());
   const scale = 4 / size.y;
   model.scale.setScalar(scale);
-  model.rotation.y = Math.PI; // VRM faces +Z, camera looks down -Z — rotate 180°
+  // The user reported she was facing backwards with knees bending "wrong".
+  // This VRM's authored forward is -Z (toward the camera) already, so the
+  // 180° rotation was making her face +Z (away from camera). Remove it.
+  // If a future model is VRM-1.0 (forward=+Z), set this to Math.PI.
+  model.rotation.y = 0;
   model.position.set(-center.x*scale, -box.min.y*scale - 0.5, center.z*scale);
   // Remove head geometry by collapsing vertices above neck height
   // Model space: total height ~2.63, neck at ~2.05
