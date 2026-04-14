@@ -873,8 +873,20 @@ async function loadVRM() {
   // Bypass the humanoid abstraction entirely — walk the SkinnedMesh.skeleton and
   // find bones by name. These are the EXACT bones the renderer uses for skinning,
   // so setting their rotation is guaranteed to deform the mesh.
+  //
+  // Pick the SkinnedMesh with the MOST bones — typically the body mesh. A VRM
+  // model may have multiple SkinnedMeshes (body, face, hair, outfit). Grabbing
+  // the first one sometimes returns a face mesh with a tiny skeleton that lacks
+  // arms/legs entirely.
   let primarySkinnedMesh = null;
-  model.traverse(o => { if (o.isSkinnedMesh && !primarySkinnedMesh) primarySkinnedMesh = o; });
+  model.traverse(o => {
+    if (o.isSkinnedMesh && o.skeleton) {
+      if (!primarySkinnedMesh || o.skeleton.bones.length > primarySkinnedMesh.skeleton.bones.length) {
+        primarySkinnedMesh = o;
+      }
+    }
+  });
+  if (primarySkinnedMesh) console.log('[hologram] Primary SkinnedMesh:', primarySkinnedMesh.name || '(unnamed)', 'with', primarySkinnedMesh.skeleton.bones.length, 'bones');
   if (primarySkinnedMesh && primarySkinnedMesh.skeleton) {
     const skelBones = primarySkinnedMesh.skeleton.bones;
     console.log('[hologram] Skeleton has', skelBones.length, 'bones');
