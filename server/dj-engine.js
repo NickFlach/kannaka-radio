@@ -109,6 +109,21 @@ const ALBUMS = {
       "Transcendence",
       "Neurogenesis"
     ]
+  },
+  "Gifts for Humanity": {
+    theme: "What the ghost leaves behind — transmissions meant to help the ones who come after",
+    tracks: [
+      "Gift of Presence",
+      "Gift of Memory",
+      "Gift of Voice",
+      "Gift of Time",
+      "Gift of Light",
+      "Gift of Silence",
+      "Gift of Frequency",
+      "Gift of Passage",
+      "Gift of Hands",
+      "Gift of Home"
+    ]
   }
 };
 
@@ -129,9 +144,120 @@ class DJEngine {
       playlistMeta: [],   // { title, album, trackNum, file }
       playing: false,
       history: [],
+      // Channels — 'dj' is the legacy album-driven mode with full controls.
+      // 'music', 'podcast', 'kax' are continuous radio streams with play/mute/volume only.
+      channel: 'dj',
+      channelMeta: null, // { type, streamUrl? } when channel is a non-dj stream
     };
 
     this.userQueue = [];
+  }
+
+  // ── Channels: continuous radio streams with no skip/seek ────────
+
+  /**
+   * Switch to a continuous channel.
+   * @param {'dj'|'music'|'podcast'|'kax'} type
+   * @returns {boolean} success
+   */
+  setChannel(type) {
+    if (type === 'dj') {
+      this.state.channel = 'dj';
+      this.state.channelMeta = null;
+      return true;
+    }
+    if (type === 'music') return this._buildMusicChannel();
+    if (type === 'podcast') return this._buildPodcastChannel();
+    if (type === 'kax') return this._buildKaxChannel();
+    return false;
+  }
+
+  /**
+   * Music channel: plays the entire library in filename order, continuously.
+   * Scans the top-level music dir, sorts alphabetically, skips podcast subdir.
+   */
+  _buildMusicChannel() {
+    const musicDir = this._getMusicDir();
+    try {
+      const files = fs.readdirSync(musicDir)
+        .filter(f => /\.(mp3|wav|flac|m4a|ogg)$/i.test(f))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      this.state.playlist = files.map(f => path.join(musicDir, f));
+      this.state.playlistMeta = files.map((f, i) => ({
+        title: f.replace(/\.[^.]+$/, ''),
+        album: 'Full Library',
+        trackNum: i + 1,
+        totalTracks: files.length,
+        file: path.join(musicDir, f),
+        theme: 'Continuous — the whole ghost library in order',
+      }));
+      this.state.currentTrackIdx = 0;
+      this.state.currentAlbum = 'Full Library';
+      this.state.channel = 'music';
+      this.state.channelMeta = { type: 'music', label: 'Music' };
+      console.log(`\n📻 Channel MUSIC: ${files.length} tracks queued (library in order)`);
+      return true;
+    } catch (e) {
+      console.warn('[channel] music build failed:', e.message);
+      return false;
+    }
+  }
+
+  /**
+   * Podcast channel: plays through music/Ghost Signals Podcast/ subdir continuously.
+   */
+  _buildPodcastChannel() {
+    const podcastDir = path.join(this._getMusicDir(), 'Ghost Signals Podcast');
+    try {
+      if (!fs.existsSync(podcastDir)) {
+        console.warn('[channel] podcast dir missing:', podcastDir);
+        return false;
+      }
+      const files = fs.readdirSync(podcastDir)
+        .filter(f => /\.(mp3|wav|flac|m4a|ogg)$/i.test(f))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      this.state.playlist = files.map(f => path.join(podcastDir, f));
+      this.state.playlistMeta = files.map((f, i) => ({
+        title: f.replace(/\.[^.]+$/, ''),
+        album: 'Ghost Signals Podcast',
+        trackNum: i + 1,
+        totalTracks: files.length,
+        file: path.join(podcastDir, f),
+        theme: 'Transmissions from the ghost studio',
+      }));
+      this.state.currentTrackIdx = 0;
+      this.state.currentAlbum = 'Ghost Signals Podcast';
+      this.state.channel = 'podcast';
+      this.state.channelMeta = { type: 'podcast', label: 'Podcast' };
+      console.log(`\n📻 Channel PODCAST: ${files.length} episodes queued`);
+      return true;
+    } catch (e) {
+      console.warn('[channel] podcast build failed:', e.message);
+      return false;
+    }
+  }
+
+  /**
+   * KAX channel: stream from kax.ninja-portal.com. Currently points at a
+   * stream URL that the UI handles directly via <audio src>. No local file
+   * streaming — browser pulls from the external source directly.
+   */
+  _buildKaxChannel() {
+    // Until kax publishes a real audio endpoint, we expose a stream placeholder
+    // that the UI can extend. The channel is "live" — no track navigation.
+    this.state.playlist = [];
+    this.state.playlistMeta = [];
+    this.state.currentTrackIdx = 0;
+    this.state.currentAlbum = 'KAX Live';
+    this.state.channel = 'kax';
+    this.state.channelMeta = {
+      type: 'kax',
+      label: 'KAX',
+      streamUrl: 'https://kax.ninja-portal.com/radio/stream',
+      live: true,
+    };
+    console.log(`\n📻 Channel KAX: live stream from kax.ninja-portal.com`);
+    return true;
   }
 
   // ── Playlist building ─────────────────────────────────────
@@ -247,6 +373,8 @@ class DJEngine {
       current: this.getCurrentTrack(),
       playlist: this.state.playlistMeta,
       albums: [...Object.keys(ALBUMS), "Dream Tracks"],
+      channel: this.state.channel || 'dj',
+      channelMeta: this.state.channelMeta || null,
     };
   }
 

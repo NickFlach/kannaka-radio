@@ -331,6 +331,20 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
   border-color: var(--purple-light); box-shadow: 0 0 16px rgba(192, 132, 252, 0.25);
   transform: translateY(-1px);
 }
+/* Channel selector */
+.chan-btn { padding: 6px 14px; font-size: 10px; }
+.chan-btn.active {
+  background: linear-gradient(135deg, #3a1b5c, #5a2b8c);
+  border-color: #c084fc;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(192, 132, 252, 0.6);
+}
+/* Radio mode — hide the seek bar in the audio element (keeps play/volume) */
+audio.radio-mode::-webkit-media-controls-timeline,
+audio.radio-mode::-webkit-media-controls-current-time-display,
+audio.radio-mode::-webkit-media-controls-time-remaining-display {
+  display: none !important;
+}
 
 /* Progress info */
 .progress-info { color: var(--text-muted); font-size: 11px; margin-top: 10px; text-align: center; }
@@ -1159,8 +1173,15 @@ body.konami-mode .surface-header h1 {
         </div>
       </div>
 
+      <div class="channel-bar" style="display:flex;gap:6px;margin:6px 0;flex-wrap:wrap;align-items:center;">
+        <span style="opacity:0.6;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Channel:</span>
+        <button class="btn chan-btn active" data-channel="dj" onclick="setChannel('dj')">DJ</button>
+        <button class="btn chan-btn" data-channel="music" onclick="setChannel('music')">Music</button>
+        <button class="btn chan-btn" data-channel="podcast" onclick="setChannel('podcast')">Podcast</button>
+        <button class="btn chan-btn" data-channel="kax" onclick="setChannel('kax')">KAX</button>
+      </div>
       <audio id="audio" controls preload="auto"></audio>
-      <div class="controls">
+      <div class="controls" id="dj-controls">
         <button class="btn" onclick="prevTrack()">Prev</button>
         <button class="btn" onclick="nextTrack()">Next</button>
       </div>
@@ -2675,6 +2696,19 @@ function applyState(s) {
   state = s;
   if (!s) return;
   if (isLive) return;
+  // Reflect channel state in UI (keeps tab-to-tab sync consistent)
+  if (s.channel) {
+    document.querySelectorAll('.chan-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.channel === s.channel);
+    });
+    var djControls = document.getElementById('dj-controls');
+    var albums = document.getElementById('albums');
+    var audioEl = document.getElementById('audio');
+    var isLiveChan = s.channel !== 'dj';
+    if (djControls) djControls.style.display = isLiveChan ? 'none' : '';
+    if (albums) albums.style.display = isLiveChan ? 'none' : '';
+    if (audioEl) audioEl.classList.toggle('radio-mode', isLiveChan);
+  }
   var c = s.current;
   if (c) {
     document.getElementById('album').textContent = c.album || s.currentAlbum || '';
@@ -2851,6 +2885,41 @@ async function nextTrack()     { await fetch('/api/next', {method:'POST'}); }
 async function prevTrack()     { await fetch('/api/prev', {method:'POST'}); }
 async function jumpTo(idx)     { await fetch('/api/jump?idx=' + idx, {method:'POST'}); }
 async function loadAlbum(name) { await fetch('/api/album?name=' + encodeURIComponent(name), {method:'POST'}); }
+
+// ── Channels — continuous radio mode ─────────────────────
+async function setChannel(type) {
+  try {
+    var r = await fetch('/api/channel?type=' + encodeURIComponent(type), { method: 'POST' });
+    var data = await r.json();
+    if (!data.ok) { console.warn('[channel] switch failed:', type); return; }
+    // Update button active state
+    document.querySelectorAll('.chan-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.channel === type);
+    });
+    // Apply simplified vs full controls
+    applyChannelUI(type, data.channelMeta);
+  } catch(e) { console.warn('[channel] error:', e); }
+}
+
+function applyChannelUI(type, meta) {
+  var djControls = document.getElementById('dj-controls');
+  var albums = document.getElementById('albums');
+  var audio = document.getElementById('audio');
+  var isLive = type !== 'dj';
+  if (djControls) djControls.style.display = isLive ? 'none' : '';
+  if (albums) albums.style.display = isLive ? 'none' : '';
+  if (audio) {
+    // Simplified HTML5 controls keep play + volume, but seeking is available
+    // by default. For a true "radio" feel on continuous channels, hide the
+    // timeline via CSS.
+    audio.classList.toggle('radio-mode', isLive);
+  }
+  // KAX: point audio directly at an external stream URL
+  if (type === 'kax' && meta && meta.streamUrl && audio) {
+    audio.src = meta.streamUrl;
+    audio.play().catch(function(){});
+  }
+}
 
 async function fetchState() {
   try {

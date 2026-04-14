@@ -376,13 +376,41 @@ let artCycleIndex = 0;
 const texLoader = new THREE.TextureLoader();
 const cardGeo = new THREE.PlaneGeometry(0.55, 0.55);
 
+// Placeholder texture for art that hasn't loaded yet (or failed to load).
+// Avoids the pure-white 1x1 default that TextureLoader returns on failure.
+const placeholderCanvas = document.createElement('canvas');
+placeholderCanvas.width = placeholderCanvas.height = 128;
+{
+  const pctx = placeholderCanvas.getContext('2d');
+  const grad = pctx.createRadialGradient(64, 64, 8, 64, 64, 64);
+  grad.addColorStop(0, '#3a1145');
+  grad.addColorStop(1, '#0a0418');
+  pctx.fillStyle = grad;
+  pctx.fillRect(0, 0, 128, 128);
+}
+const placeholderTex = new THREE.CanvasTexture(placeholderCanvas);
+placeholderTex.colorSpace = THREE.SRGBColorSpace;
+
 function makeCard(art, slotIndex, totalSlots) {
-  const tex = texLoader.load(art.thumbnailUrl);
-  tex.colorSpace = THREE.SRGBColorSpace;
   const mat = new THREE.MeshStandardMaterial({
-    map: tex, emissive: 0x222222, emissiveIntensity: 0.3,
+    map: placeholderTex, emissive: 0x221122, emissiveIntensity: 0.3,
     transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false,
   });
+  // Load actual texture in the background and swap in on success. On error,
+  // keep the placeholder so we never show a raw white square.
+  texLoader.load(
+    art.thumbnailUrl,
+    (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      mat.map = tex;
+      mat.needsUpdate = true;
+    },
+    undefined,
+    () => {
+      // Swallow the error — placeholder stays.
+      console.warn('[hologram] Art texture failed:', art.thumbnailUrl);
+    }
+  );
   const card = new THREE.Mesh(cardGeo, mat);
   card.userData = {
     orbitAngle: (slotIndex / totalSlots) * Math.PI * 2,

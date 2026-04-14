@@ -298,6 +298,33 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // API: switch channel — dj | music | podcast | kax
+    if (parsed.pathname === "/api/channel" && req.method === "POST") {
+      const type = parsed.searchParams.get("type") || "dj";
+      const ok = djEngine.setChannel(type);
+      if (ok) {
+        // For dj channel, reload default album. For other channels, play first track.
+        if (type === "dj") {
+          djEngine.loadAlbum("Ghost Signals");
+        }
+        const track = djEngine.getCurrentTrack();
+        if (track) {
+          flux.publishTrackChange(track);
+          perception.hearTrack(track);
+        }
+        config.broadcastState();
+        console.log(`\uD83D\uDCFB Channel: ${type} (${djEngine.state.playlist.length} entries)`);
+      }
+      res.writeHead(ok ? 200 : 400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        ok,
+        channel: djEngine.state.channel,
+        channelMeta: djEngine.state.channelMeta,
+        tracks: djEngine.state.playlist.length,
+      }));
+      return;
+    }
+
     // API: get current perception data
     if (parsed.pathname === "/api/perception") {
       res.writeHead(200, { "Content-Type": "application/json" });
