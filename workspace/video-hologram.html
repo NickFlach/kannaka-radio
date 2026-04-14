@@ -1244,26 +1244,31 @@ let danceCaptureTimer = 0, danceRecallTimer = 0;
 const Gestures = (() => {
   const TYPES = ['POINT', 'REACH', 'BECKON', 'HAND_TO_HEART'];
   let type = null, hand = 'right', t = 0, dur = 0, cooldown = 2.0, lastType = null;
-  const pick = (audio) => {
-    // HAND_TO_HEART on quiet parts (low energy, low vocal)
-    if (audio.overall < 0.22 && audio.vocal < 0.18) return 'HAND_TO_HEART';
+  const pick = (a) => {
+    // HAND_TO_HEART on quiet MUSIC (low energy, low vocal, but music is on)
+    if (a._active && a.overall < 0.22 && a.vocal < 0.18) return 'HAND_TO_HEART';
     // REACH on vocal peaks
-    if (audio.vocal > 0.55) return 'REACH';
+    if (a.vocal > 0.55) return 'REACH';
     // otherwise pick one that isn't the same as last
     const pool = TYPES.filter(x => x !== lastType && x !== 'HAND_TO_HEART');
     return pool[Math.floor(Math.random() * pool.length)];
   };
   return {
-    update(dt, audio) {
+    update(dt, a) {
+      // Only run the gesture SM when something is playing. No music = no gestures.
+      if (!a._active) {
+        if (type) { t += dt; if (t >= dur) { lastType = type; type = null; t = 0; cooldown = 1.5; } }
+        return;
+      }
       if (type) {
         t += dt;
         if (t >= dur) { lastType = type; type = null; t = 0; cooldown = 1.2 + Math.random() * 1.5; }
       } else {
         cooldown -= dt;
-        const forceReach = audio.vocal > 0.6 && lastType !== 'REACH';
-        const forceHeart = audio.overall < 0.2 && audio.vocal < 0.15 && lastType !== 'HAND_TO_HEART';
+        const forceReach = a.vocal > 0.6 && lastType !== 'REACH';
+        const forceHeart = a.overall > 0.08 && a.overall < 0.2 && a.vocal < 0.15 && lastType !== 'HAND_TO_HEART';
         if (cooldown <= 0 || forceReach || forceHeart) {
-          type = forceHeart ? 'HAND_TO_HEART' : (forceReach ? 'REACH' : pick(audio));
+          type = forceHeart ? 'HAND_TO_HEART' : (forceReach ? 'REACH' : pick(a));
           hand = Math.random() < 0.5 ? 'left' : 'right';
           t = 0;
           dur = type === 'HAND_TO_HEART' ? (3.0 + Math.random() * 2.0) :
@@ -1330,7 +1335,11 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta(), t = clock.getElapsedTime();
   const lf = levelFactor();
-  const energy = perception.rms_energy || 0.3;
+  // Fuse external perception (from parent frame) with local analyser output.
+  // Whichever has more real signal wins. This fixes the bug where standalone
+  // mode locked dance intensity to the 0.3 fallback while the analyser was
+  // already seeing a full-volume track.
+  const energy = Math.max(audio.overall || 0, perception.rms_energy || 0);
   const tempo = perception.tempo_bpm || 90;
   const valence = perception.valence || 0.5;
   const beatFreq = tempo / 60;
@@ -1522,7 +1531,10 @@ function animate() {
       }
     }
     // ── Dance routines — randomly switches styles ─────────
-    const e = Math.max(0.35, Math.min(energy * 2.5, 1));
+    // Intensity scales from a small idle baseline (0.15) up to 1.0. She's
+    // never totally still, but silence produces gentle sway rather than a
+    // full-amplitude dance.
+    const e = Math.max(0.15, Math.min(energy * 2.5, 1));
     if (!window._ds) window._ds = { style: 0, timer: 12 + Math.random() * 8 };
     window._ds.timer -= dt;
     if (window._ds.timer <= 0) {
@@ -1688,6 +1700,8 @@ function animate() {
     }
 
     // ── Gesture application — intentional arm motion blends on top of cyclic/memory ──
+    // Tag audio with an _active flag so Gestures knows whether to trigger.
+    audio._active = isPlaying;
     Gestures.update(dt, audio);
     const gs = Gestures.state();
     if (gs.active) {
