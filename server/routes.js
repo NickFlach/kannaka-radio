@@ -309,11 +309,18 @@ module.exports = function setupRoutes(deps) {
         }
         const track = djEngine.getCurrentTrack();
         if (track) {
+          // Full track-change plumbing — same as onTrackChange callback:
+          // state broadcast + flux + perception + sync manager. Skip voiceDJ
+          // on continuous channels (dj voice is a DJ-mode feature).
           flux.publishTrackChange(track);
           perception.hearTrack(track);
+          syncManager.trackChanged(track.file);
+          if (type === 'dj' && voiceDJ && voiceDJ.generateIntro) {
+            voiceDJ.generateIntro(track);
+          }
         }
         config.broadcastState();
-        console.log(`\uD83D\uDCFB Channel: ${type} (${djEngine.state.playlist.length} entries)`);
+        console.log(`\uD83D\uDCFB Channel: ${type} (${djEngine.state.playlist.length} entries) → ${track ? track.title : 'empty'}`);
       }
       res.writeHead(ok ? 200 : 400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
@@ -321,6 +328,7 @@ module.exports = function setupRoutes(deps) {
         channel: djEngine.state.channel,
         channelMeta: djEngine.state.channelMeta,
         tracks: djEngine.state.playlist.length,
+        current: djEngine.getCurrentTrack(),
       }));
       return;
     }

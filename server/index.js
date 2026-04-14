@@ -343,6 +343,22 @@ wss.on('connection', (ws) => {
 
 // ── Startup ────────────────────────────────────────────────
 
+// Ensure commercials are TTS-rendered. Generates any missing MP3s via
+// voiceDJ's TTS pipeline, then registers them with djEngine so channel
+// builders can interleave them into playlists.
+const { ensureCommercials } = require("./commercials");
+const COMMERCIALS_DIR = path.join(MUSIC_DIR, "commercials");
+ensureCommercials(voiceDJ, COMMERCIALS_DIR)
+  .then(list => {
+    djEngine.setCommercials(list);
+    // Rebuild the current playlist so any already-loaded album picks up the ads
+    if (djEngine.state.currentAlbum && djEngine.state.channel === 'dj') {
+      djEngine.buildPlaylist(djEngine.state.currentAlbum);
+      broadcastState();
+    }
+  })
+  .catch(e => console.warn('[commercials] init failed:', e.message));
+
 // DJ picks the opening set: start with Ghost Signals (album 1)
 djEngine.buildPlaylist("Ghost Signals");
 

@@ -2892,38 +2892,44 @@ async function jumpTo(idx)     { await fetch('/api/jump?idx=' + idx, {method:'PO
 async function loadAlbum(name) { await fetch('/api/album?name=' + encodeURIComponent(name), {method:'POST'}); }
 
 // ── Channels — continuous radio mode ─────────────────────
-async function setChannel(type) {
-  try {
-    var r = await fetch('/api/channel?type=' + encodeURIComponent(type), { method: 'POST' });
-    var data = await r.json();
-    if (!data.ok) { console.warn('[channel] switch failed:', type); return; }
-    // Update button active state
-    document.querySelectorAll('.chan-btn').forEach(function(b) {
-      b.classList.toggle('active', b.dataset.channel === type);
-    });
-    // Apply simplified vs full controls
-    applyChannelUI(type, data.channelMeta);
-  } catch(e) { console.warn('[channel] error:', e); }
-}
-
-function applyChannelUI(type, meta) {
+// CRITICAL: chrome autoplay policy requires audio.play() to be called
+// synchronously inside the click handler. We fire play() immediately
+// against the current src (just to consume the gesture) then fetch, and
+// applyState will swap src when the server broadcasts the new track.
+function setChannel(type) {
+  var audio = document.getElementById('audio');
+  // Optimistic UI: toggle the button immediately
+  document.querySelectorAll('.chan-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.channel === type);
+  });
   var djControls = document.getElementById('dj-controls');
   var albums = document.getElementById('albums');
-  var audio = document.getElementById('audio');
   var isLive = type !== 'dj';
   if (djControls) djControls.style.display = isLive ? 'none' : '';
   if (albums) albums.style.display = isLive ? 'none' : '';
+  if (audio) audio.classList.toggle('radio-mode', isLive);
+
+  // Consume the click gesture by calling play() synchronously. Even if src
+  // doesn't change yet, Chrome will consider the user has granted permission
+  // for this audio element, and subsequent src changes can autoplay.
   if (audio) {
-    // Simplified HTML5 controls keep play + volume, but seeking is available
-    // by default. For a true "radio" feel on continuous channels, hide the
-    // timeline via CSS.
-    audio.classList.toggle('radio-mode', isLive);
+    audio.play().then(function(){ initAudioAnalyser(); }).catch(function(_e){});
   }
-  // KAX: point audio directly at an external stream URL
-  if (type === 'kax' && meta && meta.streamUrl && audio) {
-    audio.src = meta.streamUrl;
-    audio.play().catch(function(){});
-  }
+
+  // Fire the API call (the rest flows through applyState via WebSocket).
+  fetch('/api/channel?type=' + encodeURIComponent(type), { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) { console.warn('[channel] switch failed:', type); return; }
+      // Manual kick: fetch /api/state once to make sure we apply the new track
+      // even if the WebSocket broadcast was missed (e.g., during reconnects).
+      fetch('/api/state').then(function(r){ return r.json(); }).then(function(s) {
+        applyState(s);
+        // Force a second play() after src has swapped.
+        if (audio) audio.play().then(function(){ initAudioAnalyser(); }).catch(function(_e){});
+      }).catch(function(){});
+    })
+    .catch(function(e) { console.warn('[channel] error:', e); });
 }
 
 async function fetchState() {

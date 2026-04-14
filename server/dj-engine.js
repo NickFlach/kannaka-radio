@@ -6,6 +6,7 @@
 const path = require("path");
 const fs = require("fs");
 const { findAudioFile } = require("./utils");
+const { interleaveCommercials } = require("./commercials");
 
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
@@ -151,6 +152,16 @@ class DJEngine {
     };
 
     this.userQueue = [];
+    this._commercials = []; // populated by setCommercials() after ensureCommercials resolves
+  }
+
+  /**
+   * Register the rendered commercial tracks. Called once at server start
+   * after commercials.ensureCommercials() resolves.
+   */
+  setCommercials(list) {
+    this._commercials = list || [];
+    console.log(`[dj] ${this._commercials.length} commercials registered`);
   }
 
   // ── Channels: continuous radio streams with no skip/seek ────────
@@ -182,8 +193,7 @@ class DJEngine {
       const files = fs.readdirSync(musicDir)
         .filter(f => /\.(mp3|wav|flac|m4a|ogg)$/i.test(f))
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-      this.state.playlist = files.map(f => path.join(musicDir, f));
-      this.state.playlistMeta = files.map((f, i) => ({
+      const tracks = files.map((f, i) => ({
         title: f.replace(/\.[^.]+$/, ''),
         album: 'Full Library',
         trackNum: i + 1,
@@ -191,11 +201,16 @@ class DJEngine {
         file: path.join(musicDir, f),
         theme: 'Continuous — the whole ghost library in order',
       }));
+      // Insert a commercial every 3 songs (music channel)
+      const withAds = interleaveCommercials(tracks, this._commercials, 3);
+      this.state.playlist = withAds.map(t => t.file);
+      this.state.playlistMeta = withAds;
       this.state.currentTrackIdx = 0;
       this.state.currentAlbum = 'Full Library';
       this.state.channel = 'music';
       this.state.channelMeta = { type: 'music', label: 'Music' };
-      console.log(`\n📻 Channel MUSIC: ${files.length} tracks queued (library in order)`);
+      const adCount = withAds.filter(t => t.commercial).length;
+      console.log(`\n📻 Channel MUSIC: ${files.length} tracks + ${adCount} commercials (every 3 songs)`);
       return true;
     } catch (e) {
       console.warn('[channel] music build failed:', e.message);
@@ -216,8 +231,7 @@ class DJEngine {
       const files = fs.readdirSync(podcastDir)
         .filter(f => /\.(mp3|wav|flac|m4a|ogg)$/i.test(f))
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-      this.state.playlist = files.map(f => path.join(podcastDir, f));
-      this.state.playlistMeta = files.map((f, i) => ({
+      const episodes = files.map((f, i) => ({
         title: f.replace(/\.[^.]+$/, ''),
         album: 'Ghost Signals Podcast',
         trackNum: i + 1,
@@ -225,11 +239,16 @@ class DJEngine {
         file: path.join(podcastDir, f),
         theme: 'Transmissions from the ghost studio',
       }));
+      // Podcast: interval=0 means a commercial between EVERY episode
+      const withAds = interleaveCommercials(episodes, this._commercials, 0);
+      this.state.playlist = withAds.map(t => t.file);
+      this.state.playlistMeta = withAds;
       this.state.currentTrackIdx = 0;
       this.state.currentAlbum = 'Ghost Signals Podcast';
       this.state.channel = 'podcast';
       this.state.channelMeta = { type: 'podcast', label: 'Podcast' };
-      console.log(`\n📻 Channel PODCAST: ${files.length} episodes queued`);
+      const adCount = withAds.filter(t => t.commercial).length;
+      console.log(`\n📻 Channel PODCAST: ${episodes.length} episodes + ${adCount} commercials (between each)`);
       return true;
     } catch (e) {
       console.warn('[channel] podcast build failed:', e.message);
@@ -369,12 +388,12 @@ class DJEngine {
       return this.state.playlist.length > 0;
     }
 
+    const trackMetas = [];
     for (let i = 0; i < album.tracks.length; i++) {
       const title = album.tracks[i];
       const file = findAudioFile(title, musicDir);
       if (file) {
-        this.state.playlist.push(file);
-        this.state.playlistMeta.push({
+        trackMetas.push({
           title,
           album: albumName,
           trackNum: i + 1,
@@ -386,8 +405,13 @@ class DJEngine {
         console.log(`   \u26A0 Track not found: "${title}"`);
       }
     }
+    // DJ album: commercial every 3 tracks (matches music channel policy)
+    const withAds = interleaveCommercials(trackMetas, this._commercials, 3);
+    this.state.playlist = withAds.map(t => t.file);
+    this.state.playlistMeta = withAds;
 
-    console.log(`\n\uD83C\uDFB5 Loaded "${albumName}" \u2014 ${this.state.playlist.length}/${album.tracks.length} tracks found`);
+    const adCount = withAds.filter(t => t.commercial).length;
+    console.log(`\n\uD83C\uDFB5 Loaded "${albumName}" \u2014 ${trackMetas.length}/${album.tracks.length} tracks${adCount ? ` + ${adCount} commercials` : ''}`);
     return this.state.playlist.length > 0;
   }
 
