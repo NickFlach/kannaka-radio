@@ -1531,7 +1531,28 @@ function animate() {
   if (vrm && vrm.update) vrm.update(dt);
 
   let hipSway = 0;
-  if (bones.hips) {
+  // Test mode — set ?test=pose in the URL to force an extreme jumping-jack pose.
+  // Use this to verify that bone rotations are actually driving the mesh.
+  const testPose = (new URLSearchParams(location.search).get('test') === 'pose');
+  if (testPose && bones.hips) {
+    const s = (Math.sin(t * 2) + 1) * 0.5; // 0→1 slow oscillation
+    const r = (b, ax) => (b && b.userData['restRot' + ax.toUpperCase()]) || 0;
+    if (bones.leftUpperArm) {
+      bones.leftUpperArm.rotation.x = r(bones.leftUpperArm, 'x');
+      bones.leftUpperArm.rotation.y = r(bones.leftUpperArm, 'y');
+      bones.leftUpperArm.rotation.z = r(bones.leftUpperArm, 'z') + s * 2.5;
+    }
+    if (bones.rightUpperArm) {
+      bones.rightUpperArm.rotation.x = r(bones.rightUpperArm, 'x');
+      bones.rightUpperArm.rotation.y = r(bones.rightUpperArm, 'y');
+      bones.rightUpperArm.rotation.z = r(bones.rightUpperArm, 'z') - s * 2.5;
+    }
+    if (bones.leftLowerArm) bones.leftLowerArm.rotation.x = r(bones.leftLowerArm, 'x') - s * 1.2;
+    if (bones.rightLowerArm) bones.rightLowerArm.rotation.x = r(bones.rightLowerArm, 'x') - s * 1.2;
+    if (bones.leftUpperLeg) bones.leftUpperLeg.rotation.z = r(bones.leftUpperLeg, 'z') + s * 0.6;
+    if (bones.rightUpperLeg) bones.rightUpperLeg.rotation.z = r(bones.rightUpperLeg, 'z') - s * 0.6;
+  }
+  if (!testPose && bones.hips) {
     // Reset all mapped bones to their REST rotation at the start of each frame.
     // Dance code then uses += to add deltas. This way the A-pose stays intact
     // and our movements are relative, not absolute overwrites.
