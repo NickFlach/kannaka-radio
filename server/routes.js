@@ -160,7 +160,13 @@ module.exports = function setupRoutes(deps) {
       const videoPath = path.join(path.dirname(config.spaPath), "video-hologram.html");
       try {
         const html = fs.readFileSync(videoPath, "utf8");
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        // no-cache: this file iterates rapidly and stale versions make debugging impossible
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        });
         res.end(html);
       } catch {
         res.writeHead(404);

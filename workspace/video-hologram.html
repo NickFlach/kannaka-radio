@@ -84,6 +84,8 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
 const isEmbedded = (window.parent !== window);
+// Prominent version marker — if you don't see this, you're running cached JS.
+console.log('%c[hologram] version 2026-04-14 mixamo-aware, rest-relative, dm-v2', 'background:#1a0f30;color:#ff66aa;padding:4px 8px;font-weight:bold;');
 
 // -- State --
 let trackTitle = '', trackAlbum = '', trackFile = '';
@@ -823,7 +825,9 @@ async function loadVRM() {
     const gltf = await loader.loadAsync('/models/kannaka.vrm');
     vrm = gltf.userData.vrm;
     if (vrm) {
-      VRMUtils.removeUnnecessaryJoints(vrm.scene);
+      // three-vrm 3.x: combineSkeletons replaces the deprecated removeUnnecessaryJoints.
+      if (VRMUtils.combineSkeletons) VRMUtils.combineSkeletons(vrm.scene);
+      else if (VRMUtils.removeUnnecessaryJoints) VRMUtils.removeUnnecessaryJoints(vrm.scene);
       model = vrm.scene;
       console.log('[hologram] VRM loaded via plugin');
     } else {
@@ -890,40 +894,44 @@ async function loadVRM() {
   if (primarySkinnedMesh && primarySkinnedMesh.skeleton) {
     const skelBones = primarySkinnedMesh.skeleton.bones;
     console.log('[hologram] Skeleton has', skelBones.length, 'bones');
-    const aliases = {
-      hips: ['hips','hip','pelvis','j_bip_c_hips'],
-      spine: ['spine','j_bip_c_spine'],
-      chest: ['chest','j_bip_c_chest'],
-      upperChest: ['upperchest','upper_chest','j_bip_c_upperchest'],
-      neck: ['neck','j_bip_c_neck'],
-      head: ['head','j_bip_c_head'],
-      leftShoulder: ['leftshoulder','l_shoulder','j_bip_l_shoulder'],
-      rightShoulder: ['rightshoulder','r_shoulder','j_bip_r_shoulder'],
-      leftUpperArm: ['leftupperarm','l_upperarm','l_arm','j_bip_l_upperarm'],
-      rightUpperArm: ['rightupperarm','r_upperarm','r_arm','j_bip_r_upperarm'],
-      leftLowerArm: ['leftlowerarm','l_lowerarm','l_forearm','leftforearm','j_bip_l_lowerarm'],
-      rightLowerArm: ['rightlowerarm','r_lowerarm','r_forearm','rightforearm','j_bip_r_lowerarm'],
-      leftHand: ['lefthand','l_hand','j_bip_l_hand'],
-      rightHand: ['righthand','r_hand','j_bip_r_hand'],
-      leftUpperLeg: ['leftupperleg','l_upperleg','l_thigh','leftthigh','j_bip_l_upperleg'],
-      rightUpperLeg: ['rightupperleg','r_upperleg','r_thigh','rightthigh','j_bip_r_upperleg'],
-      leftLowerLeg: ['leftlowerleg','l_lowerleg','l_shin','l_calf','leftshin','j_bip_l_lowerleg'],
-      rightLowerLeg: ['rightlowerleg','r_lowerleg','r_shin','r_calf','rightshin','j_bip_r_lowerleg'],
-      leftFoot: ['leftfoot','l_foot','j_bip_l_foot'],
-      rightFoot: ['rightfoot','r_foot','j_bip_r_foot'],
+    // Regex patterns — matched against the LOWERCASED bone name. Patterns are
+    // anchored or use word-boundary-like tricks so "leftarm" doesn't grab
+    // "leftforearm", and "leftleg" doesn't grab "leftupleg".
+    const patterns = {
+      hips:          [/(^|[^a-z])hips?$/, /(^|[^a-z])pelvis$/],
+      spine:         [/(^|[^a-z])spine1?$/],
+      chest:         [/(^|[^a-z])spine2$/, /(^|[^a-z])chest$/, /upperbody$/],
+      upperChest:    [/(^|[^a-z])spine3$/, /upperchest$/],
+      neck:          [/(^|[^a-z])neck$/],
+      head:          [/(^|[^a-z])head$/],
+      leftShoulder:  [/leftshoulder$/, /lshoulder$/, /l_shoulder$/],
+      rightShoulder: [/rightshoulder$/, /rshoulder$/, /r_shoulder$/],
+      // Upper arm: ends in "arm" but NOT "forearm" — Mixamo uses LeftArm/LeftForeArm
+      leftUpperArm:  [/(?<!fore)leftarm$/, /leftupperarm$/, /l_upperarm$/, /(?<!fore)larm$/],
+      rightUpperArm: [/(?<!fore)rightarm$/, /rightupperarm$/, /r_upperarm$/, /(?<!fore)rarm$/],
+      leftLowerArm:  [/leftforearm$/, /leftlowerarm$/, /l_forearm$/, /lforearm$/],
+      rightLowerArm: [/rightforearm$/, /rightlowerarm$/, /r_forearm$/, /rforearm$/],
+      leftHand:      [/lefthand$/, /l_hand$/, /lhand$/],
+      rightHand:     [/righthand$/, /r_hand$/, /rhand$/],
+      // Upper leg: "LeftUpLeg" or "LeftUpperLeg" or "LeftThigh"
+      leftUpperLeg:  [/leftupleg$/, /leftupperleg$/, /leftthigh$/, /l_upleg$/],
+      rightUpperLeg: [/rightupleg$/, /rightupperleg$/, /rightthigh$/, /r_upleg$/],
+      // Lower leg: "LeftLeg" but NOT "LeftUpLeg" — negative lookbehind on "up"
+      leftLowerLeg:  [/(?<!up)leftleg$/, /leftlowerleg$/, /leftshin$/, /leftcalf$/],
+      rightLowerLeg: [/(?<!up)rightleg$/, /rightlowerleg$/, /rightshin$/, /rightcalf$/],
+      leftFoot:      [/leftfoot$/, /l_foot$/, /lfoot$/],
+      rightFoot:     [/rightfoot$/, /r_foot$/, /rfoot$/],
     };
     for (const logical of BONE_NAMES) {
-      const candidates = aliases[logical] || [logical.toLowerCase()];
+      const pats = patterns[logical] || [new RegExp(logical.toLowerCase() + '$')];
       let found = null;
-      for (const c of candidates) {
-        found = skelBones.find(b => b.name.toLowerCase() === c);
-        if (found) break;
-        found = skelBones.find(b => b.name.toLowerCase().includes(c));
+      for (const p of pats) {
+        found = skelBones.find(b => p.test(b.name.toLowerCase()));
         if (found) break;
       }
       if (found) bones[logical] = found;
     }
-    console.log('[hologram] Skeleton bones matched:', Object.keys(bones).join(','));
+    console.log('[hologram] Skeleton bones matched via patterns:', Object.keys(bones).filter(k=>bones[k]).length, '/', BONE_NAMES.length);
   }
   // Secondary: fill from VRM humanoid for any bones still missing
   if (vrm && vrm.humanoid) {
@@ -1133,12 +1141,13 @@ function computeShotTargets(type, headPos, headQuat, setDuration) {
 
 // ── Dance Memory — she learns to dance by remembering what worked ──
 const DanceMemory = (() => {
-  const MAX = 500, KEY = 'kannaka_dance_memory_v2'; // v2 — v1 had degenerate all-zero captures
-  // Purge v1 if present
+  const MAX = 500, KEY = 'kannaka_dance_memory_v3'; // v3 — pose deltas from rest
+  // Purge older versions
   try { localStorage.removeItem('kannaka_dance_memory'); } catch(e) {}
+  try { localStorage.removeItem('kannaka_dance_memory_v2'); } catch(e) {}
   const BK = ['hipsY','hipsX','hipsZ','spineY','spineX','spineZ','chestY','chestX','chestZ','headY','headX','headZ','lArmZ','lArmX','lArmY','rArmZ','rArmX','rArmY','lElbow','rElbow','lLegX','lLegZ','rLegX','rLegZ','lKnee','rKnee'];
   let snaps = [], dirty = 0, last = null, lastT = 0, lastLoggedSim = -1;
-  try { const raw = localStorage.getItem(KEY); if (raw) { snaps = JSON.parse(raw) || []; console.log('[dance-memory] Loaded', snaps.length, 'snapshots (v2)'); } } catch(e) { console.warn('[dance-memory] localStorage unavailable:', e.message); }
+  try { const raw = localStorage.getItem(KEY); if (raw) { snaps = JSON.parse(raw) || []; console.log('[dance-memory] Loaded', snaps.length, 'snapshots (v3/deltas)'); } } catch(e) { console.warn('[dance-memory] localStorage unavailable:', e.message); }
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(snaps)); } catch(e) {} };
 
   // Music feature "richness" — magnitude of the audio portion. If this is tiny,
