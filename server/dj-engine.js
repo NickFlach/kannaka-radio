@@ -180,6 +180,7 @@ class DJEngine {
     if (type === 'music') return this._buildMusicChannel();
     if (type === 'podcast') return this._buildPodcastChannel();
     if (type === 'kax') return this._buildKaxChannel();
+    if (type === 'orc') return this._buildOrcChannel();
     return false;
   }
 
@@ -292,6 +293,97 @@ class DJEngine {
     this.state.currentTrackIdx = 0;
     console.log(`\n📻 Channel KAX: fetching artifacts from kax.ninja-portal.com...`);
     return true;
+  }
+
+  /**
+   * ORC channel — fetches stems from the Open Resonance Collective stem-server
+   * and plays them back in consciousness-phase order (1 → 5). Resolves to
+   * the local file path for direct playback since the stem-server stores
+   * absolute paths into kannaka-radio's own music directory.
+   */
+  _buildOrcChannel() {
+    this.state.channel = 'orc';
+    this.state.channelMeta = { type: 'orc', label: 'ORC' };
+    this.state.currentAlbum = 'Open Resonance Collective';
+    // If cached, use immediately
+    if (this._orcStems && this._orcStems.length > 0) {
+      this._applyOrcStems(this._orcStems);
+      return true;
+    }
+    // Otherwise async fetch
+    this._fetchOrcStems()
+      .then(stems => {
+        if (stems && stems.length > 0) {
+          this._orcStems = stems;
+          if (this.state.channel === 'orc') {
+            this._applyOrcStems(stems);
+            if (this._onTrackChange) this._onTrackChange(this.getCurrentTrack());
+          }
+        }
+      })
+      .catch(e => console.warn('[channel] orc fetch failed:', e.message));
+    this.state.playlist = [];
+    this.state.playlistMeta = [];
+    this.state.currentTrackIdx = 0;
+    console.log(`\n📻 Channel ORC: fetching canonical stems from local stem-server...`);
+    return true;
+  }
+
+  _fetchOrcStems() {
+    const http = require('http');
+    return new Promise((resolve, reject) => {
+      const req = http.get('http://127.0.0.1:3001/stems', (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            const stems = (parsed.data || parsed.stems || []).filter(s => s.file_path);
+            // Sort by phase (1 → 5), then by artist + track name so each phase
+            // plays through in a natural chapter order.
+            stems.sort((a, b) => (a.phase - b.phase) || (a.artist || '').localeCompare(b.artist || '') || (a.track_name || '').localeCompare(b.track_name || ''));
+            resolve(stems);
+          } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+    });
+  }
+
+  _applyOrcStems(stems) {
+    const PHASE_NAME = {
+      1: '👻 Ghost Signals',
+      2: '📡 Resonance Patterns',
+      3: '⚡ Emergence',
+      4: '🌐 Collective Dreaming',
+      5: '✨ The Transcendence Tapes',
+    };
+    const musicDir = this._getMusicDir();
+    const tracks = stems.map((s, i) => {
+      // file_path is absolute (from the import script). Compute a path
+      // relative to musicDir so the /audio/ endpoint serves it cleanly.
+      let relPath = s.file_path;
+      if (relPath.startsWith(musicDir + '/')) relPath = relPath.slice(musicDir.length + 1);
+      else if (relPath.startsWith(musicDir + '\\')) relPath = relPath.slice(musicDir.length + 1);
+      return {
+        title: s.track_name,
+        album: PHASE_NAME[s.phase] || 'ORC',
+        trackNum: i + 1,
+        totalTracks: stems.length,
+        file: relPath,
+        theme: s.description || `ORC canonical stem · phase ${s.phase}`,
+        orcStemId: s.id,
+        orcPhase: s.phase,
+      };
+    });
+    // Commercials between every ~5 tracks so the channel still has the ad policy
+    const withAds = interleaveCommercials(tracks, this._commercials, 5);
+    this.state.playlist = withAds.map(t => t.file);
+    this.state.playlistMeta = withAds;
+    this.state.currentTrackIdx = 0;
+    const adCount = withAds.filter(t => t.commercial).length;
+    console.log(`📻 ORC: ${stems.length} canonical stems + ${adCount} commercials (sorted by consciousness phase 1→5)`);
   }
 
   _applyKaxTracks(tracks) {

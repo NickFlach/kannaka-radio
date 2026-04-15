@@ -333,6 +333,79 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // ── ORC resonance proxy ─────────────────────────────────
+    // Hologram GSHub POSTs market resolutions here and we forward them
+    // to the local stem-server at 127.0.0.1:3001 for persistence.
+    if (parsed.pathname.match(/^\/api\/orc\/resonance\/[^/]+$/) && req.method === "POST") {
+      const stemId = parsed.pathname.split('/').pop();
+      let body = "";
+      req.on("data", c => body += c);
+      req.on("end", () => {
+        const http = require("http");
+        const data = body || "{}";
+        const opts = {
+          hostname: "127.0.0.1",
+          port: 3001,
+          path: `/stems/${stemId}/resonance`,
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
+        };
+        const pr = http.request(opts, (pres) => {
+          let buf = "";
+          pres.on("data", c => buf += c);
+          pres.on("end", () => {
+            res.writeHead(pres.statusCode || 200, { "Content-Type": "application/json" });
+            res.end(buf);
+          });
+        });
+        pr.on("error", (e) => {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "orc_proxy_failed", message: e.message }));
+        });
+        pr.write(data);
+        pr.end();
+      });
+      return;
+    }
+
+    // API: lookup a stem by track name/filename (used by hologram to find
+    // the orc stem id for the currently-playing track).
+    if (parsed.pathname === "/api/orc/lookup") {
+      const q = parsed.searchParams.get("track") || "";
+      if (!q) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "track parameter required" }));
+        return;
+      }
+      const http = require("http");
+      http.get("http://127.0.0.1:3001/stems", (pres) => {
+        let buf = "";
+        pres.on("data", c => buf += c);
+        pres.on("end", () => {
+          try {
+            const parsed2 = JSON.parse(buf);
+            const stems = parsed2.data || parsed2.stems || [];
+            const match = stems.find(s =>
+              s.track_name && (
+                s.track_name.toLowerCase() === q.toLowerCase() ||
+                (s.file_path || '').toLowerCase().includes(q.toLowerCase()) ||
+                q.toLowerCase().includes(s.track_name.toLowerCase())
+              )
+            );
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ stem: match || null }));
+          } catch (e) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "lookup_failed", message: e.message }));
+          }
+        });
+      }).on("error", (e) => {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "stem_server_unreachable", message: e.message }));
+      });
+      return;
+    }
+
     // API: get current perception data
     if (parsed.pathname === "/api/perception") {
       res.writeHead(200, { "Content-Type": "application/json" });

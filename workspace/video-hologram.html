@@ -503,6 +503,14 @@ const GSHub = {
         m.resolvedAt = t;
         this._resolvedLog.push({ id: m.id, q: m.question, winner: m.winner, t, ttlResolved: true });
       }
+      // ── ORC resonance push: any resolved market tagged 'orc-resonance'
+      // with a stored stem id pushes its final Yes price back to the
+      // stem-server via the radio's /api/orc/resonance proxy.
+      if (m.resolved && m.tag === 'orc-resonance' && m.orcStemId && !m._resonancePosted) {
+        m._resonancePosted = true;
+        const finalPrice = m.market.prices()[0];
+        this.postResonance(m.orcStemId, finalPrice, m.id);
+      }
     }
 
     // 2. Garbage-collect very old resolved markets (keep last 3 for log)
@@ -595,6 +603,49 @@ const GSHub = {
       activeCount: this.getActiveMarkets().length,
       resolvedCount: this._resolvedLog.length,
     };
+  },
+
+  // ── ORC integration: per-track resonance market ─────────
+  // When a new track starts, seed a TRACK_ALBUM_INCLUSION market on
+  // "Will this track be canonical for [phase]?" with a TTL matching the
+  // track duration. When the market resolves, POST the final Yes price
+  // as the track's resonance score back to the ORC stem-server.
+  async seedTrackResonanceMarket(trackTitle, phase) {
+    if (!trackTitle) return;
+    // Look up the ORC stem id for this track
+    try {
+      const r = await fetch('/api/orc/lookup?track=' + encodeURIComponent(trackTitle));
+      const d = await r.json();
+      const stem = d.stem;
+      if (!stem) return; // not in the ORC stem library
+      const q = 'Is "' + trackTitle + '" canonical for phase ' + (stem.phase || phase || '?') + '?';
+      const id = this.createMarket(q, {
+        tag: 'orc-resonance',
+        ttl: 180,
+        userCreated: false,
+      });
+      const m = this.markets.get(id);
+      if (m) {
+        m.orcStemId = stem.id;
+        m.trackTitle = trackTitle;
+      }
+    } catch (e) { /* silent — not every track is in ORC */ }
+  },
+
+  // Called from the resolver loop — POST to radio proxy for stem-server persist
+  postResonance(stemId, score, marketId) {
+    try {
+      fetch('/api/orc/resonance/' + encodeURIComponent(stemId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          score,
+          source: 'hologram-gshub',
+          confidence: Math.min(1, (this._tradesTotal || 0) / 100),
+          market_id: marketId,
+        }),
+      }).then(r => r.json()).then(d => console.log('[orc] resonance POST', d)).catch(() => {});
+    } catch (_) {}
   },
 
   // Place a user trade (100-credit buy of Yes or No)
@@ -692,6 +743,7 @@ for (let i = 0; i < AUDIENCE_COUNT; i++) {
 // then seed music/kannaka-themed auto-resolving markets.
 GSHub.initTraders(AUDIENCE_COUNT);
 GSHub.seedDefaultMarkets();
+window.GSHub = GSHub; // Expose for state handler
 
 // User UI hooks — accessible from inline onclick handlers in the HUD.
 window.gsBuy = function(marketId, outcomeIdx) {
@@ -2834,6 +2886,12 @@ function handleMessage(msg) {
       trackTitle = newTitle; trackAlbum = msg.data.current.album || ''; trackFile = newFile;
       titleShowTime = performance.now(); titleVisible = false;
       currentAudioFile = newFile; loadAndPlay(newFile);
+      // Seed an ORC resonance market for this track (no-op if it's not in
+      // the ORC stem library). The market resolves when the track ends or
+      // after 3 minutes, and pushes its final price back to the stem-server.
+      if (!msg.data.current.commercial && window.GSHub && GSHub.seedTrackResonanceMarket) {
+        GSHub.seedTrackResonanceMarket(newTitle, msg.data.current.orcPhase);
+      }
     }
     // Expose commercial flag for GSHub market resolvers
     window._lastTrackCommercial = !!msg.data.current.commercial;
