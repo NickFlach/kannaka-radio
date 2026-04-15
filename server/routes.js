@@ -21,7 +21,7 @@ const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
  * @param {object}                                   deps.config
  */
 module.exports = function setupRoutes(deps) {
-  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, config } = deps;
+  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, config, gsHub } = deps;
 
   // Listener tracking
   const listeners = {
@@ -404,6 +404,116 @@ module.exports = function setupRoutes(deps) {
         res.end(JSON.stringify({ error: "stem_server_unreachable", message: e.message }));
       });
       return;
+    }
+
+    // ── ADR-0012: Constellation-wide prediction markets ─────────────
+    // GhostSignalsHub HTTP API. Five-call onboarding contract:
+    //   POST /api/agents/register    body: { id?, display_name, kind }
+    //   GET  /api/agents/:id
+    //   GET  /api/leaderboard?sort=&limit=
+    //   POST /api/markets            body: { question, outcomes?, ttl_sec, ... }
+    //   GET  /api/markets?sort=&active=&limit=&tag=
+    //   GET  /api/markets/:id
+    //   POST /api/markets/:id/trade  body: { trader_id, outcome, shares }
+    //   POST /api/markets/:id/resolve body: { winning_outcome, method }
+    //   GET  /api/gshub/stats
+
+    if (gsHub) {
+      const sendJson = (status, obj) => {
+        res.writeHead(status, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(JSON.stringify(obj));
+      };
+      const readJson = () => new Promise((resolve, reject) => {
+        let body = "";
+        req.on("data", c => body += c);
+        req.on("end", () => {
+          try { resolve(body ? JSON.parse(body) : {}); }
+          catch (e) { reject(e); }
+        });
+        req.on("error", reject);
+      });
+
+      // CORS preflight
+      if (req.method === "OPTIONS" && parsed.pathname.startsWith("/api/")) {
+        res.writeHead(204, {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        });
+        res.end();
+        return;
+      }
+
+      // ── Trader endpoints ─────────────────────────────────
+      if (parsed.pathname === "/api/agents/register" && req.method === "POST") {
+        readJson().then(body => gsHub.registerTrader(body))
+          .then(t => sendJson(200, { ok: true, trader: t }))
+          .catch(e => sendJson(400, { ok: false, error: e.message }));
+        return;
+      }
+      const agentMatch = parsed.pathname.match(/^\/api\/agents\/([\w-]+)$/);
+      if (agentMatch && req.method === "GET") {
+        gsHub.getTrader(agentMatch[1])
+          .then(t => t ? sendJson(200, { ok: true, trader: t }) : sendJson(404, { ok: false, error: "trader not found" }))
+          .catch(e => sendJson(500, { ok: false, error: e.message }));
+        return;
+      }
+      if (parsed.pathname === "/api/leaderboard" && req.method === "GET") {
+        const sort = parsed.searchParams.get("sort") || "capital";
+        const limit = Math.min(100, parseInt(parsed.searchParams.get("limit"), 10) || 20);
+        gsHub.leaderboard({ sort, limit })
+          .then(rows => sendJson(200, { ok: true, traders: rows, count: rows.length }))
+          .catch(e => sendJson(500, { ok: false, error: e.message }));
+        return;
+      }
+
+      // ── Market endpoints ─────────────────────────────────
+      if (parsed.pathname === "/api/markets" && req.method === "POST") {
+        readJson().then(body => gsHub.createMarket(body))
+          .then(m => sendJson(200, { ok: true, market: m }))
+          .catch(e => sendJson(400, { ok: false, error: e.message }));
+        return;
+      }
+      if (parsed.pathname === "/api/markets" && req.method === "GET") {
+        const sort = parsed.searchParams.get("sort") || "volume";
+        const active = parsed.searchParams.get("active") !== "0";
+        const tag = parsed.searchParams.get("tag") || undefined;
+        const limit = Math.min(100, parseInt(parsed.searchParams.get("limit"), 10) || 20);
+        gsHub.listMarkets({ sort, active, tag, limit })
+          .then(rows => sendJson(200, { ok: true, markets: rows, count: rows.length }))
+          .catch(e => sendJson(500, { ok: false, error: e.message }));
+        return;
+      }
+      const marketMatch = parsed.pathname.match(/^\/api\/markets\/(m_[\w-]+)$/);
+      if (marketMatch && req.method === "GET") {
+        gsHub.getMarket(marketMatch[1])
+          .then(m => m ? sendJson(200, { ok: true, market: m }) : sendJson(404, { ok: false, error: "market not found" }))
+          .catch(e => sendJson(500, { ok: false, error: e.message }));
+        return;
+      }
+      const tradeMatch = parsed.pathname.match(/^\/api\/markets\/(m_[\w-]+)\/trade$/);
+      if (tradeMatch && req.method === "POST") {
+        readJson().then(body => gsHub.placeTrade({ ...body, market_id: tradeMatch[1] }))
+          .then(r => sendJson(200, { ok: true, ...r }))
+          .catch(e => sendJson(400, { ok: false, error: e.message }));
+        return;
+      }
+      const resolveMatch = parsed.pathname.match(/^\/api\/markets\/(m_[\w-]+)\/resolve$/);
+      if (resolveMatch && req.method === "POST") {
+        readJson().then(body => gsHub.resolveMarket({ ...body, market_id: resolveMatch[1] }))
+          .then(m => sendJson(200, { ok: true, market: m }))
+          .catch(e => sendJson(400, { ok: false, error: e.message }));
+        return;
+      }
+      if (parsed.pathname === "/api/gshub/stats" && req.method === "GET") {
+        gsHub.getHubStats()
+          .then(s => sendJson(200, { ok: true, stats: s }))
+          .catch(e => sendJson(500, { ok: false, error: e.message }));
+        return;
+      }
     }
 
     // API: get current perception data

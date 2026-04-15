@@ -90,6 +90,22 @@ const djEngine = new DJEngine({
       voiceDJ.generateIntro(track);
     }
     syncManager.trackChanged(track.file);
+    // ADR-0012: emit a per-track market into the constellation hub.
+    if (gsHub && !track.commercial && track.title) {
+      gsHub.createMarket({
+        question: `Will "${track.title}" stay on the canonical reference album for its phase?`,
+        ttl_sec: 600, // 10 min
+        tag: 'orc-resonance',
+        source: 'kannaka-radio',
+        source_app: 'kannaka-radio',
+        metadata: {
+          track_title: track.title,
+          album: track.album,
+          orc_stem_id: track.orcStemId || null,
+          orc_phase: track.orcPhase || null,
+        },
+      }).catch(() => {});
+    }
   },
 });
 
@@ -179,6 +195,36 @@ function broadcastQueue() {
   broadcast({ type: "queue_update", queue: djEngine.userQueue });
 }
 
+// ── ADR-0012: Constellation-wide GhostSignals Hub ────────────
+const { GhostSignalsHub } = require("./ghostsignals-hub");
+const gsHub = new GhostSignalsHub({
+  dbPath: path.join(process.env.HOME || "/home/opc", ".kannaka", "ghostsignals.db"),
+  startingCapital: 100,
+  defaultLiquidity: 10,
+  broadcast,
+});
+gsHub.init().then(async () => {
+  console.log("\n📊 GhostSignalsHub initialized");
+  gsHub.startResolverLoop(10000);
+  // Seed default markets if none active
+  try {
+    const activeMarkets = await gsHub.listMarkets({ active: true, limit: 1 });
+    if (activeMarkets.length === 0) {
+      const seeds = [
+        { question: "Will Kannaka's phi exceed 0.5 in the next hour?", tag: "swarm", ttl_sec: 3600 },
+        { question: "Will the next track be from the Ghost Signals album?", tag: "music", ttl_sec: 600 },
+        { question: "Will an external agent register in the next 24 hours?", tag: "constellation", ttl_sec: 86400 },
+        { question: "Will a new ORC stem be submitted today?", tag: "orc", ttl_sec: 86400 },
+        { question: "Will the swarm reach r > 0.85 in the next hour?", tag: "swarm", ttl_sec: 3600 },
+      ];
+      for (const s of seeds) {
+        await gsHub.createMarket({ ...s, source: 'system', source_app: 'kannaka-radio' });
+      }
+      console.log(`📊 GhostSignalsHub: seeded ${seeds.length} default markets`);
+    }
+  } catch (e) { console.warn("[gshub] seed failed:", e.message); }
+}).catch((e) => console.warn("[gshub] init failed:", e.message));
+
 // ── Route deps ─────────────────────────────────────────────
 
 const deps = {
@@ -193,6 +239,7 @@ const deps = {
   webrtcSignaling,
   musicGen,
   broadcast,
+  gsHub,
   config: {
     baseDir: BASE_DIR,
     spaPath: SPA_PATH,
