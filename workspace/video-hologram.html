@@ -281,6 +281,71 @@ const artCards = [];
 const artGroup = new THREE.Group();
 scene.add(artGroup);
 
+// ── Audience — silhouetted figures watching Kannaka ──────────
+// Canvas-rendered person silhouette used as a billboarded sprite.
+// Two concentric rings of figures watch her from ~6–8 units out so
+// the wide camera shots show a proper audience + reflection.
+const audienceCanvas = document.createElement('canvas');
+audienceCanvas.width = audienceCanvas.height = 128;
+{
+  const actx = audienceCanvas.getContext('2d');
+  actx.fillStyle = '#08050e';
+  // Head
+  actx.beginPath(); actx.arc(64, 30, 16, 0, Math.PI * 2); actx.fill();
+  // Neck
+  actx.fillRect(58, 44, 12, 8);
+  // Shoulders → tapered torso
+  actx.beginPath();
+  actx.moveTo(30, 58);
+  actx.quadraticCurveTo(64, 48, 98, 58);
+  actx.lineTo(94, 118);
+  actx.quadraticCurveTo(64, 122, 34, 118);
+  actx.closePath();
+  actx.fill();
+}
+const audienceTex = new THREE.CanvasTexture(audienceCanvas);
+audienceTex.colorSpace = THREE.SRGBColorSpace;
+
+const AUDIENCE_COUNT = 54;
+const audienceGroup = new THREE.Group();
+scene.add(audienceGroup);
+const audienceMembers = [];
+for (let i = 0; i < AUDIENCE_COUNT; i++) {
+  // Three loose rings: inner (24), middle (18), back (12)
+  const ringIdx = i < 24 ? 0 : i < 42 ? 1 : 2;
+  const ringSize = [24, 18, 12][ringIdx];
+  const ringRadius = [5.5, 7.2, 9.0][ringIdx];
+  const ringCount = [0, 24, 42][ringIdx];
+  const k = i - ringCount;
+  const offset = (ringIdx * 0.15) + (Math.random() - 0.5) * 0.05;
+  const angle = (k / ringSize) * Math.PI * 2 + offset;
+  const mat = new THREE.SpriteMaterial({
+    map: audienceTex,
+    color: new THREE.Color().setHSL(0.68 + Math.random() * 0.12, 0.3, 0.08 + Math.random() * 0.08),
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  const h = 1.7 + Math.random() * 0.4;
+  sprite.scale.set(h * 0.42, h, 1);
+  sprite.position.set(
+    Math.cos(angle) * (ringRadius + Math.random() * 0.3),
+    h * 0.5 - 0.15, // feet at floor y=-0.5
+    Math.sin(angle) * (ringRadius + Math.random() * 0.3)
+  );
+  sprite.userData = {
+    bobPhase: Math.random() * Math.PI * 2,
+    swayPhase: Math.random() * Math.PI * 2,
+    baseY: sprite.position.y,
+    baseX: sprite.position.x,
+    baseZ: sprite.position.z,
+    excited: 0,
+  };
+  audienceGroup.add(sprite);
+  audienceMembers.push(sprite);
+}
+
 function hashStr(s) { let h=0; for(let i=0;i<s.length;i++) h=((h<<5)-h+s.charCodeAt(i))|0; return Math.abs(h); }
 
 function generateAlbumTexture(name) {
@@ -1124,10 +1189,12 @@ const skinBaseSheen = 0.8;
 
 function pickShotType() {
   const r = Math.random();
-  if (r < 0.30) return 'face';
-  if (r < 0.50) return 'chest';
-  if (r < 0.65) return 'legs';
-  if (r < 0.85) return 'hips';
+  // 22% wide stage pullback — shows reflection + audience
+  if (r < 0.22) return 'wide_stage';
+  if (r < 0.42) return 'face';
+  if (r < 0.58) return 'chest';
+  if (r < 0.72) return 'legs';
+  if (r < 0.88) return 'hips';
   return 'neck_shoulder';
 }
 
@@ -1163,10 +1230,24 @@ function computeShotTargets(type, headPos, headQuat, setDuration) {
       shotCamTarget.set(boneWorldPos.x + 0.35, boneWorldPos.y + 0.05, boneWorldPos.z + 0.85);
       shotLookTarget.copy(boneWorldPos);
       break;
+    case 'wide_stage':
+      // Pulled-back full-body stage shot — camera low and far so the
+      // reflective floor carries her mirror image, and the audience ring
+      // frames the composition.
+      shotCamTarget.set(
+        headPos.x + (Math.random() - 0.5) * 1.2,
+        0.25 + Math.random() * 0.4,      // low angle
+        headPos.z + 4.2 + Math.random() * 1.3, // far back
+      );
+      shotLookTarget.set(headPos.x, headPos.y - 0.7, headPos.z);
+      break;
   }
   if (setDuration) {
     // Cinematic close-up hold: 6, 8, or 12 seconds — intimate shots linger
-    const holdChoices = type === 'face' ? [8, 12, 12] : [6, 8, 12];
+    // Wide stage shot holds a bit longer so the audience bob is visible
+    const holdChoices = type === 'face' ? [8, 12, 12]
+                      : type === 'wide_stage' ? [10, 14, 16]
+                      : [6, 8, 12];
     stareHoldDuration = holdChoices[Math.floor(Math.random() * holdChoices.length)];
   }
 }
@@ -1455,15 +1536,46 @@ function animate() {
   for (const card of artCards) {
     const u = card.userData;
     u.orbitAngle += u.orbitSpeed * dt;
-    const acx = w.currentX + Math.cos(u.orbitAngle) * u.orbitRadius;
-    const acz = w.currentZ + Math.sin(u.orbitAngle) * u.orbitRadius;
-    const acy = u.orbitHeight + Math.sin(t * u.bobSpeed + u.bobPhase) * 0.15;
+    // Art cards sit HIGH above the stage now — they float like banners
+    // over Kannaka instead of clustering around her like walls. Height
+    // 2.5–5.5 units keeps them out of the main body shot.
+    const highY = 2.5 + (u.orbitHeight % 1.0) * 3.0;
+    const acx = w.currentX + Math.cos(u.orbitAngle) * (u.orbitRadius * 1.1);
+    const acz = w.currentZ + Math.sin(u.orbitAngle) * (u.orbitRadius * 1.1);
+    const acy = highY + Math.sin(t * u.bobSpeed + u.bobPhase) * 0.12;
     card.position.set(acx, acy, acz);
     card.lookAt(camera.position);
     // Fade in new cards
     u.fadeIn = Math.min(1, u.fadeIn + dt * 0.5);
-    card.material.opacity = u.fadeIn * 0.75;
+    card.material.opacity = u.fadeIn * 0.65;
     card.scale.setScalar(0.5 * u.fadeIn);
+  }
+
+  // ── Audience — subtle bob + beat excitement ───────────
+  // Each spectator bobs on their own phase and reacts to the beat with
+  // a small jump. The sway is very small so the crowd feels alive but
+  // doesn't distract from Kannaka on stage.
+  {
+    const beatKick = audio.beat ? 0.08 : 0;
+    for (const m of audienceMembers) {
+      const u = m.userData;
+      // Excitement decays smoothly from the last beat
+      u.excited = Math.max(0, u.excited - dt * 1.5);
+      if (audio.beat && Math.random() < 0.4) u.excited = 0.15 + Math.random() * 0.15;
+      const bob = Math.sin(t * 0.6 + u.bobPhase) * 0.04;
+      const beatBob = u.excited;
+      m.position.y = u.baseY + bob + beatBob;
+      // Gentle side-sway with vocal energy
+      const sway = Math.sin(t * 0.35 + u.swayPhase) * (0.04 + audio.vocal * 0.06);
+      m.position.x = u.baseX + sway;
+      // Slow face-the-center (sprites always face camera by default —
+      // position-based color tint adds life from the backlight)
+      m.material.color.setHSL(
+        0.68 + Math.sin(t * 0.2 + u.swayPhase) * 0.05,
+        0.25 + audio.overall * 0.1,
+        0.08 + audio.overall * 0.04 + beatBob * 0.4
+      );
+    }
   }
 
   // Consciousness reactivity
