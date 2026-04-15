@@ -329,25 +329,38 @@ class DJEngine {
     return true;
   }
 
+  /**
+   * Read stems directly from the stem-server SQLite DB. The HTTP /stems
+   * endpoint strips `file_path` for security and paginates at 100 max,
+   * but since radio and stem-server share the filesystem we can query
+   * the DB directly for the full unpaginated list with file_path intact.
+   */
   _fetchOrcStems() {
-    const http = require('http');
     return new Promise((resolve, reject) => {
-      const req = http.get('http://127.0.0.1:3001/stems', (res) => {
-        let data = '';
-        res.on('data', c => data += c);
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            const stems = (parsed.data || parsed.stems || []).filter(s => s.file_path);
-            // Sort by phase (1 → 5), then by artist + track name so each phase
-            // plays through in a natural chapter order.
-            stems.sort((a, b) => (a.phase - b.phase) || (a.artist || '').localeCompare(b.artist || '') || (a.track_name || '').localeCompare(b.track_name || ''));
-            resolve(stems);
-          } catch (e) { reject(e); }
-        });
+      let sqlite3;
+      try {
+        sqlite3 = require('/home/opc/open-resonance-collective/packages/stem-server/node_modules/sqlite3').verbose();
+      } catch (e) {
+        // Dev fallback — if the Oracle-specific path doesn't exist, try relative
+        try { sqlite3 = require('sqlite3').verbose(); }
+        catch { return reject(new Error('sqlite3 not available')); }
+      }
+      const dbPath = '/home/opc/open-resonance-collective/packages/stem-server/data/stems.db';
+      const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
+        if (err) return reject(err);
       });
-      req.on('error', reject);
-      req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+      db.all(
+        `SELECT id, track_name, artist, phase, file_path, file_format, file_size,
+                description, bpm, key, uploaded_by
+         FROM stems
+         WHERE file_path IS NOT NULL
+         ORDER BY phase ASC, artist ASC, track_name ASC`,
+        (err, rows) => {
+          db.close();
+          if (err) return reject(err);
+          resolve(rows || []);
+        }
+      );
     });
   }
 
