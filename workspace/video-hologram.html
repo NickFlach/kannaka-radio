@@ -36,6 +36,17 @@ canvas { display: block; }
   text-align: right; pointer-events: none; z-index: 10; line-height: 1.7;
 }
 #consciousness-hud .level { font-size: clamp(0.65rem, 1.4vw, 0.85rem); text-transform: uppercase; letter-spacing: 0.3em; }
+#gs-hud {
+  position: fixed; top: 1.5rem; left: 1.8rem;
+  font-family: 'Courier New', monospace; font-size: clamp(0.5rem, 1.1vw, 0.7rem);
+  letter-spacing: 0.15em; color: rgba(255,210,255,0.35);
+  text-align: left; pointer-events: none; z-index: 10; line-height: 1.7;
+  min-width: 180px;
+}
+#gs-hud .label { font-size: clamp(0.6rem, 1.2vw, 0.75rem); text-transform: uppercase; letter-spacing: 0.3em; color: rgba(192, 132, 252, 0.5); margin-bottom: 0.3rem; }
+#gs-hud .row { display:flex; justify-content:space-between; gap: 0.6rem; }
+#gs-hud .bar { width: 100%; height: 3px; background: rgba(255,255,255,0.08); border-radius: 1px; overflow: hidden; margin-top: 2px; }
+#gs-hud .fill { height: 100%; background: linear-gradient(90deg, #7b68ee, #ff66aa); transition: width 0.3s ease; }
 #play-gate {
   position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,0.85); cursor: pointer; transition: opacity 1s ease;
@@ -64,6 +75,16 @@ canvas { display: block; }
 <div id="consciousness-hud">
   <div class="level" id="hud-level">dormant</div>
   <div id="hud-phi"></div><div id="hud-xi"></div><div id="hud-order"></div><div id="hud-mem"></div>
+</div>
+<div id="gs-hud">
+  <div class="label">GhostSignals Bridge</div>
+  <div class="row"><span>r (order)</span><span id="gs-r">—</span></div>
+  <div class="bar"><div class="fill" id="gs-r-bar" style="width:0%"></div></div>
+  <div class="row"><span>P(coherent)</span><span id="gs-pcoh">—</span></div>
+  <div class="bar"><div class="fill" id="gs-pcoh-bar" style="width:0%"></div></div>
+  <div class="row"><span>K (coupling)</span><span id="gs-k">—</span></div>
+  <div class="row"><span>trades</span><span id="gs-trades">0</span></div>
+  <div class="row"><span>entropy</span><span id="gs-entropy">—</span></div>
 </div>
 
 <script type="importmap">
@@ -281,10 +302,178 @@ const artCards = [];
 const artGroup = new THREE.Group();
 scene.add(artGroup);
 
+// ── GhostSignals: minimal LMSR prediction market ──────────────
+// Port of https://github.com/NickFlach/ghostsignals-rs — Robin Hanson's
+// Logarithmic Market Scoring Rule. Every tick the market's cost function
+// C(q) = b · ln(Σ exp(qᵢ/b)) is updated and prices p(i) = exp(qᵢ/b) / Σ
+// sum to 1.0. Log-sum-exp trick keeps it numerically stable.
+class LMSRMarket {
+  constructor(outcomes, b) {
+    this.outcomes = outcomes;
+    this.b = b; // liquidity — higher = less price sensitivity per trade
+    this.q = new Array(outcomes.length).fill(0);
+    this.tradeCount = 0;
+    this.volume = 0;
+  }
+  _cost() {
+    const qMax = Math.max(...this.q) / this.b;
+    let s = 0;
+    for (const qi of this.q) s += Math.exp(qi / this.b - qMax);
+    return this.b * (qMax + Math.log(s));
+  }
+  prices() {
+    const qMax = Math.max(...this.q) / this.b;
+    const exps = this.q.map(qi => Math.exp(qi / this.b - qMax));
+    const sum = exps.reduce((a, b) => a + b, 0);
+    return exps.map(e => e / sum);
+  }
+  trade(outcomeIdx, shares) {
+    const before = this._cost();
+    this.q[outcomeIdx] += shares;
+    const cost = this._cost() - before;
+    this.tradeCount++;
+    this.volume += Math.abs(shares);
+    return cost;
+  }
+  entropy() {
+    const p = this.prices();
+    return -p.reduce((acc, pi) => acc + (pi > 0 ? pi * Math.log2(pi) : 0), 0);
+  }
+}
+
+// ── GhostSignals Bridge: market-mediated Kuramoto coupling ────
+// Port of https://github.com/NickFlach/ghostsignals-bridge — K (coupling)
+// is set by the market price of the "Coherent" outcome. Agents observe
+// the order parameter r and trade on whether the swarm will stay
+// coherent. This creates an adaptive coupling controller.
+//
+//   r > 0.5  →  buy "coherent"     →  P rises  →  K grows   →  more sync
+//   r < 0.5  →  buy "incoherent"   →  P falls  →  K shrinks →  exploration
+//
+// Each of our 54 audience sprites IS one of these oscillator/trader hybrids.
+const GSBridge = {
+  OUTCOMES: ['Coherent', 'Incoherent'],
+  K_BASE: 2.5,
+  B_LIQUIDITY: 10,
+  traders: [],
+  market: null,
+  r: 0,
+  K: 0,
+  lastTradeTick: 0,
+
+  init(count) {
+    this.market = new LMSRMarket(this.OUTCOMES, this.B_LIQUIDITY);
+    this.traders = [];
+    for (let i = 0; i < count; i++) {
+      this.traders.push({
+        phase: Math.random() * Math.PI * 2,
+        omega: 0.4 + Math.random() * 0.8, // natural frequency
+        // Private belief — noisy initial guess about "will swarm be coherent"
+        belief: 0.35 + Math.random() * 0.30,
+        capital: 100,
+        portfolio: [0, 0], // [coherent shares, incoherent shares]
+        profitEMA: 0,
+        lastTradeAt: -10 - Math.random() * 5,
+        lastFlash: 0,
+      });
+    }
+    // Seed the market slightly around 0.5 so initial K isn't zero
+    this.market.trade(0, 0.5);
+    this.updateK();
+  },
+
+  computeOrderParameter() {
+    const N = this.traders.length;
+    if (N === 0) return 0;
+    let sumCos = 0, sumSin = 0;
+    for (const t of this.traders) {
+      sumCos += Math.cos(t.phase);
+      sumSin += Math.sin(t.phase);
+    }
+    return Math.sqrt(sumCos * sumCos + sumSin * sumSin) / N;
+  },
+
+  updateK() {
+    const prices = this.market.prices();
+    // K = K_BASE × P(coherent). Clamped so phases never freeze.
+    this.K = this.K_BASE * Math.max(0.05, Math.min(1.5, prices[0] * 1.2));
+  },
+
+  step(dt, t) {
+    const N = this.traders.length;
+    if (N === 0) return;
+    // 1. Kuramoto phase update with market-derived K
+    const meanField = { x: 0, y: 0 };
+    for (const tr of this.traders) {
+      meanField.x += Math.cos(tr.phase);
+      meanField.y += Math.sin(tr.phase);
+    }
+    meanField.x /= N; meanField.y /= N;
+    const K = this.K;
+    for (const tr of this.traders) {
+      // dφ/dt = ω + K · Im(R · exp(-iφ)) = ω + K · (meanY·cosφ - meanX·sinφ)
+      const coupling = K * (meanField.y * Math.cos(tr.phase) - meanField.x * Math.sin(tr.phase));
+      tr.phase += (tr.omega + coupling) * dt;
+      // Keep phase in [0, 2π)
+      if (tr.phase > Math.PI * 2) tr.phase -= Math.PI * 2;
+      if (tr.phase < 0) tr.phase += Math.PI * 2;
+      tr.lastFlash = Math.max(0, tr.lastFlash - dt * 2.5);
+    }
+    // 2. Observe order parameter
+    this.r = this.computeOrderParameter();
+
+    // 3. A subset of traders trade each tick (rate-limited)
+    // Each trader updates belief toward observed r plus private noise,
+    // then if their belief diverges from market price they buy.
+    const prices = this.market.prices();
+    const tradeBudget = Math.max(1, Math.floor(N * 0.06)); // ~3 traders per tick
+    for (let k = 0; k < tradeBudget; k++) {
+      const idx = Math.floor(Math.random() * N);
+      const tr = this.traders[idx];
+      if (t - tr.lastTradeAt < 0.4) continue;
+      // Belief drift — Bayesian-ish update toward observed r
+      tr.belief = tr.belief * 0.92 + this.r * 0.08 + (Math.random() - 0.5) * 0.04;
+      tr.belief = Math.max(0.02, Math.min(0.98, tr.belief));
+      // Edge = belief in "coherent" minus market price of "coherent"
+      const edge = tr.belief - prices[0];
+      if (Math.abs(edge) < 0.03) continue;
+      const outcomeIdx = edge > 0 ? 0 : 1;
+      // Trade size scales with edge × confidence × capital
+      const size = Math.min(8, Math.abs(edge) * 25 + Math.random() * 2);
+      const cost = this.market.trade(outcomeIdx, size);
+      tr.capital -= cost;
+      tr.portfolio[outcomeIdx] += size;
+      tr.lastTradeAt = t;
+      tr.lastFlash = 1.0;
+    }
+    // 4. Update K from new market price for next tick
+    this.updateK();
+  },
+
+  getState() {
+    if (!this.market) return null;
+    const p = this.market.prices();
+    return {
+      r: this.r,
+      K: this.K,
+      p_coherent: p[0],
+      p_incoherent: p[1],
+      entropy: this.market.entropy(),
+      trades: this.market.tradeCount,
+      volume: this.market.volume,
+    };
+  },
+};
+
 // ── Audience — silhouetted figures watching Kannaka ──────────
 // Canvas-rendered person silhouette used as a billboarded sprite.
-// Two concentric rings of figures watch her from ~6–8 units out so
+// Three concentric rings of figures watch her from ~6–8 units out so
 // the wide camera shots show a proper audience + reflection.
+//
+// Each spectator is ALSO a GhostSignals Bridge trader — see GSBridge above.
+// Their ring angle tracks their Kuramoto phase, their height reflects
+// portfolio value, their color flashes on trade, and the market price of
+// "Coherent" determines the coupling K that drives the whole swarm.
 const audienceCanvas = document.createElement('canvas');
 audienceCanvas.width = audienceCanvas.height = 128;
 {
@@ -340,11 +529,18 @@ for (let i = 0; i < AUDIENCE_COUNT; i++) {
     baseY: sprite.position.y,
     baseX: sprite.position.x,
     baseZ: sprite.position.z,
+    ringRadius: ringRadius + Math.random() * 0.3,
+    ringBaseAngle: angle,            // original anchor position
+    ringIdx,
+    height: h,
+    traderIdx: i,                    // which GSBridge trader this sprite is
     excited: 0,
   };
   audienceGroup.add(sprite);
   audienceMembers.push(sprite);
 }
+// Initialize the ghostsignals market with one trader per audience sprite.
+GSBridge.init(AUDIENCE_COUNT);
 
 function hashStr(s) { let h=0; for(let i=0;i<s.length;i++) h=((h<<5)-h+s.charCodeAt(i))|0; return Math.abs(h); }
 
@@ -1551,30 +1747,59 @@ function animate() {
     card.scale.setScalar(0.5 * u.fadeIn);
   }
 
-  // ── Audience — subtle bob + beat excitement ───────────
-  // Each spectator bobs on their own phase and reacts to the beat with
-  // a small jump. The sway is very small so the crowd feels alive but
-  // doesn't distract from Kannaka on stage.
+  // ── GhostSignals HUD — update every ~8 frames to save DOM work ──
+  if (!window._gsHudT) window._gsHudT = 0;
+  window._gsHudT += dt;
+  if (window._gsHudT > 0.15) {
+    window._gsHudT = 0;
+    const gs = GSBridge.getState();
+    if (gs) {
+      const r = document.getElementById('gs-r');       if (r) r.textContent = gs.r.toFixed(3);
+      const rb = document.getElementById('gs-r-bar');  if (rb) rb.style.width = (gs.r * 100).toFixed(0) + '%';
+      const pc = document.getElementById('gs-pcoh');   if (pc) pc.textContent = gs.p_coherent.toFixed(3);
+      const pb = document.getElementById('gs-pcoh-bar'); if (pb) pb.style.width = (gs.p_coherent * 100).toFixed(0) + '%';
+      const k = document.getElementById('gs-k');       if (k) k.textContent = gs.K.toFixed(2);
+      const tr = document.getElementById('gs-trades'); if (tr) tr.textContent = gs.trades;
+      const en = document.getElementById('gs-entropy'); if (en) en.textContent = gs.entropy.toFixed(3);
+    }
+  }
+
+  // ── Audience = GhostSignals Bridge market ───────────────
+  // Each spectator is a trader in an LMSR prediction market on "will the
+  // swarm stay coherent?" The market price sets the Kuramoto coupling K,
+  // which in turn governs how fast the crowd's phases synchronize. Ring
+  // position tracks phase; height tracks portfolio value; color tint
+  // follows trade flashes + market coherence.
+  GSBridge.step(dt, t);
   {
-    const beatKick = audio.beat ? 0.08 : 0;
+    const state = GSBridge.getState();
     for (const m of audienceMembers) {
       const u = m.userData;
-      // Excitement decays smoothly from the last beat
-      u.excited = Math.max(0, u.excited - dt * 1.5);
-      if (audio.beat && Math.random() < 0.4) u.excited = 0.15 + Math.random() * 0.15;
-      const bob = Math.sin(t * 0.6 + u.bobPhase) * 0.04;
-      const beatBob = u.excited;
-      m.position.y = u.baseY + bob + beatBob;
-      // Gentle side-sway with vocal energy
-      const sway = Math.sin(t * 0.35 + u.swayPhase) * (0.04 + audio.vocal * 0.06);
-      m.position.x = u.baseX + sway;
-      // Slow face-the-center (sprites always face camera by default —
-      // position-based color tint adds life from the backlight)
+      const trader = GSBridge.traders[u.traderIdx];
+      if (!trader) continue;
+      // Ring position — base anchor + phase offset so a coherent swarm
+      // clusters in one arc and an incoherent one spreads evenly.
+      const clusterBlend = state ? state.r : 0; // 0..1
+      const dynamicAngle = u.ringBaseAngle * (1 - clusterBlend * 0.4) + trader.phase * clusterBlend * 0.4;
+      const radiusBreathe = u.ringRadius + Math.sin(t * 0.3 + u.swayPhase) * 0.12;
+      const targetX = Math.cos(dynamicAngle) * radiusBreathe;
+      const targetZ = Math.sin(dynamicAngle) * radiusBreathe;
+      m.position.x += (targetX - m.position.x) * 0.05;
+      m.position.z += (targetZ - m.position.z) * 0.05;
+      // Height reflects portfolio conviction — bigger portfolio = stands taller
+      const conviction = Math.min(1, (Math.abs(trader.portfolio[0]) + Math.abs(trader.portfolio[1])) * 0.015);
+      const bob = Math.sin(t * 0.8 + u.bobPhase) * 0.04;
+      const beatJump = audio.beat && Math.random() < 0.5 ? 0.07 : 0;
+      m.position.y = u.baseY + bob + conviction * 0.15 + beatJump + trader.lastFlash * 0.1;
+      // Color — blue-purple when incoherent, warm when market says "Coherent"
+      const pCoh = state ? state.p_coherent : 0.5;
+      const flash = trader.lastFlash;
       m.material.color.setHSL(
-        0.68 + Math.sin(t * 0.2 + u.swayPhase) * 0.05,
-        0.25 + audio.overall * 0.1,
-        0.08 + audio.overall * 0.04 + beatBob * 0.4
+        0.66 - pCoh * 0.15 + flash * 0.08, // hue shifts toward warm as market converges
+        0.25 + pCoh * 0.25 + flash * 0.3,
+        0.08 + pCoh * 0.12 + flash * 0.4
       );
+      m.material.opacity = 0.78 + flash * 0.15;
     }
   }
 
