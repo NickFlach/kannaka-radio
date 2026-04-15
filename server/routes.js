@@ -315,7 +315,7 @@ module.exports = function setupRoutes(deps) {
           flux.publishTrackChange(track);
           perception.hearTrack(track);
           syncManager.trackChanged(track.file);
-          if (type === 'dj' && voiceDJ && voiceDJ.generateIntro) {
+          if (type === 'dj' && !track.commercial && voiceDJ && voiceDJ.generateIntro) {
             voiceDJ.generateIntro(track);
           }
         }

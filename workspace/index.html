@@ -2753,6 +2753,13 @@ function applyState(s) {
       }
       audio.load();
       audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+
+      // If the new track is a commercial, silence any lingering DJ voice
+      // intro so the ad plays cleanly without overlap.
+      if (c.commercial) {
+        var djv = document.getElementById('djVoiceAudio');
+        if (djv) { try { djv.pause(); djv.currentTime = 0; } catch (_) {} }
+      }
     }
   }
   renderPlaylist(s);

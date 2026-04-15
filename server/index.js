@@ -84,7 +84,11 @@ const djEngine = new DJEngine({
     broadcastState();
     flux.publishTrackChange(track);
     perception_.hearTrack(track);
-    voiceDJ.generateIntro(track);
+    // Don't ride commercials with a DJ voice intro — ads are standalone
+    // spoken content and the intro would double-up the speech.
+    if (!track.commercial) {
+      voiceDJ.generateIntro(track);
+    }
     syncManager.trackChanged(track.file);
   },
 });

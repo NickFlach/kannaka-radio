@@ -139,7 +139,9 @@ function commercialAsTrack(script, idx, total) {
 
 /**
  * Insert commercials into a playlist. For music channels: every N tracks.
- * For podcast: between every episode.
+ * For podcast (interval=0): between EVERY episode, including after the last
+ * one so the loop-back (single-episode podcasts especially) still contains
+ * a commercial break.
  *
  * @param {Array} tracks — array of { title, album, file, ... } playlistMeta
  * @param {Array} commercials — result from ensureCommercials
@@ -152,9 +154,16 @@ function interleaveCommercials(tracks, commercials, interval) {
   let adIdx = 0;
   for (let i = 0; i < tracks.length; i++) {
     out.push(tracks[i]);
-    const shouldAd = interval === 0
-      ? i < tracks.length - 1
-      : (i + 1) % interval === 0 && i < tracks.length - 1;
+    let shouldAd;
+    if (interval === 0) {
+      // Podcast: always insert an ad after every episode — even the last —
+      // so single-episode podcasts cycle as ep → ad → ep → ad → ...
+      shouldAd = true;
+    } else {
+      // Music / DJ: every N tracks, but not after the very last track of
+      // the playlist to avoid a trailing ad at the end of finite albums.
+      shouldAd = (i + 1) % interval === 0 && i < tracks.length - 1;
+    }
     if (shouldAd) {
       const ad = commercials[adIdx % commercials.length];
       adIdx++;
