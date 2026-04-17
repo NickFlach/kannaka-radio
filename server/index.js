@@ -81,6 +81,41 @@ function broadcastListenerCount() {
 const djEngine = new DJEngine({
   getMusicDir: () => MUSIC_DIR,
   onTrackChange: (track) => {
+    // ── Talk segment check ────────────────────────────────
+    // Every 3-5 non-commercial tracks, the DJ does a talk-only segment
+    // BEFORE the next track starts. Music pauses on the client while
+    // the talk audio plays, then the track resumes afterward.
+    if (!track.commercial && voiceDJ.shouldTalk(track)) {
+      // Broadcast a "talk_segment_pending" so clients know to pause music
+      broadcast({ type: "dj_talk_pending", timestamp: new Date().toISOString() });
+
+      voiceDJ.executeTalkSegment(track, () => {
+        // Talk segment done — now start the track normally
+        broadcastState();
+        flux.publishTrackChange(track);
+        perception_.hearTrack(track);
+        syncManager.trackChanged(track.file);
+        // Create market for the track
+        if (gsHub && track.title) {
+          gsHub.createMarket({
+            question: `Will "${track.title}" stay on the canonical reference album for its phase?`,
+            ttl_sec: 600,
+            tag: 'orc-resonance',
+            source: 'kannaka-radio',
+            source_app: 'kannaka-radio',
+            metadata: {
+              track_title: track.title,
+              album: track.album,
+              orc_stem_id: track.orcStemId || null,
+              orc_phase: track.orcPhase || null,
+            },
+          }).catch(() => {});
+        }
+      });
+      return; // Don't do normal track change flow yet
+    }
+
+    // ── Normal track change flow ──────────────────────────
     broadcastState();
     flux.publishTrackChange(track);
     perception_.hearTrack(track);

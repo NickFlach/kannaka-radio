@@ -3766,6 +3766,67 @@ function handleDJVoice(msg) {
   }
 }
 
+// ── Talk segment handlers ────────────────────────────────
+
+var _inTalkSegment = false;
+var _preTalkVolume = 1;
+
+function handleDJTalkPending() {
+  // Server is about to send a talk segment — pause music audio
+  var audio = document.getElementById('audio');
+  if (audio) {
+    _preTalkVolume = audio.volume;
+    audio.pause();
+  }
+  _inTalkSegment = true;
+}
+
+function handleDJTalkSegment(msg) {
+  var bar = document.getElementById('djVoiceBar');
+  var textEl = document.getElementById('djVoiceText');
+  var audioEl = document.getElementById('djVoiceAudio');
+  var audio = document.getElementById('audio');
+
+  _inTalkSegment = true;
+
+  // Pause music if not already paused
+  if (audio && !audio.paused) {
+    _preTalkVolume = audio.volume;
+    audio.pause();
+  }
+
+  // Show talk text in the DJ voice bar
+  if (bar && textEl) {
+    textEl.textContent = '\u{1F399}\uFE0F ' + msg.text;
+    bar.classList.add('visible');
+  }
+
+  // Play talk audio
+  if (msg.audioUrl && djVoiceEnabled && audioEl) {
+    audioEl.src = msg.audioUrl;
+    audioEl.volume = 0.85;
+    audioEl.play().catch(function() {
+      console.log('DJ talk segment autoplay blocked');
+    });
+
+    audioEl.onended = function() {
+      // Talk segment audio finished — the server will broadcast the next
+      // track state shortly. Hide the bar after a brief pause.
+      _inTalkSegment = false;
+      setTimeout(function() {
+        if (bar) bar.classList.remove('visible');
+      }, 1500);
+    };
+  } else {
+    // No audio — wait for duration then clear
+    var dur = msg.duration || 15000;
+    setTimeout(function() {
+      _inTalkSegment = false;
+      if (bar) bar.classList.remove('visible');
+    }, dur);
+  }
+}
+
 async function toggleDJVoice() {
   try {
     var r = await fetch('/api/dj-voice/toggle', { method: 'POST' });
@@ -4018,6 +4079,12 @@ function connectWS() {
       }
       if (msg.type === 'dj_voice') {
         handleDJVoice(msg);
+      }
+      if (msg.type === 'dj_talk_pending') {
+        handleDJTalkPending();
+      }
+      if (msg.type === 'dj_talk_segment') {
+        handleDJTalkSegment(msg);
       }
       if (msg.type === 'dream') {
         if (!dreamsData) dreamsData = { dreams: [] };
