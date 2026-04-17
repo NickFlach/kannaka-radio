@@ -2712,13 +2712,19 @@ function applyState(s) {
   }
   var c = s.current;
   if (c) {
-    document.getElementById('album').textContent = c.album || s.currentAlbum || '';
-    document.getElementById('track').textContent = c.title || '\u2014';
-    document.getElementById('theme').textContent = c.theme || '';
-    document.getElementById('info').textContent =
-      'Track ' + (s.currentTrackIdx + 1) + ' of ' + s.totalTracks +
-      (s.currentAlbum ? ' \u00b7 ' + s.currentAlbum : '') +
-      ' | ' + listenerCount + ' listening';
+    // Don't update the display during a talk segment — the DJ is
+    // speaking about the upcoming track and the display should stay
+    // on the previous track until the talk finishes and fetchState
+    // re-syncs everything together.
+    if (!_inTalkSegment) {
+      document.getElementById('album').textContent = c.album || s.currentAlbum || '';
+      document.getElementById('track').textContent = c.title || '\u2014';
+      document.getElementById('theme').textContent = c.theme || '';
+      document.getElementById('info').textContent =
+        'Track ' + (s.currentTrackIdx + 1) + ' of ' + s.totalTracks +
+        (s.currentAlbum ? ' \u00b7 ' + s.currentAlbum : '') +
+        ' | ' + listenerCount + ' listening';
+    }
 
     if (c.file && c.file !== currentFile && !_inTalkSegment) {
       // ── Save glyph trajectory for outgoing track ──
@@ -3810,18 +3816,28 @@ function handleDJTalkSegment(msg) {
     });
 
     audioEl.onended = function() {
-      // Talk segment audio finished — the server will broadcast the next
-      // track state shortly. Hide the bar after a brief pause.
+      // Talk segment audio finished — re-sync with the server to pick up
+      // the next track that was deferred during the talk.
       _inTalkSegment = false;
+      // Fetch fresh state so the display + audio catch up to whatever
+      // the server advanced to during the talk segment.
+      fetchState();
+      // Resume music playback — the fetchState→applyState chain will
+      // set the new src and play it.
+      var mainAudio = document.getElementById('audio');
+      if (mainAudio) {
+        mainAudio.volume = _preTalkVolume || 1;
+      }
       setTimeout(function() {
         if (bar) bar.classList.remove('visible');
       }, 1500);
     };
   } else {
-    // No audio — wait for duration then clear
+    // No audio — wait for duration then clear and re-sync
     var dur = msg.duration || 15000;
     setTimeout(function() {
       _inTalkSegment = false;
+      fetchState();
       if (bar) bar.classList.remove('visible');
     }, dur);
   }
