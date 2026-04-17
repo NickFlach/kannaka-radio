@@ -255,6 +255,10 @@ class VoiceDJ {
     return this._enabled;
   }
 
+  isTalking() {
+    return this._inTalkSegment;
+  }
+
   getStatus() {
     return {
       enabled: this._enabled,

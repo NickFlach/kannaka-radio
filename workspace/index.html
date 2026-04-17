@@ -2720,7 +2720,7 @@ function applyState(s) {
       (s.currentAlbum ? ' \u00b7 ' + s.currentAlbum : '') +
       ' | ' + listenerCount + ' listening';
 
-    if (c.file && c.file !== currentFile) {
+    if (c.file && c.file !== currentFile && !_inTalkSegment) {
       // ── Save glyph trajectory for outgoing track ──
       if (glyphTrajectory.current.length > 0 && _prevTrackFile) {
         var prevTitle = c.title || _prevTrackFile;
@@ -4209,7 +4209,12 @@ function connectWS() {
 
 document.addEventListener('DOMContentLoaded', function() {
   // Audio events
-  document.getElementById('audio').addEventListener('ended', function() { nextTrack(); });
+  document.getElementById('audio').addEventListener('ended', function() {
+    // Don't auto-advance if a talk segment is active — the server will
+    // send the next track state when the DJ finishes speaking.
+    if (_inTalkSegment) return;
+    nextTrack();
+  });
   document.getElementById('audio').addEventListener('play', function() { initAudioAnalyser(); });
   document.getElementById('audio').addEventListener('error', function(e) {
     var track = document.getElementById('track');
