@@ -199,6 +199,7 @@ const voiceDJ = new VoiceDJ({
   getPerception: () => perception_.getCurrentPerception(),
   getHistory: () => djEngine.state.history,
   isLive: () => live.state.active,
+  getChannel: () => djEngine.state.channel,
 });
 
 const syncManager = new SyncManager();

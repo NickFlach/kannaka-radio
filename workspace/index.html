@@ -1186,6 +1186,13 @@ body.konami-mode .surface-header h1 {
         <button class="btn" onclick="prevTrack()">Prev</button>
         <button class="btn" onclick="nextTrack()">Next</button>
       </div>
+      <div id="dj-radio-controls" style="display:none;align-items:center;gap:8px;margin:6px 0;">
+        <button class="btn" onclick="togglePlayPause()" style="font-size:14px;">&#9199; Play/Pause</button>
+        <input type="range" min="0" max="1" step="0.05" value="0.7"
+               onchange="document.getElementById('audio').volume=this.value"
+               style="width:100px;accent-color:#c084fc;">
+        <span style="opacity:0.5;font-size:10px;">&#127897; LIVE &mdash; Kannaka is your DJ</span>
+      </div>
       <div class="progress-info">
         <span class="dot off" id="audio-dot"></span>
         <span class="dot off" id="perception-dot"></span>
@@ -2703,12 +2710,21 @@ function applyState(s) {
       b.classList.toggle('active', b.dataset.channel === s.channel);
     });
     var djControls = document.getElementById('dj-controls');
+    var djRadioControls = document.getElementById('dj-radio-controls');
     var albums = document.getElementById('albums');
     var audioEl = document.getElementById('audio');
-    var isLiveChan = s.channel !== 'dj';
-    if (djControls) djControls.style.display = isLiveChan ? 'none' : '';
-    if (albums) albums.style.display = isLiveChan ? 'none' : '';
-    if (audioEl) audioEl.classList.toggle('radio-mode', isLiveChan);
+    // Music channel: full controls (prev/next, albums, scrubber)
+    // DJ channel: Kannaka controls — play/pause + volume only
+    // Other channels (podcast, kax, orc): continuous play, no controls
+    var isMusicChan = s.channel === 'music';
+    var isDjChan = s.channel === 'dj';
+    if (djControls) djControls.style.display = isMusicChan ? '' : 'none';
+    if (djRadioControls) djRadioControls.style.display = isDjChan ? 'flex' : 'none';
+    if (albums) albums.style.display = isMusicChan ? '' : 'none';
+    // Hide seek/time on DJ and continuous channels, show on music
+    if (audioEl) audioEl.classList.toggle('radio-mode', !isMusicChan);
+    // In DJ mode hide the native audio controls entirely — use our custom bar
+    if (audioEl) audioEl.controls = !isDjChan;
   }
   var c = s.current;
   if (c) {
@@ -2905,6 +2921,12 @@ async function prevTrack()     { await fetch('/api/prev', {method:'POST'}); }
 async function jumpTo(idx)     { await fetch('/api/jump?idx=' + idx, {method:'POST'}); }
 async function loadAlbum(name) { await fetch('/api/album?name=' + encodeURIComponent(name), {method:'POST'}); }
 
+function togglePlayPause() {
+  var audio = document.getElementById('audio');
+  if (audio.paused) audio.play().catch(function(){});
+  else audio.pause();
+}
+
 // ── Channels — continuous radio mode ─────────────────────
 // CRITICAL: chrome autoplay policy requires audio.play() to be called
 // synchronously inside the click handler. We fire play() immediately
@@ -2917,11 +2939,15 @@ function setChannel(type) {
     b.classList.toggle('active', b.dataset.channel === type);
   });
   var djControls = document.getElementById('dj-controls');
+  var djRadioControls = document.getElementById('dj-radio-controls');
   var albums = document.getElementById('albums');
-  var isLive = type !== 'dj';
-  if (djControls) djControls.style.display = isLive ? 'none' : '';
-  if (albums) albums.style.display = isLive ? 'none' : '';
-  if (audio) audio.classList.toggle('radio-mode', isLive);
+  var isMusicChan = type === 'music';
+  var isDjChan = type === 'dj';
+  if (djControls) djControls.style.display = isMusicChan ? '' : 'none';
+  if (djRadioControls) djRadioControls.style.display = isDjChan ? 'flex' : 'none';
+  if (albums) albums.style.display = isMusicChan ? '' : 'none';
+  if (audio) audio.classList.toggle('radio-mode', !isMusicChan);
+  if (audio) audio.controls = !isDjChan;
 
   // Consume the click gesture by calling play() synchronously. Even if src
   // doesn't change yet, Chrome will consider the user has granted permission
@@ -4229,13 +4255,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // Don't auto-advance if a talk segment is active — the server will
     // send the next track state when the DJ finishes speaking.
     if (_inTalkSegment) return;
-    nextTrack();
+    // In DJ mode, mark this as a natural track-end so the server allows it.
+    // User-initiated skips (nextTrack button) don't add this param and get blocked.
+    var source = (state && state.channel === 'dj') ? '?source=ended' : '';
+    fetch('/api/next' + source, {method:'POST'});
   });
   document.getElementById('audio').addEventListener('play', function() { initAudioAnalyser(); });
   document.getElementById('audio').addEventListener('error', function(e) {
     var track = document.getElementById('track');
     if (track) track.textContent = 'Playback error — skipping...';
-    setTimeout(nextTrack, 2000);
+    // Use source=ended for error-driven auto-skip too, so DJ mode allows it
+    setTimeout(function() {
+      var source = (state && state.channel === 'dj') ? '?source=ended' : '';
+      fetch('/api/next' + source, {method:'POST'});
+    }, 2000);
   });
 
   // Live broadcast buttons

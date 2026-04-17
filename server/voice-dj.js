@@ -134,6 +134,7 @@ class VoiceDJ {
    * @param {function} opts.getPerception — returns current perception data
    * @param {function} opts.getHistory — returns djState.history
    * @param {function} opts.isLive — returns boolean
+   * @param {function} [opts.getChannel] — returns current channel ('dj'|'music'|...)
    */
   constructor(opts) {
     this._voiceDir = opts.voiceDir;
@@ -142,6 +143,7 @@ class VoiceDJ {
     this._getPerception = opts.getPerception;
     this._getHistory = opts.getHistory;
     this._isLive = opts.isLive;
+    this._getChannel = opts.getChannel || (() => 'dj');
 
     this._enabled = true;
     this._speaking = false;
@@ -182,6 +184,8 @@ class VoiceDJ {
 
   generateIntro(track) {
     if (!this._enabled || this._speaking || this._isLive()) return;
+    // Intros are DJ-channel only — music channel users control their own experience
+    if (this._getChannel() !== 'dj') return;
 
     const history = this._getHistory();
     const prevTrack = history.length > 0 ? history[history.length - 1] : null;
@@ -280,6 +284,11 @@ class VoiceDJ {
     // Don't talk over commercials or during live broadcasts
     if (!this._enabled || this._isLive() || this._inTalkSegment) return false;
     if (track && track.commercial) return false;
+
+    // Talk segments are DJ-channel only — on music/podcast/kax/orc channels
+    // the DJ stays silent and lets the user control the experience.
+    const channel = this._getChannel();
+    if (channel !== 'dj') return false;
 
     this._tracksSinceLastTalk++;
     if (this._tracksSinceLastTalk >= this._nextTalkThreshold) {
@@ -640,7 +649,15 @@ class VoiceDJ {
   // ── Internal helpers ──────────────────────────────────────
 
   _randomTalkThreshold() {
-    return 3 + Math.floor(Math.random() * 3); // 3-5 tracks
+    // DJ channel: she talks more (every 2-3 songs) because she's the DJ
+    // and the user chose to let her run the show.
+    // Future: Kannaka could use memory recall to pick which album or track
+    // to play next, not just follow the playlist order — a truly autonomous DJ.
+    const channel = this._getChannel();
+    if (channel === 'dj') {
+      return 2 + Math.floor(Math.random() * 2); // 2-3 tracks
+    }
+    return 3 + Math.floor(Math.random() * 3); // 3-5 tracks (legacy, unused — talk is DJ-only now)
   }
 
   _pick(arr) {

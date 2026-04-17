@@ -145,8 +145,11 @@ class DJEngine {
       playlistMeta: [],   // { title, album, trackNum, file }
       playing: false,
       history: [],
-      // Channels — 'dj' is the legacy album-driven mode with full controls.
-      // 'music', 'podcast', 'kax' are continuous radio streams with play/mute/volume only.
+      // Channels:
+      // 'dj'      — true radio mode: Kannaka controls the flow. Users can only
+      //             play/pause and adjust volume. No skipping, no track selection.
+      // 'music'   — jukebox mode: users have full control (skip, prev, albums, scrub).
+      // 'podcast', 'kax', 'orc' — continuous streams with play/volume only.
       channel: 'dj',
       channelMeta: null, // { type, streamUrl? } when channel is a non-dj stream
     };

@@ -262,6 +262,16 @@ module.exports = function setupRoutes(deps) {
         res.end(JSON.stringify({ ok: false, reason: "talk_segment_active" }));
         return;
       }
+      // DJ channel: block user-initiated skips. Only allow natural track-end
+      // events (source=ended) so Kannaka controls the flow.
+      if (djEngine.state.channel === 'dj') {
+        const source = parsed.searchParams.get("source");
+        if (source !== 'ended') {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, reason: "dj_mode" }));
+          return;
+        }
+      }
       const track = djEngine.advanceTrack();
       config.broadcastState();
       console.log(`\u23ED Next: ${track?.title || "end"} (${track?.album || ""})`);
@@ -272,6 +282,12 @@ module.exports = function setupRoutes(deps) {
 
     // API: prev track
     if (parsed.pathname === "/api/prev" && req.method === "POST") {
+      // DJ channel: Kannaka controls the flow — no user prev allowed
+      if (djEngine.state.channel === 'dj') {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, reason: "dj_mode" }));
+        return;
+      }
       const track = djEngine.prevTrack();
       config.broadcastState();
       console.log(`\u23EE Prev: ${track?.title || "?"}`);
@@ -282,6 +298,12 @@ module.exports = function setupRoutes(deps) {
 
     // API: jump to track
     if (parsed.pathname === "/api/jump" && req.method === "POST") {
+      // DJ channel: Kannaka controls the flow — no user jump allowed
+      if (djEngine.state.channel === 'dj') {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, reason: "dj_mode" }));
+        return;
+      }
       const idx = parseInt(parsed.searchParams.get("idx")) || 0;
       const track = djEngine.jumpToTrack(idx);
       config.broadcastState();
@@ -293,6 +315,12 @@ module.exports = function setupRoutes(deps) {
 
     // API: load album
     if (parsed.pathname === "/api/album" && req.method === "POST") {
+      // DJ channel: Kannaka controls the flow — no user album switch allowed
+      if (djEngine.state.channel === 'dj') {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, reason: "dj_mode" }));
+        return;
+      }
       const name = parsed.searchParams.get("name");
       const track = djEngine.loadAlbum(name);
       if (track) {
