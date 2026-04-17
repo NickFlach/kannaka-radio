@@ -254,14 +254,16 @@ module.exports = function setupRoutes(deps) {
 
     // API: next track
     if (parsed.pathname === "/api/next" && req.method === "POST") {
-      const track = djEngine.advanceTrack();
-      // Don't broadcast state if a talk segment is active — the talk
-      // segment's onDone callback will broadcastState when it finishes.
-      // Without this guard, the client receives the new track state
-      // immediately and auto-plays it over the DJ's speech.
-      if (!voiceDJ || !voiceDJ.isTalking()) {
-        config.broadcastState();
+      // Reject track advancement while the DJ is in a talk segment.
+      // Multiple clients can fire /api/next (ended event, error handler,
+      // cached code) and any one of them would cut the talk short.
+      if (voiceDJ && voiceDJ.isTalking()) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, reason: "talk_segment_active" }));
+        return;
       }
+      const track = djEngine.advanceTrack();
+      config.broadcastState();
       console.log(`\u23ED Next: ${track?.title || "end"} (${track?.album || ""})`);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, track }));
