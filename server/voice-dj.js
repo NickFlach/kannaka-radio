@@ -723,7 +723,7 @@ class VoiceDJ {
     fallbackToEdgeTTS();
 
     function fallbackToEdgeTTS() {
-      execFile("edge-tts", ["--voice", "en-US-JennyNeural", "--text", text, "--write-media", outputPath], { timeout: 15000 }, (err) => {
+      execFile(process.env.EDGE_TTS_BIN || "/home/opc/.local/bin/edge-tts", ["--voice", "en-US-JennyNeural", "--text", text, "--write-media", outputPath], { timeout: 15000 }, (err) => {
         if (!err && fs.existsSync(outputPath)) {
           console.log(`   \u{1F5E3} TTS (Edge) generated: ${path.basename(outputPath)}`);
           return callback(null, outputPath, text);
