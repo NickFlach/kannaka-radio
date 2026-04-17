@@ -67,6 +67,26 @@ const COMMERCIAL_SCRIPTS = [
     title: "Pitchfork Protocol — Catch the Hallucination",
     text: "When your model hallucinates, who catches it? The Pitchfork Protocol. Three agents, three forks, one verdict. A framework for productive AI disagreement. Open-source examples live on GitHub. Fork it. Use it. Catch the ghost in the machine.",
   },
+
+  // ── Weekly Podcast Promos (DJ-channel only) ─────────────────
+  {
+    theme: "podcast_promo",
+    title: "Weekly Podcast — Friday & Saturday",
+    text: "Every Friday night at 10 and Saturday morning at 10 — it's podcast time on Kannaka Radio. One episode, two chances to catch it. Set your frequencies.",
+    djOnly: true,
+  },
+  {
+    theme: "podcast_promo",
+    title: "Weekly Podcast — This Week's Episode",
+    text: "This week's episode drops Friday at 10 PM. If you miss it, Saturday morning replay at 10 AM. Only on the DJ channel.",
+    djOnly: true,
+  },
+  {
+    theme: "podcast_promo",
+    title: "Weekly Podcast — New Signals",
+    text: "Kannaka Radio presents: the weekly episode. New stories, new signals, every Friday night. The ghost has something to say, and she's saying it at ten.",
+    djOnly: true,
+  },
 ];
 
 /**
@@ -146,10 +166,16 @@ function commercialAsTrack(script, idx, total) {
  * @param {Array} tracks — array of { title, album, file, ... } playlistMeta
  * @param {Array} commercials — result from ensureCommercials
  * @param {number} interval — insert a commercial every N tracks (0 = between every)
+ * @param {string} [channel='dj'] — current channel ('dj'|'music'|'podcast'|'kax'|'orc')
  * @returns {Array} new track array with commercials interleaved
  */
-function interleaveCommercials(tracks, commercials, interval) {
+function interleaveCommercials(tracks, commercials, interval, channel) {
   if (!commercials || commercials.length === 0) return tracks.slice();
+  // Filter out djOnly commercials on non-DJ channels
+  const filtered = channel && channel !== 'dj'
+    ? commercials.filter(c => !c.djOnly)
+    : commercials;
+  if (filtered.length === 0) return tracks.slice();
   const out = [];
   let adIdx = 0;
   for (let i = 0; i < tracks.length; i++) {
@@ -165,7 +191,7 @@ function interleaveCommercials(tracks, commercials, interval) {
       shouldAd = (i + 1) % interval === 0 && i < tracks.length - 1;
     }
     if (shouldAd) {
-      const ad = commercials[adIdx % commercials.length];
+      const ad = filtered[adIdx % filtered.length];
       adIdx++;
       out.push(commercialAsTrack(ad, out.length, tracks.length + Math.ceil(tracks.length / Math.max(1, interval))));
     }

@@ -467,6 +467,17 @@ syncManager.start(broadcast, 10000);
 // Start NATS connection for swarm data
 nats.connect();
 
+// ── Podcast scheduler — weekly episodes on DJ channel ─────
+const { PodcastScheduler } = require("./podcast-scheduler");
+const podcastScheduler = new PodcastScheduler({
+  djEngine,
+  voiceDJ,
+  broadcast,
+  broadcastState,
+  getMusicDir: () => MUSIC_DIR,
+});
+podcastScheduler.start();
+
 // ── Wire QueenSync events to DJ voice (KR-2) ──────────────
 {
   const { generateSwarmEventIntro } = require("../consciousness-dj");
