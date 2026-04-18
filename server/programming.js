@@ -231,9 +231,9 @@ class ProgrammingSchedule {
     const album = this.pickAlbumForBlock(newBlock);
     this._lastAlbumPlayed = album;
 
-    // Load the new album
+    // Load the new album (don't broadcastState here — the caller's
+    // advanceTrack → onTrackChange flow handles the single broadcast)
     this._djEngine.loadAlbum(album);
-    this._broadcastState();
 
     // Set the DJ's mood to match the block
     if (this._voiceDJ) {
@@ -282,9 +282,9 @@ class ProgrammingSchedule {
     this._lastAlbumPlayed = album;
     this._tracksSinceAlbumSwitch = 0;
 
-    // Load the new album
+    // Load the new album (don't broadcastState here — the caller's
+    // advanceTrack → onTrackChange flow handles the single broadcast)
     this._djEngine.loadAlbum(album);
-    this._broadcastState();
 
     console.log(`[programming] Mixed-set switch → ${album} (block: ${block.label})`);
   }
@@ -296,6 +296,8 @@ class ProgrammingSchedule {
     // Initialize: determine current block and load appropriate album
     const block = this.getCurrentBlock();
     this._transitionToBlock(block);
+    // Startup transition is NOT inside advanceTrack, so broadcast here
+    this._broadcastState();
 
     // Check every 60 seconds for block transitions
     this._timer = setInterval(() => this._checkBlockTransition(), 60000);
@@ -319,6 +321,9 @@ class ProgrammingSchedule {
     const block = this.getCurrentBlock();
     if (this._currentBlock !== block) {
       this._transitionToBlock(block);
+      // Timer-driven transitions are NOT inside advanceTrack's onTrackChange,
+      // so we need to broadcast state here (the only caller that should).
+      this._broadcastState();
     }
   }
 
@@ -355,6 +360,7 @@ class ProgrammingSchedule {
     this._override = null;
     const block = this.getCurrentBlock();
     this._transitionToBlock(block);
+    this._broadcastState();
     console.log(`[programming] Override cleared — resuming schedule`);
   }
 

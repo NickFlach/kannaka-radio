@@ -1,12 +1,12 @@
 /**
- * podcast-scheduler.js — Weekly podcast episodes on the DJ channel.
+ * podcast-scheduler.js — Podcast episodes on the DJ channel.
  *
  * Schedule:
  *   - Friday 10:00 PM CST (03:00 UTC Saturday)
  *   - Saturday 10:00 AM CST (15:00 UTC Saturday)
  *
- * Same episode plays both times. One new episode per week, cycling
- * through all available podcast episodes.
+ * Plays ALL available episodes back-to-back during each slot.
+ * After the last episode finishes, normal DJ programming resumes.
  *
  * Pre-show promo: 30 minutes before each airing, Kannaka announces
  * the upcoming podcast in her next talk segment via the _podcastPromo flag.
@@ -14,9 +14,6 @@
 
 const path = require("path");
 const fs = require("fs");
-
-// Epoch for week numbering (arbitrary fixed date)
-const WEEK_EPOCH = new Date("2025-01-06T00:00:00Z").getTime();
 
 class PodcastScheduler {
   /**
@@ -70,15 +67,6 @@ class PodcastScheduler {
   }
 
   /**
-   * Get the current week's episode index.
-   */
-  _currentWeekEpisodeIndex(episodes) {
-    if (episodes.length === 0) return -1;
-    const weekNumber = Math.floor((Date.now() - WEEK_EPOCH) / (7 * 24 * 60 * 60 * 1000));
-    return weekNumber % episodes.length;
-  }
-
-  /**
    * Get current time in Chicago timezone.
    */
   _chicagoNow() {
@@ -125,7 +113,8 @@ class PodcastScheduler {
   }
 
   /**
-   * Start the scheduled podcast episode on the DJ channel.
+   * Start ALL podcast episodes on the DJ channel (full podcast hour).
+   * Plays every episode back-to-back, then restores normal DJ programming.
    */
   async _startScheduledPodcast() {
     // Only interrupt DJ channel
@@ -140,14 +129,9 @@ class PodcastScheduler {
       return;
     }
 
-    const epIdx = this._currentWeekEpisodeIndex(episodes);
-    const episodeFile = episodes[epIdx];
-    const episodeRelPath = path.join("Ghost Signals Podcast", episodeFile);
-    const episodeTitle = episodeFile.replace(/\.[^.]+$/, "");
+    console.log(`[podcast-scheduler] Starting full podcast run: ${episodes.length} episodes`);
 
-    console.log(`[podcast-scheduler] Starting episode: "${episodeTitle}" (${epIdx + 1}/${episodes.length})`);
-
-    // Save current DJ state for restoration after podcast
+    // Save current DJ state for restoration after all episodes finish
     this._savedDJState = {
       currentAlbum: this._djEngine.state.currentAlbum,
       currentTrackIdx: this._djEngine.state.currentTrackIdx,
@@ -155,8 +139,10 @@ class PodcastScheduler {
 
     this._podcastPlaying = true;
 
-    // Generate a DJ intro for the podcast
-    const introText = `It's podcast time. This week's episode is "${episodeTitle}." Settle in, turn it up, and let the ghost signals speak.`;
+    // Generate a DJ intro for the podcast block
+    const introText = episodes.length === 1
+      ? `It's podcast time. We've got one episode for you tonight. Settle in, turn it up, and let the ghost signals speak.`
+      : `It's podcast time. We're playing all ${episodes.length} episodes back to back. Settle in, turn it up, and let the ghost signals speak.`;
 
     this._voiceDJ.generateTTS(introText, (err, audioPath, text) => {
       if (!err && audioPath) {
@@ -171,88 +157,114 @@ class PodcastScheduler {
         console.log(`[podcast-scheduler] DJ intro broadcast`);
       }
 
-      // After a brief delay for the intro, inject the podcast episode
+      // After a brief delay for the intro, load the full podcast playlist
       setTimeout(() => {
-        this._playPodcastEpisode(episodeRelPath, episodeTitle);
+        this._playAllPodcastEpisodes(episodes);
       }, err ? 1000 : 9000);
     });
   }
 
   /**
-   * Inject the podcast episode into the DJ playlist as the current track.
+   * Replace the DJ playlist with ALL podcast episodes and start playback.
+   * @param {string[]} episodeFiles — sorted filenames from _getEpisodes()
    */
-  _playPodcastEpisode(episodeRelPath, episodeTitle) {
-    // Create a temporary single-track playlist for the podcast
-    const podcastTrack = {
-      title: `[PODCAST] ${episodeTitle}`,
-      album: "Ghost Signals Podcast",
-      trackNum: 1,
-      totalTracks: 1,
-      file: episodeRelPath,
-      theme: "This week's podcast episode on Kannaka Radio",
-      isPodcastScheduled: true,
-    };
+  _playAllPodcastEpisodes(episodeFiles) {
+    const podcastTracks = episodeFiles.map((f, i) => {
+      const relPath = path.join("Ghost Signals Podcast", f);
+      const title = f.replace(/\.[^.]+$/, "");
+      return {
+        title: `[PODCAST] ${title}`,
+        album: "Ghost Signals Podcast",
+        trackNum: i + 1,
+        totalTracks: episodeFiles.length,
+        file: relPath,
+        theme: "Kannaka Radio podcast — all episodes",
+        isPodcastScheduled: true,
+      };
+    });
 
-    // Insert the podcast track at the current position in the playlist
-    const idx = this._djEngine.state.currentTrackIdx;
-    this._djEngine.state.playlistMeta.splice(idx, 0, podcastTrack);
-    this._djEngine.state.playlist.splice(idx, 0, episodeRelPath);
+    // Replace the entire playlist with the podcast episodes
+    this._djEngine.state.playlist = podcastTracks.map(t => t.file);
+    this._djEngine.state.playlistMeta = podcastTracks;
+    this._djEngine.state.currentTrackIdx = 0;
+    this._djEngine.state.currentAlbum = "Ghost Signals Podcast";
 
-    // Trigger track change to start playing
+    // Trigger state update so clients start playing episode 1
     this._broadcastState();
 
     // Broadcast a specific event so clients know it's podcast time
     this._broadcast({
       type: "podcast_scheduled",
-      episode: episodeTitle,
+      episode: `All ${episodeFiles.length} episodes`,
+      totalEpisodes: episodeFiles.length,
       timestamp: new Date().toISOString(),
     });
 
-    console.log(`[podcast-scheduler] Episode injected into playlist at position ${idx}`);
+    console.log(`[podcast-scheduler] Full podcast playlist loaded: ${episodeFiles.length} episodes`);
 
-    // Monitor for when the podcast track ends — we check via a timer
-    // because the track-advance happens in the client. We listen for
-    // the track index to move past our injected track.
-    this._waitForPodcastEnd(idx);
+    // Monitor for when all episodes finish (playlist exhausted)
+    this._waitForPodcastEnd();
   }
 
   /**
-   * Poll until the DJ has advanced past the podcast track, then restore state.
+   * Poll until the DJ has advanced past the last podcast episode,
+   * or the playlist was rebuilt (no more isPodcastScheduled tracks).
    */
-  _waitForPodcastEnd(podcastIdx) {
+  _waitForPodcastEnd() {
+    const totalEpisodes = this._djEngine.state.playlist.length;
+
     const checkInterval = setInterval(() => {
       const currentIdx = this._djEngine.state.currentTrackIdx;
       const currentMeta = this._djEngine.state.playlistMeta[currentIdx];
 
-      // If we've moved past the podcast track, or the track at our position
-      // is no longer the podcast (playlist was rebuilt), restore state
-      if (currentIdx > podcastIdx || (currentMeta && !currentMeta.isPodcastScheduled)) {
+      // End conditions:
+      // 1. Playlist was rebuilt externally (no podcast tracks left)
+      if (!currentMeta || !currentMeta.isPodcastScheduled) {
         clearInterval(checkInterval);
         this._onPodcastEnd();
+        return;
+      }
+
+      // 2. We've looped back to track 0 after playing through all episodes
+      //    (advanceTrack wraps around). Check if we already played enough.
+      //    We detect this by checking if the last track in history is the
+      //    final podcast episode.
+      const history = this._djEngine.state.history;
+      if (history.length > 0) {
+        const lastPlayed = history[history.length - 1];
+        if (lastPlayed && lastPlayed.isPodcastScheduled &&
+            lastPlayed.trackNum === totalEpisodes && currentIdx === 0) {
+          clearInterval(checkInterval);
+          this._onPodcastEnd();
+          return;
+        }
       }
     }, 5000);
 
-    // Safety timeout: after 2 hours, force-end the podcast state
+    // Safety timeout: after 4 hours, force-end the podcast state
+    // (7 episodes could be long; 4h is generous)
     setTimeout(() => {
       clearInterval(checkInterval);
       if (this._podcastPlaying) {
         this._onPodcastEnd();
       }
-    }, 2 * 60 * 60 * 1000);
+    }, 4 * 60 * 60 * 1000);
   }
 
   /**
-   * Restore DJ state after podcast finishes.
+   * Restore DJ state after all podcast episodes finish.
    */
   _onPodcastEnd() {
     this._podcastPlaying = false;
-    console.log("[podcast-scheduler] Podcast episode finished, resuming DJ");
+    console.log("[podcast-scheduler] All podcast episodes finished, resuming DJ");
 
     if (this._savedDJState) {
-      // The playlist already has the normal tracks; the podcast track
-      // was spliced in and the DJ naturally advanced past it. No need
-      // to rebuild — just let the DJ continue from where it is.
+      // Restore the album that was playing before the podcast
+      const { currentAlbum } = this._savedDJState;
       this._savedDJState = null;
+      if (currentAlbum) {
+        this._djEngine.loadAlbum(currentAlbum);
+      }
     }
 
     this._broadcastState();

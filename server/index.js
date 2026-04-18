@@ -78,77 +78,95 @@ function broadcastListenerCount() {
 
 // ── Create module instances ────────────────────────────────
 
+let _inTrackChange = false; // re-entrancy guard: loadAlbum inside programming can re-trigger
+
 const djEngine = new DJEngine({
   getMusicDir: () => MUSIC_DIR,
   onTrackChange: (track) => {
-    // ── Talk segment check ────────────────────────────────
-    // Every 3-5 non-commercial tracks, the DJ does a talk-only segment
-    // BEFORE the next track starts. Music pauses on the client while
-    // the talk audio plays, then the track resumes afterward.
-    if (!track.commercial && voiceDJ.shouldTalk(track)) {
-      // Broadcast a "talk_segment_pending" so clients know to pause music
-      broadcast({ type: "dj_talk_pending", timestamp: new Date().toISOString() });
+    // ── Re-entrancy guard ────────────────────────────────
+    // programming.onTrackChange may call loadAlbum which resets the playlist.
+    // That must NOT trigger a second broadcast cycle. Guard against it.
+    if (_inTrackChange) return;
+    _inTrackChange = true;
 
-      voiceDJ.executeTalkSegment(track, () => {
-        // Talk segment done — now start the track normally
-        // Programming schedule: track-change hook
-        if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
-          deps.programming.onTrackChange(track);
-        }
-        broadcastState();
-        flux.publishTrackChange(track);
-        perception_.hearTrack(track);
-        syncManager.trackChanged(track.file);
-        // Create market for the track
-        if (gsHub && track.title) {
-          gsHub.createMarket({
-            question: `Will "${track.title}" stay on the canonical reference album for its phase?`,
-            ttl_sec: 600,
-            tag: 'orc-resonance',
-            source: 'kannaka-radio',
-            source_app: 'kannaka-radio',
-            metadata: {
-              track_title: track.title,
-              album: track.album,
-              orc_stem_id: track.orcStemId || null,
-              orc_phase: track.orcPhase || null,
-            },
-          }).catch(() => {});
-        }
-      });
-      return; // Don't do normal track change flow yet
-    }
+    try {
+      // ── Talk segment check ────────────────────────────────
+      // Every 3-5 non-commercial tracks, the DJ does a talk-only segment
+      // BEFORE the next track starts. Music pauses on the client while
+      // the talk audio plays, then the track resumes afterward.
+      if (!track.commercial && voiceDJ.shouldTalk(track)) {
+        // Broadcast a "talk_segment_pending" so clients know to pause music
+        broadcast({ type: "dj_talk_pending", timestamp: new Date().toISOString() });
 
-    // ── Programming schedule: track-change hook ───────────
-    if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
-      deps.programming.onTrackChange(track);
-    }
+        voiceDJ.executeTalkSegment(track, () => {
+          // Talk segment done — now start the track normally
+          // Programming schedule: track-change hook
+          if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
+            deps.programming.onTrackChange(track);
+          }
+          // Re-read the current track — programming may have switched albums
+          const actual = djEngine.getCurrentTrack() || track;
+          broadcastState();
+          flux.publishTrackChange(actual);
+          perception_.hearTrack(actual);
+          syncManager.trackChanged(actual.file);
+          // Create market for the track
+          if (gsHub && actual.title) {
+            gsHub.createMarket({
+              question: `Will "${actual.title}" stay on the canonical reference album for its phase?`,
+              ttl_sec: 600,
+              tag: 'orc-resonance',
+              source: 'kannaka-radio',
+              source_app: 'kannaka-radio',
+              metadata: {
+                track_title: actual.title,
+                album: actual.album,
+                orc_stem_id: actual.orcStemId || null,
+                orc_phase: actual.orcPhase || null,
+              },
+            }).catch(() => {});
+          }
+        });
+        return; // Don't do normal track change flow yet
+      }
 
-    // ── Normal track change flow ──────────────────────────
-    broadcastState();
-    flux.publishTrackChange(track);
-    perception_.hearTrack(track);
-    // Don't ride commercials with a DJ voice intro — ads are standalone
-    // spoken content and the intro would double-up the speech.
-    if (!track.commercial) {
-      voiceDJ.generateIntro(track);
-    }
-    syncManager.trackChanged(track.file);
-    // ADR-0012: emit a per-track market into the constellation hub.
-    if (gsHub && !track.commercial && track.title) {
-      gsHub.createMarket({
-        question: `Will "${track.title}" stay on the canonical reference album for its phase?`,
-        ttl_sec: 600, // 10 min
-        tag: 'orc-resonance',
-        source: 'kannaka-radio',
-        source_app: 'kannaka-radio',
-        metadata: {
-          track_title: track.title,
-          album: track.album,
-          orc_stem_id: track.orcStemId || null,
-          orc_phase: track.orcPhase || null,
-        },
-      }).catch(() => {});
+      // ── Programming schedule: track-change hook ───────────
+      if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
+        deps.programming.onTrackChange(track);
+      }
+
+      // Re-read the current track — programming may have switched albums,
+      // so the track that advanceTrack() originally returned may be stale.
+      const actual = djEngine.getCurrentTrack() || track;
+
+      // ── Normal track change flow (exactly ONE broadcastState) ──
+      broadcastState();
+      flux.publishTrackChange(actual);
+      perception_.hearTrack(actual);
+      // Don't ride commercials with a DJ voice intro — ads are standalone
+      // spoken content and the intro would double-up the speech.
+      if (!actual.commercial) {
+        voiceDJ.generateIntro(actual);
+      }
+      syncManager.trackChanged(actual.file);
+      // ADR-0012: emit a per-track market into the constellation hub.
+      if (gsHub && !actual.commercial && actual.title) {
+        gsHub.createMarket({
+          question: `Will "${actual.title}" stay on the canonical reference album for its phase?`,
+          ttl_sec: 600, // 10 min
+          tag: 'orc-resonance',
+          source: 'kannaka-radio',
+          source_app: 'kannaka-radio',
+          metadata: {
+            track_title: actual.title,
+            album: actual.album,
+            orc_stem_id: actual.orcStemId || null,
+            orc_phase: actual.orcPhase || null,
+          },
+        }).catch(() => {});
+      }
+    } finally {
+      _inTrackChange = false;
     }
   },
 });
