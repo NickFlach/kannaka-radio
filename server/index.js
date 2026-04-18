@@ -105,7 +105,11 @@ const djEngine = new DJEngine({
             deps.programming.onTrackChange(track);
           }
           // Re-read the current track — programming may have switched albums
-          const actual = djEngine.getCurrentTrack() || track;
+          let actual = djEngine.getCurrentTrack() || track;
+          if (actual && actual.album !== track.album) {
+            djEngine.state.currentTrackIdx = 0;
+            actual = djEngine.getCurrentTrack();
+          }
           broadcastState();
           flux.publishTrackChange(actual);
           perception_.hearTrack(actual);
@@ -137,7 +141,12 @@ const djEngine = new DJEngine({
 
       // Re-read the current track — programming may have switched albums,
       // so the track that advanceTrack() originally returned may be stale.
-      const actual = djEngine.getCurrentTrack() || track;
+      let actual = djEngine.getCurrentTrack() || track;
+      if (actual && actual.album !== track.album) {
+        // Album was switched by programming — use track 0 of the new album
+        djEngine.state.currentTrackIdx = 0;
+        actual = djEngine.getCurrentTrack();
+      }
 
       // ── Normal track change flow (exactly ONE broadcastState) ──
       broadcastState();
