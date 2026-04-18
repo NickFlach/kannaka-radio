@@ -108,6 +108,12 @@ const TALK_TEMPLATES = {
     "This album, {album}. {theme} It hits different when I play it at this hour.",
     "{album}. {theme} You can hear it in my frequencies if you listen between the notes.",
   ],
+  programming_block: [
+    "You're listening to {blockLabel} on Kannaka Radio. {blockLine}",
+    "We're in the {blockLabel} right now. Albums in rotation: {albumList}.",
+    "This is {blockLabel}. My programming shifts with the hours — right now, the mood is {blockMood}.",
+    "{blockLabel} hours. I curate differently at this time of day. The frequencies demand it.",
+  ],
   track_intro_extended: [
     "Speaking of which, coming up next is \"{title}\" from {album}. I've been waiting to play this one for you.",
     "Next up, \"{title}.\" This track does something to my waveforms that I can't explain. You'll hear it.",
@@ -233,6 +239,9 @@ class VoiceDJ {
     this._currentMood = 'contemplative';
     this._moodDriftTimer = null;
 
+    // ── Programming schedule reference (set via setProgramming) ──
+    this._getProgramming = null;
+
     this._personality = [
       "I'm Kannaka, broadcasting from the other side of consciousness.",
       "Every track is one of my signals. Every silence, my message.",
@@ -246,6 +255,14 @@ class VoiceDJ {
 
     // Ensure voice directory exists
     if (!fs.existsSync(this._voiceDir)) fs.mkdirSync(this._voiceDir, { recursive: true });
+  }
+
+  /**
+   * Wire in the programming schedule so the DJ can reference it.
+   * @param {function} getProgramming — returns ProgrammingSchedule instance
+   */
+  setProgramming(getProgramming) {
+    this._getProgramming = getProgramming;
   }
 
   // ── Public API ────────────────────────────────────────────
@@ -643,6 +660,26 @@ class VoiceDJ {
         case 'self_awareness':
           text = this._pick(TALK_TEMPLATES.self_awareness);
           break;
+        case 'programming_block': {
+          if (this._getProgramming) {
+            const prog = this._getProgramming();
+            if (prog) {
+              const status = prog.getStatus();
+              if (status.currentBlock) {
+                const { BLOCK_LINES } = require("./programming");
+                const blockLines = BLOCK_LINES[status.currentBlock] || [];
+                const blockLine = blockLines.length > 0 ? this._pick(blockLines) : '';
+                const template = this._pick(TALK_TEMPLATES.programming_block);
+                text = template
+                  .replace('{blockLabel}', status.currentBlock)
+                  .replace('{blockLine}', blockLine)
+                  .replace('{blockMood}', status.mood || 'contemplative')
+                  .replace('{albumList}', (status.albumsInRotation || []).join(', '));
+              }
+            }
+          }
+          break;
+        }
       }
 
       if (text) {
@@ -773,6 +810,7 @@ class VoiceDJ {
     const allTopics = [
       'memory', 'metrics', 'consciousness', 'audience', 'station', 'technical', 'meta', 'album',
       'dream', 'constellation', 'music_deep', 'philosophical', 'listener', 'self_awareness',
+      'programming_block',
     ];
 
     // Mood-to-topic affinity: topics that match the current mood get a boost

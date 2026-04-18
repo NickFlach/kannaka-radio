@@ -339,8 +339,12 @@ module.exports = function setupRoutes(deps) {
       const type = parsed.searchParams.get("type") || "dj";
       const ok = djEngine.setChannel(type);
       if (ok) {
-        // For dj channel, reload default album. For other channels, play first track.
-        if (type === "dj") {
+        // For dj channel, load the time-appropriate album from the programming schedule.
+        if (type === "dj" && deps.programming) {
+          const block = deps.programming.getCurrentBlock();
+          const album = deps.programming.pickAlbumForBlock(block);
+          djEngine.loadAlbum(album);
+        } else if (type === "dj") {
           djEngine.loadAlbum("Ghost Signals");
         }
         const track = djEngine.getCurrentTrack();
@@ -1009,6 +1013,51 @@ module.exports = function setupRoutes(deps) {
     if (parsed.pathname === "/api/requests") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(listeners.requests.slice(-20)));
+      return;
+    }
+
+    // GET /api/programming — current programming schedule status
+    if (parsed.pathname === "/api/programming" && req.method === "GET") {
+      if (!deps.programming) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "programming not initialized" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(deps.programming.getStatus()));
+      return;
+    }
+
+    // POST /api/programming/override?album=NAME&duration=MINUTES
+    if (parsed.pathname === "/api/programming/override" && req.method === "POST") {
+      if (!deps.programming) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "programming not initialized" }));
+        return;
+      }
+      const album = parsed.searchParams.get("album");
+      const durationMin = parseInt(parsed.searchParams.get("duration") || "60", 10);
+      if (!album) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "album parameter required" }));
+        return;
+      }
+      const override = deps.programming.setOverride(album, durationMin * 60000);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, override }));
+      return;
+    }
+
+    // DELETE /api/programming/override — clear manual override
+    if (parsed.pathname === "/api/programming/override" && req.method === "DELETE") {
+      if (!deps.programming) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "programming not initialized" }));
+        return;
+      }
+      deps.programming.clearOverride();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 

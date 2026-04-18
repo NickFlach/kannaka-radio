@@ -91,6 +91,10 @@ const djEngine = new DJEngine({
 
       voiceDJ.executeTalkSegment(track, () => {
         // Talk segment done — now start the track normally
+        // Programming schedule: track-change hook
+        if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
+          deps.programming.onTrackChange(track);
+        }
         broadcastState();
         flux.publishTrackChange(track);
         perception_.hearTrack(track);
@@ -113,6 +117,11 @@ const djEngine = new DJEngine({
         }
       });
       return; // Don't do normal track change flow yet
+    }
+
+    // ── Programming schedule: track-change hook ───────────
+    if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
+      deps.programming.onTrackChange(track);
     }
 
     // ── Normal track change flow ──────────────────────────
@@ -446,20 +455,9 @@ ensureCommercials(voiceDJ, COMMERCIALS_DIR)
   })
   .catch(e => console.warn('[commercials] init failed:', e.message));
 
-// DJ picks the opening set: start with Ghost Signals (album 1)
-djEngine.buildPlaylist("Ghost Signals");
-
 // Lazily rebuild Gifts for Humanity from kax artifacts (populates the album
 // with real external URLs — won't affect startup if kax is unreachable).
 djEngine.rebuildGiftsFromKax().catch(() => {});
-
-const first = djEngine.getCurrentTrack();
-if (first) {
-  flux.publishTrackChange(first);
-  perception_.hearTrack(first);
-  syncManager.trackChanged(first.file);
-  console.log(`\n\uD83C\uDFA7 Opening track: "${first.title}"`);
-}
 
 // Start sync heartbeat (broadcasts playback position every 10 s)
 syncManager.start(broadcast, 10000);
@@ -477,6 +475,34 @@ const podcastScheduler = new PodcastScheduler({
   getMusicDir: () => MUSIC_DIR,
 });
 podcastScheduler.start();
+
+// ── Programming schedule — time-of-day album rotation ────
+const { ProgrammingSchedule } = require("./programming");
+const programming = new ProgrammingSchedule({
+  djEngine,
+  voiceDJ,
+  broadcast,
+  broadcastState,
+  getPodcastStatus: () => podcastScheduler.getStatus(),
+});
+
+// Wire programming into deps so routes can access it
+deps.programming = programming;
+
+// Let the DJ know about the programming schedule
+voiceDJ.setProgramming(() => programming);
+
+// Programming picks the opening set based on current time block.
+// startScheduleLoop() loads the time-appropriate album immediately.
+programming.startScheduleLoop();
+
+const first = djEngine.getCurrentTrack();
+if (first) {
+  flux.publishTrackChange(first);
+  perception_.hearTrack(first);
+  syncManager.trackChanged(first.file);
+  console.log(`\n\uD83C\uDFA7 Opening track: "${first.title}"`);
+}
 
 // ── Wire QueenSync events to DJ voice (KR-2) ──────────────
 {
@@ -518,6 +544,7 @@ function shutdown() {
   perception_.stopPerceptionLoop();
   flux.stopPeriodicPublish();
   syncManager.stop();
+  programming.stop();
   voteManager.cancelWindow();
   musicGen.stop();
   nats.disconnect();
