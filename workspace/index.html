@@ -1141,14 +1141,29 @@ body.konami-mode .surface-header h1 {
   background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);
   backdrop-filter:blur(10px);font-family:'Courier New',monospace;
   display:flex;align-items:center;gap:8px;">
-  <a href="https://github.com/NickFlach/kannaka-memory/releases/latest" target="_blank"
-     style="color:#c084fc;font-size:11px;font-weight:bold;text-decoration:none;">
+  <a id="radio-dl-btn" href="#" onclick="radioDownload(event)"
+     style="color:#c084fc;font-size:11px;font-weight:bold;text-decoration:none;cursor:pointer;">
     &#x2B07; Download Kannaka
   </a>
   <span style="font-size:9px;color:#555;">|</span>
   <span style="font-size:9px;color:#94a3b8;font-family:'Courier New',monospace;">
     curl -sSf https://raw.githubusercontent.com/NickFlach/kannaka-memory/master/scripts/install.sh | sh
   </span>
+  <script>
+  (function(){
+    var base='https://github.com/NickFlach/kannaka-memory/releases/latest/download/';
+    var p=navigator.platform||'',u=navigator.userAgent||'',f='';
+    if(p.indexOf('Win')>=0)f='kannaka-windows-x86_64.exe';
+    else if(p.indexOf('Mac')>=0||u.indexOf('Mac')>=0)f=(p==='MacIntel'||u.indexOf('Intel')>=0)?'kannaka-macos-x86_64':'kannaka-macos-aarch64';
+    else if(u.indexOf('aarch64')>=0||u.indexOf('arm')>=0)f='kannaka-linux-aarch64';
+    else f='kannaka-linux-x86_64';
+    var b=document.getElementById('radio-dl-btn');
+    if(f.indexOf('windows')>=0)b.textContent='\u2B07 Download for Windows';
+    else if(f.indexOf('macos')>=0)b.textContent='\u2B07 Download for macOS';
+    else b.textContent='\u2B07 Download for Linux';
+    window.radioDownload=function(e){e.preventDefault();window.location.href=base+f;};
+  })();
+  </script>
 </div>
 
 <!-- Section Nav Dots -->
