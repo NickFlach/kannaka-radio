@@ -3158,6 +3158,23 @@ function setMode(mode) {
     }
   }
 
+  // Hide the standalone Library layer unless we're in music mode — Radio
+  // and Podcast shouldn't show a library section below the player.
+  var libraryLayer = document.getElementById('the-library');
+  if (libraryLayer) libraryLayer.style.display = (mode === 'music') ? '' : 'none';
+
+  // Consume the click gesture: if the main audio already has a src (from a
+  // prior WS state broadcast), start it now so Radio starts playing on the
+  // first mode-tab interaction instead of needing a round-trip through
+  // another mode. Chrome's autoplay policy requires a synchronous play()
+  // call inside the click handler.
+  if (mode !== 'podcast') {
+    var mainAudio = document.getElementById('audio');
+    if (mainAudio && mainAudio.src && mainAudio.paused) {
+      mainAudio.play().then(function(){ initAudioAnalyser(); }).catch(function(){});
+    }
+  }
+
   // Switch server channel
   if (mode === 'dj') {
     setChannel('dj');
@@ -4580,6 +4597,11 @@ document.addEventListener('DOMContentLoaded', function() {
   if (headerTheme) headerTheme.style.display = 'none';
   var npLabel = document.querySelector('.main-player > .label');
   if (npLabel) npLabel.textContent = 'Live Radio';
+
+  // Default mode is dj — hide the standalone Library layer until user opens
+  // music mode. setMode() keeps this in sync on every tab switch.
+  var libraryLayerInit = document.getElementById('the-library');
+  if (libraryLayerInit) libraryLayerInit.style.display = 'none';
 
   // ── Ghost Signals Podcast Player ──
   (function() {

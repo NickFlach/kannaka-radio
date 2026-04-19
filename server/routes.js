@@ -337,6 +337,24 @@ module.exports = function setupRoutes(deps) {
     // API: switch channel — dj | music | podcast | kax
     if (parsed.pathname === "/api/channel" && req.method === "POST") {
       const type = parsed.searchParams.get("type") || "dj";
+      // If already on this channel with an active playlist, no-op so we don't
+      // reset currentTrackIdx back to 0 on every tab re-selection.
+      const alreadyOnChannel =
+        djEngine.state.channel === type &&
+        Array.isArray(djEngine.state.playlist) &&
+        djEngine.state.playlist.length > 0;
+      if (alreadyOnChannel) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ok: true,
+          channel: djEngine.state.channel,
+          channelMeta: djEngine.state.channelMeta,
+          tracks: djEngine.state.playlist.length,
+          current: djEngine.getCurrentTrack(),
+          unchanged: true,
+        }));
+        return;
+      }
       const ok = djEngine.setChannel(type);
       if (ok) {
         // For dj channel, load the time-appropriate album from the programming schedule.
