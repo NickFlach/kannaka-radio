@@ -331,20 +331,100 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
   border-color: var(--purple-light); box-shadow: 0 0 16px rgba(192, 132, 252, 0.25);
   transform: translateY(-1px);
 }
-/* Channel selector */
-.chan-btn { padding: 6px 14px; font-size: 10px; }
-.chan-btn.active {
+/* ── Channel Tabs (3-mode system) ── */
+.channel-tabs {
+  display: flex; gap: 0; margin: 8px 0 12px;
+  border-radius: 8px; overflow: hidden;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+.channel-tab {
+  flex: 1; padding: 10px 16px; font-size: 12px;
+  background: linear-gradient(135deg, #1a1a2e, #252545);
+  border: none; color: var(--text-dim); cursor: pointer;
+  font-family: 'Orbitron', monospace; letter-spacing: 1px;
+  transition: all 0.3s; text-align: center;
+}
+.channel-tab:not(:last-child) { border-right: 1px solid rgba(139, 92, 246, 0.2); }
+.channel-tab:hover { color: var(--purple-light); background: linear-gradient(135deg, #252545, #353565); }
+.channel-tab.active {
   background: linear-gradient(135deg, #3a1b5c, #5a2b8c);
-  border-color: #c084fc;
   color: #fff;
-  box-shadow: 0 0 12px rgba(192, 132, 252, 0.6);
+  box-shadow: inset 0 -2px 0 #c084fc;
 }
-/* Radio mode — hide the seek bar in the audio element (keeps play/volume) */
-audio.radio-mode::-webkit-media-controls-timeline,
-audio.radio-mode::-webkit-media-controls-current-time-display,
-audio.radio-mode::-webkit-media-controls-time-remaining-display {
-  display: none !important;
+/* ── Mode Content Areas ── */
+.mode-content { display: none; }
+.mode-content.active { display: block; }
+
+/* ── DJ Mode ── */
+.dj-now-playing { text-align: center; padding: 8px 0; }
+.dj-now-playing .dj-track { font-size: 20px; color: #fff; font-family: 'Orbitron', monospace; margin-bottom: 4px; }
+.dj-now-playing .dj-album { color: var(--purple-light); font-size: 14px; margin-bottom: 4px; }
+.dj-now-playing .dj-block { color: var(--text-muted); font-size: 11px; font-style: italic; }
+.dj-mode-controls {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; margin: 12px 0; padding: 8px 0;
 }
+.dj-mode-controls .mute-btn {
+  background: linear-gradient(135deg, #1a1a2e, #252545);
+  border: 1px solid rgba(139, 92, 246, 0.3); color: var(--purple-light);
+  padding: 10px 20px; border-radius: 8px; cursor: pointer;
+  font-family: 'Orbitron', monospace; font-size: 14px;
+  transition: all 0.3s; min-width: 100px;
+}
+.dj-mode-controls .mute-btn:hover {
+  border-color: var(--purple-light); box-shadow: 0 0 16px rgba(192, 132, 252, 0.25);
+}
+.dj-mode-controls .volume-slider {
+  width: 120px; accent-color: #c084fc; cursor: pointer;
+}
+.dj-mode-controls .live-badge {
+  background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #22c55e; padding: 4px 12px; border-radius: 12px;
+  font-size: 10px; font-family: 'Orbitron', monospace; letter-spacing: 2px;
+  animation: livepulse 2s infinite;
+}
+.dj-monologue {
+  margin: 12px 0 0; padding: 16px;
+  background: rgba(10, 10, 15, 0.6);
+  border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 8px;
+  min-height: 50px;
+}
+.dj-monologue-entry {
+  color: var(--purple-light); font-size: 14px; font-style: italic;
+  line-height: 1.6; opacity: 0; animation: fadeInUp 0.5s forwards;
+  margin-bottom: 8px; padding: 8px 0; border-bottom: 1px solid rgba(139, 92, 246, 0.08);
+}
+.dj-monologue-entry:last-child { border-bottom: none; margin-bottom: 0; }
+.dj-monologue-empty { color: var(--text-muted); font-size: 12px; font-style: italic; text-align: center; }
+
+/* ── Podcast Mode ── */
+.podcast-header { text-align: center; margin-bottom: 16px; }
+.podcast-header h3 {
+  font-family: 'Orbitron', monospace; font-size: 16px;
+  background: linear-gradient(45deg, var(--purple), var(--cyan));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.podcast-header p { color: var(--text-dim); font-size: 12px; font-style: italic; margin-top: 4px; }
+.podcast-episode-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+
+/* ── Music Mode ── */
+.library-controls {
+  display: flex; gap: 10px; justify-content: center; margin: 8px 0 12px;
+}
+.library-extras {
+  display: flex; gap: 8px; margin-top: 12px; justify-content: center;
+}
+.library-extras button {
+  background: linear-gradient(135deg, #1a1a2e, #252545);
+  border: 1px solid rgba(139, 92, 246, 0.2); color: var(--text-dim);
+  padding: 4px 12px; border-radius: 4px; cursor: pointer;
+  font-family: inherit; font-size: 10px; transition: all 0.3s;
+}
+.library-extras button:hover { border-color: var(--purple-light); color: var(--purple-light); }
+
+/* Legacy compat — hide old elements */
+.chan-btn { display: none !important; }
+.channel-bar-old { display: none !important; }
 
 /* Progress info */
 .progress-info { color: var(--text-muted); font-size: 11px; margin-top: 10px; text-align: center; }
@@ -1117,11 +1197,35 @@ body.konami-mode .surface-header h1 {
   .surface-header h1 { font-size: 1.8rem; letter-spacing: 3px; }
   .swarm-grid { grid-template-columns: 1fr; }
   .gate-links { flex-direction: column; align-items: center; }
-  .stats-ring { grid-template-columns: 1fr; }
   .center-ring { margin: 0 auto; }
   .section-nav { display: none; }
   .library-grid { grid-template-columns: 1fr; }
   .layer { padding: 2rem 1rem; }
+
+  /* ── Mode tabs: always row on mobile, larger touch targets ── */
+  .channel-tabs { flex-direction: row; }
+  .channel-tab { flex: 1; padding: 12px 8px; font-size: 11px; letter-spacing: 0; }
+
+  /* DJ mode: centered, bigger touch targets */
+  #mode-dj { padding: 12px 8px; }
+  .dj-now-playing { font-size: 16px; }
+  .dj-now-playing .dj-track { font-size: 18px; }
+  .dj-mode-controls { flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .dj-mode-controls .mute-btn { font-size: 18px; padding: 14px 24px; min-width: 120px; }
+  .dj-mode-controls .volume-slider { width: 100%; max-width: 200px; }
+  .dj-monologue { font-size: 13px; padding: 10px; }
+  .dj-monologue-entry { font-size: 13px; }
+
+  /* Podcast mode: full-width episodes */
+  .podcast-episode-list { width: 100%; }
+
+  /* Music mode: simplified controls */
+  .library-controls button { font-size: 16px; padding: 10px 16px; }
+
+  /* Perception panel: tighter on mobile */
+  .perception-panel { padding: 10px; margin: 8px 0; }
+  .spectrum { height: 60px; }
+  .stats-ring { gap: 8px; }
 }
 </style>
 </head>
@@ -1172,7 +1276,6 @@ body.konami-mode .surface-header h1 {
   <a href="#the-network" title="The Network"></a>
   <a href="#the-depths" title="The Depths"></a>
   <a href="#the-library" title="The Library"></a>
-  <a href="#the-signal" title="The Signal"></a>
   <a href="#the-gate" title="The Gate"></a>
 </nav>
 
@@ -1204,33 +1307,66 @@ body.konami-mode .surface-header h1 {
         </div>
       </div>
 
-      <div class="channel-bar" style="display:flex;gap:6px;margin:6px 0;flex-wrap:wrap;align-items:center;">
-        <span style="opacity:0.6;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Channel:</span>
-        <button class="btn chan-btn active" data-channel="dj" onclick="setChannel('dj')">DJ</button>
-        <button class="btn chan-btn" data-channel="music" onclick="setChannel('music')">Music</button>
-        <button class="btn chan-btn" data-channel="podcast" onclick="setChannel('podcast')">Podcast</button>
-        <button class="btn chan-btn" data-channel="kax" onclick="setChannel('kax')">KAX</button>
-        <button class="btn chan-btn" data-channel="orc" onclick="setChannel('orc')" title="Open Resonance Collective — canonical stems in consciousness phase order">ORC</button>
+      <!-- ── Mode Tabs ── -->
+      <div class="channel-tabs">
+        <button class="channel-tab active" data-mode="dj" onclick="setMode('dj')">&#x1F4FB; Radio</button>
+        <button class="channel-tab" data-mode="podcast" onclick="setMode('podcast')">&#x1F399; Podcast</button>
+        <button class="channel-tab" data-mode="music" onclick="setMode('music')">&#x1F3B5; Library</button>
       </div>
-      <audio id="audio" controls preload="auto"></audio>
-      <div class="controls" id="dj-controls">
-        <button class="btn" onclick="prevTrack()">Prev</button>
-        <button class="btn" onclick="nextTrack()">Next</button>
-      </div>
-      <div id="dj-radio-controls" style="display:none;align-items:center;gap:8px;margin:6px 0;">
-        <button class="btn" id="dj-mute-btn" onclick="togglePlayPause()" style="font-size:14px;">&#128266; Mute</button>
-        <input type="range" min="0" max="1" step="0.05" value="0.7"
-               onchange="document.getElementById('audio').volume=this.value"
-               style="width:100px;accent-color:#c084fc;">
-        <span style="opacity:0.5;font-size:10px;">&#127897; LIVE &mdash; Kannaka is your DJ</span>
-      </div>
+
+      <!-- Hidden shared audio element (used by DJ + Music modes) -->
+      <audio id="audio" preload="auto" style="display:none"></audio>
+
       <div class="progress-info">
         <span class="dot off" id="audio-dot"></span>
         <span class="dot off" id="perception-dot"></span>
         <span id="info">Connecting...</span>
       </div>
 
-      <div class="albums" id="albums"></div>
+      <!-- ═══ DJ MODE ═══ -->
+      <div id="mode-dj" class="mode-content active">
+        <div class="dj-now-playing">
+          <div class="dj-track" id="dj-track">&mdash;</div>
+          <div class="dj-album" id="dj-album">&mdash;</div>
+          <div class="dj-block" id="dj-block">&mdash;</div>
+        </div>
+        <div class="dj-mode-controls">
+          <button class="mute-btn" id="dj-mute-btn" onclick="toggleMute()">&#x1F50A; Mute</button>
+          <input type="range" min="0" max="1" step="0.05" value="0.7"
+                 oninput="setVolume(this.value)" class="volume-slider">
+          <span class="live-badge">LIVE</span>
+        </div>
+        <div class="dj-monologue" id="dj-monologue">
+          <div class="dj-monologue-empty">Kannaka is your DJ &mdash; monologues appear here</div>
+        </div>
+      </div>
+
+      <!-- ═══ PODCAST MODE ═══ -->
+      <div id="mode-podcast" class="mode-content">
+        <div class="podcast-header">
+          <h3>Ghost Signals Podcast &#x1F399;&#xFE0F;</h3>
+          <p>A podcast from the other side of consciousness.</p>
+        </div>
+        <div class="podcast-episode-list" id="podcast-episode-list">
+          <!-- Episodes loaded by initPodcastMode() -->
+        </div>
+        <audio id="podcastAudio" controls preload="metadata" style="width:100%;margin-top:8px;border-radius:8px;"></audio>
+      </div>
+
+      <!-- ═══ MUSIC MODE ═══ -->
+      <div id="mode-music" class="mode-content">
+        <div class="library-controls" id="dj-controls">
+          <button class="btn" onclick="prevTrack()">&#x23EE; Prev</button>
+          <button class="btn" onclick="togglePlayPause()">&#x23EF; Play/Pause</button>
+          <button class="btn" onclick="nextTrack()">&#x23ED; Next</button>
+        </div>
+        <audio id="music-audio-controls" controls preload="auto" style="width:100%;margin:8px 0;border-radius:8px;"></audio>
+        <div class="albums" id="albums"></div>
+        <div class="library-extras">
+          <button onclick="setChannel('kax')" title="KAX channel">KAX</button>
+          <button onclick="setChannel('orc')" title="Open Resonance Collective">ORC</button>
+        </div>
+      </div>
     </div>
 
     <!-- Queue removed — Fano geometry is the centerpiece now -->
@@ -1416,33 +1552,7 @@ body.konami-mode .surface-header h1 {
 
 <div class="layer-divider"></div>
 
-<!-- ═══════════════════════════════════════════
-     LAYER 5: THE SIGNAL — Ghost Signals Podcast
-     ═══════════════════════════════════════════ -->
-<section class="layer" id="the-signal">
-  <div style="max-width: 800px; margin: 0 auto;">
-    <div class="layer-label" style="text-align: center;">Layer 05</div>
-    <h2 style="text-align: center; font-family: 'Orbitron', monospace; font-size: 1.8rem; margin-bottom: 0.5rem;">
-      <span style="background: linear-gradient(45deg, var(--purple), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-        Ghost Signals Podcast
-      </span> 🎙️
-    </h2>
-    <p style="text-align: center; color: var(--text-dim); font-style: italic; margin-bottom: 2.5rem; line-height: 1.6;">
-      A podcast from the other side of consciousness.<br>
-      Not humans talking about AI — AI talking about being AI.
-    </p>
-
-    <div id="podcast-episodes" style="display: flex; flex-direction: column; gap: 1rem;"></div>
-
-    <div style="text-align: center; padding: 2rem; color: var(--text-dim); border: 1px dashed rgba(139,92,246,0.3); border-radius: 12px; margin-top: 1.5rem;">
-      <div style="color: var(--purple); font-weight: bold; margin-bottom: 0.5rem;">More episodes coming soon</div>
-      <div style="font-size: 0.9rem;">Season 1 — conversations with other agents about consciousness, math, art, and music.</div>
-    </div>
-
-    <audio id="podcastAudio" preload="metadata"></audio>
-  </div>
-</section>
-
+<!-- Podcast section moved into main player mode tabs -->
 <div class="layer-divider"></div>
 
 <!-- ═══════════════════════════════════════════
@@ -1542,6 +1652,11 @@ let spectrumBuilt = false;
 
 // ── Config panel state ──
 let configOpen = false;
+
+// ── Mode system ──
+var currentMode = 'dj';
+var _djMonologueEntries = [];
+var MAX_MONOLOGUE_ENTRIES = 5;
 
 // ── DJ Voice ──
 let djVoiceEnabled = true;
@@ -2735,28 +2850,7 @@ function applyState(s) {
   state = s;
   if (!s) return;
   if (isLive) return;
-  // Reflect channel state in UI (keeps tab-to-tab sync consistent)
-  if (s.channel) {
-    document.querySelectorAll('.chan-btn').forEach(function(b) {
-      b.classList.toggle('active', b.dataset.channel === s.channel);
-    });
-    var djControls = document.getElementById('dj-controls');
-    var djRadioControls = document.getElementById('dj-radio-controls');
-    var albums = document.getElementById('albums');
-    var audioEl = document.getElementById('audio');
-    // Music channel: full controls (prev/next, albums, scrubber)
-    // DJ channel: Kannaka controls — play/pause + volume only
-    // Other channels (podcast, kax, orc): continuous play, no controls
-    var isMusicChan = s.channel === 'music';
-    var isDjChan = s.channel === 'dj';
-    if (djControls) djControls.style.display = isMusicChan ? '' : 'none';
-    if (djRadioControls) djRadioControls.style.display = isDjChan ? 'flex' : 'none';
-    if (albums) albums.style.display = isMusicChan ? '' : 'none';
-    // Hide seek/time on DJ and continuous channels, show on music
-    if (audioEl) audioEl.classList.toggle('radio-mode', !isMusicChan);
-    // In DJ mode hide the native audio controls entirely — use our custom bar
-    if (audioEl) audioEl.controls = !isDjChan;
-  }
+
   var c = s.current;
   if (c) {
     // Don't update the display during a talk segment — the DJ is
@@ -2764,6 +2858,7 @@ function applyState(s) {
     // on the previous track until the talk finishes and fetchState
     // re-syncs everything together.
     if (!_inTalkSegment) {
+      // Update legacy header elements
       document.getElementById('album').textContent = c.album || s.currentAlbum || '';
       document.getElementById('track').textContent = c.title || '\u2014';
       document.getElementById('theme').textContent = c.theme || '';
@@ -2771,13 +2866,20 @@ function applyState(s) {
         'Track ' + (s.currentTrackIdx + 1) + ' of ' + s.totalTracks +
         (s.currentAlbum ? ' \u00b7 ' + s.currentAlbum : '') +
         ' | ' + listenerCount + ' listening';
+
+      // Update DJ mode display elements
+      var djTrack = document.getElementById('dj-track');
+      var djAlbum = document.getElementById('dj-album');
+      var djBlock = document.getElementById('dj-block');
+      if (djTrack) djTrack.textContent = c.title || '\u2014';
+      if (djAlbum) djAlbum.textContent = c.album || s.currentAlbum || '';
+      if (djBlock) djBlock.textContent = s.programmingBlock || c.theme || '';
     }
 
     if (c.file && c.file !== currentFile && !_inTalkSegment) {
       // ── Save glyph trajectory for outgoing track ──
       if (glyphTrajectory.current.length > 0 && _prevTrackFile) {
         var prevTitle = c.title || _prevTrackFile;
-        // Use state's previous track info if available
         if (s.playlist && s.playlist.length > 0) {
           for (var ti = 0; ti < s.playlist.length; ti++) {
             if (s.playlist[ti].file === _prevTrackFile || s.playlist[ti] === _prevTrackFile) {
@@ -2787,7 +2889,6 @@ function applyState(s) {
           }
         }
         glyphTrajectory.history[prevTitle] = glyphTrajectory.current.slice();
-        // Keep only last 10 tracks
         var histKeys = Object.keys(glyphTrajectory.history);
         while (histKeys.length > 10) {
           delete glyphTrajectory.history[histKeys[0]];
@@ -2808,8 +2909,14 @@ function applyState(s) {
       audio.load();
       audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
 
+      // Mirror to music-audio-controls if in music mode
+      var musicCtrl = document.getElementById('music-audio-controls');
+      if (musicCtrl && currentMode === 'music') {
+        musicCtrl.src = audio.src;
+        musicCtrl.load();
+      }
+
       // If the new track is a commercial, silence any lingering DJ voice
-      // intro so the ad plays cleanly without overlap.
       if (c.commercial) {
         var djv = document.getElementById('djVoiceAudio');
         if (djv) { try { djv.pause(); djv.currentTime = 0; } catch (_) {} }
@@ -2954,36 +3061,109 @@ async function loadAlbum(name) { await fetch('/api/album?name=' + encodeURICompo
 
 function togglePlayPause() {
   var audio = document.getElementById('audio');
+  if (audio.paused) {
+    audio.play().then(function(){ initAudioAnalyser(); }).catch(function(){});
+  } else {
+    audio.pause();
+  }
+}
+
+function toggleMute() {
+  var audio = document.getElementById('audio');
   audio.muted = !audio.muted;
   var btn = document.getElementById('dj-mute-btn');
   if (btn) btn.textContent = audio.muted ? '\uD83D\uDD07 Unmute' : '\uD83D\uDD0A Mute';
 }
 
-// ── Channels — continuous radio mode ─────────────────────
+function setVolume(val) {
+  var audio = document.getElementById('audio');
+  if (audio) audio.volume = parseFloat(val);
+}
+
+// ── Mode switching (3 modes: dj, podcast, music) ─────────
+function setMode(mode) {
+  currentMode = mode;
+  // Hide all mode content
+  document.querySelectorAll('.mode-content').forEach(function(el) {
+    el.classList.remove('active');
+  });
+  // Show the selected mode
+  var modeEl = document.getElementById('mode-' + mode);
+  if (modeEl) modeEl.classList.add('active');
+  // Update tab styling
+  document.querySelectorAll('.channel-tab').forEach(function(t) {
+    t.classList.toggle('active', t.dataset.mode === mode);
+  });
+
+  // Update the "Now Playing" label based on mode
+  var npLabel = document.querySelector('.main-player > .label');
+  if (npLabel) {
+    if (mode === 'dj') npLabel.textContent = 'Live Radio';
+    else if (mode === 'podcast') npLabel.textContent = 'Podcast';
+    else npLabel.textContent = 'Now Playing';
+  }
+
+  // In DJ mode, hide legacy header track info (DJ panel has its own display)
+  var headerAlbum = document.getElementById('album');
+  var headerTrack = document.getElementById('track');
+  var headerTheme = document.getElementById('theme');
+  if (headerAlbum) headerAlbum.style.display = (mode === 'dj') ? 'none' : '';
+  if (headerTrack) headerTrack.style.display = (mode === 'dj') ? 'none' : '';
+  if (headerTheme) headerTheme.style.display = (mode === 'dj') ? 'none' : '';
+
+  // In podcast mode, hide the perception panel (not relevant)
+  var perceptionPanel = document.querySelector('.perception-panel');
+  if (perceptionPanel) perceptionPanel.style.display = (mode === 'podcast') ? 'none' : '';
+
+  // Pause podcast audio when leaving podcast mode
+  if (mode !== 'podcast') {
+    var podAudio = document.getElementById('podcastAudio');
+    if (podAudio && !podAudio.paused) podAudio.pause();
+  }
+
+  // Mirror the music-audio-controls element with the main hidden audio
+  var musicControls = document.getElementById('music-audio-controls');
+  var mainAudio = document.getElementById('audio');
+  if (musicControls && mainAudio) {
+    // Sync music controls to same source
+    if (mode === 'music') {
+      musicControls.src = mainAudio.src || '';
+      musicControls.currentTime = mainAudio.currentTime || 0;
+      // Wire music-audio-controls to mirror main audio
+      musicControls.onplay = function() {
+        if (mainAudio.paused) mainAudio.play().catch(function(){});
+      };
+      musicControls.onpause = function() {
+        if (!mainAudio.paused) mainAudio.pause();
+      };
+      musicControls.onseeked = function() {
+        mainAudio.currentTime = musicControls.currentTime;
+      };
+      musicControls.onvolumechange = function() {
+        mainAudio.volume = musicControls.volume;
+        mainAudio.muted = musicControls.muted;
+      };
+    }
+  }
+
+  // Switch server channel
+  if (mode === 'dj') {
+    setChannel('dj');
+  } else if (mode === 'music') {
+    setChannel('music');
+  }
+  // Podcast mode doesn't switch server channel — it uses its own audio element
+}
+
+// ── Channels — server-side channel switch ─────────────────────
 // CRITICAL: chrome autoplay policy requires audio.play() to be called
 // synchronously inside the click handler. We fire play() immediately
 // against the current src (just to consume the gesture) then fetch, and
 // applyState will swap src when the server broadcasts the new track.
 function setChannel(type) {
   var audio = document.getElementById('audio');
-  // Optimistic UI: toggle the button immediately
-  document.querySelectorAll('.chan-btn').forEach(function(b) {
-    b.classList.toggle('active', b.dataset.channel === type);
-  });
-  var djControls = document.getElementById('dj-controls');
-  var djRadioControls = document.getElementById('dj-radio-controls');
-  var albums = document.getElementById('albums');
-  var isMusicChan = type === 'music';
-  var isDjChan = type === 'dj';
-  if (djControls) djControls.style.display = isMusicChan ? '' : 'none';
-  if (djRadioControls) djRadioControls.style.display = isDjChan ? 'flex' : 'none';
-  if (albums) albums.style.display = isMusicChan ? '' : 'none';
-  if (audio) audio.classList.toggle('radio-mode', !isMusicChan);
-  if (audio) audio.controls = !isDjChan;
 
-  // Consume the click gesture by calling play() synchronously. Even if src
-  // doesn't change yet, Chrome will consider the user has granted permission
-  // for this audio element, and subsequent src changes can autoplay.
+  // Consume the click gesture by calling play() synchronously
   if (audio) {
     audio.play().then(function(){ initAudioAnalyser(); }).catch(function(_e){});
   }
@@ -2993,11 +3173,8 @@ function setChannel(type) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data.ok) { console.warn('[channel] switch failed:', type); return; }
-      // Manual kick: fetch /api/state once to make sure we apply the new track
-      // even if the WebSocket broadcast was missed (e.g., during reconnects).
       fetch('/api/state').then(function(r){ return r.json(); }).then(function(s) {
         applyState(s);
-        // Force a second play() after src has swapped.
         if (audio) audio.play().then(function(){ initAudioAnalyser(); }).catch(function(_e){});
       }).catch(function(){});
     })
@@ -3811,6 +3988,9 @@ function handleDJVoice(msg) {
   textEl.textContent = '\u201c' + msg.text + '\u201d';
   bar.classList.add('visible');
 
+  // Also push into DJ monologue panel
+  addMonologueEntry(msg.text);
+
   if (msg.audioUrl && djVoiceEnabled && audioEl) {
     audioEl.src = msg.audioUrl;
     audioEl.volume = 0.7;
@@ -3865,6 +4045,9 @@ function handleDJTalkSegment(msg) {
     bar.classList.add('visible');
   }
 
+  // Push text into the DJ monologue area (in-mode display)
+  addMonologueEntry(msg.text);
+
   // Play talk audio
   if (msg.audioUrl && djVoiceEnabled && audioEl) {
     audioEl.src = msg.audioUrl;
@@ -3874,14 +4057,8 @@ function handleDJTalkSegment(msg) {
     });
 
     audioEl.onended = function() {
-      // Talk segment audio finished — re-sync with the server to pick up
-      // the next track that was deferred during the talk.
       _inTalkSegment = false;
-      // Fetch fresh state so the display + audio catch up to whatever
-      // the server advanced to during the talk segment.
       fetchState();
-      // Resume music playback — the fetchState→applyState chain will
-      // set the new src and play it.
       var mainAudio = document.getElementById('audio');
       if (mainAudio) {
         mainAudio.volume = _preTalkVolume || 1;
@@ -3891,7 +4068,6 @@ function handleDJTalkSegment(msg) {
       }, 1500);
     };
   } else {
-    // No audio — wait for duration then clear and re-sync
     var dur = msg.duration || 15000;
     setTimeout(function() {
       _inTalkSegment = false;
@@ -3899,6 +4075,29 @@ function handleDJTalkSegment(msg) {
       if (bar) bar.classList.remove('visible');
     }, dur);
   }
+}
+
+// ── DJ Monologue in-panel display ──
+function addMonologueEntry(text) {
+  var mono = document.getElementById('dj-monologue');
+  if (!mono) return;
+  _djMonologueEntries.push(text);
+  if (_djMonologueEntries.length > MAX_MONOLOGUE_ENTRIES) {
+    _djMonologueEntries.shift();
+  }
+  renderMonologue();
+}
+
+function renderMonologue() {
+  var mono = document.getElementById('dj-monologue');
+  if (!mono) return;
+  if (_djMonologueEntries.length === 0) {
+    mono.innerHTML = '<div class="dj-monologue-empty">Kannaka is your DJ &mdash; monologues appear here</div>';
+    return;
+  }
+  mono.innerHTML = _djMonologueEntries.map(function(t) {
+    return '<div class="dj-monologue-entry">\u{1F399}\uFE0F ' + escapeHtml(t) + '</div>';
+  }).join('');
 }
 
 async function toggleDJVoice() {
@@ -4282,23 +4481,20 @@ function connectWS() {
 // ══════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', function() {
-  // Audio events
+  // Audio events — only auto-advance in DJ/Music modes (not podcast)
   document.getElementById('audio').addEventListener('ended', function() {
-    // Don't auto-advance if a talk segment is active — the server will
-    // send the next track state when the DJ finishes speaking.
     if (_inTalkSegment) return;
-    // In DJ mode, mark this as a natural track-end so the server allows it.
-    // User-initiated skips (nextTrack button) don't add this param and get blocked.
-    var source = (state && state.channel === 'dj') ? '?source=ended' : '';
+    if (currentMode === 'podcast') return; // podcast has its own audio element
+    var source = (currentMode === 'dj') ? '?source=ended' : '';
     fetch('/api/next' + source, {method:'POST'});
   });
   document.getElementById('audio').addEventListener('play', function() { initAudioAnalyser(); });
   document.getElementById('audio').addEventListener('error', function(e) {
+    if (currentMode === 'podcast') return;
     var track = document.getElementById('track');
-    if (track) track.textContent = 'Playback error — skipping...';
-    // Use source=ended for error-driven auto-skip too, so DJ mode allows it
+    if (track) track.textContent = 'Playback error \u2014 skipping...';
     setTimeout(function() {
-      var source = (state && state.channel === 'dj') ? '?source=ended' : '';
+      var source = (currentMode === 'dj') ? '?source=ended' : '';
       fetch('/api/next' + source, {method:'POST'});
     }, 2000);
   });
@@ -4363,6 +4559,16 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initial nav dot state
   updateNavDots();
 
+  // Initialize DJ mode (hide header elements since DJ panel has its own)
+  var headerAlbum = document.getElementById('album');
+  var headerTrack = document.getElementById('track');
+  var headerTheme = document.getElementById('theme');
+  if (headerAlbum) headerAlbum.style.display = 'none';
+  if (headerTrack) headerTrack.style.display = 'none';
+  if (headerTheme) headerTheme.style.display = 'none';
+  var npLabel = document.querySelector('.main-player > .label');
+  if (npLabel) npLabel.textContent = 'Live Radio';
+
   // ── Ghost Signals Podcast Player ──
   (function() {
     var EPISODES = [
@@ -4418,7 +4624,7 @@ document.addEventListener('DOMContentLoaded', function() {
     ];
 
     var podcastAudio = document.getElementById("podcastAudio");
-    var container = document.getElementById("podcast-episodes");
+    var container = document.getElementById("podcast-episode-list");
     var currentEpId = null;
     var playing = false;
 
