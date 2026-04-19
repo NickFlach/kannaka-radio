@@ -558,6 +558,18 @@ class DJEngine {
     return this.state.playlistMeta[this.state.currentTrackIdx];
   }
 
+  /**
+   * Peek at the track that will play after the current one — used by the
+   * voice DJ to pre-generate intros during the current track's playback,
+   * so Kannaka has time to "think about what she's going to say."
+   * Returns null if there's no next track and the playlist doesn't loop.
+   */
+  peekNextTrack() {
+    if (!this.state.playlistMeta || this.state.playlistMeta.length === 0) return null;
+    const idx = (this.state.currentTrackIdx + 1) % this.state.playlistMeta.length;
+    return this.state.playlistMeta[idx] || null;
+  }
+
   advanceTrack() {
     const prev = this.getCurrentTrack();
     if (prev) this.state.history.push(prev);

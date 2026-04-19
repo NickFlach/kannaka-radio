@@ -157,6 +157,14 @@ const djEngine = new DJEngine({
       if (!actual.commercial) {
         voiceDJ.generateIntro(actual);
       }
+      // Kannaka composes the NEXT track's intro while this one plays — by
+      // the time the seam comes, the monologue + TTS are already cached.
+      try {
+        const nextTrack = djEngine.peekNextTrack();
+        if (nextTrack && !nextTrack.commercial) {
+          voiceDJ.prepareIntro(nextTrack);
+        }
+      } catch (_) {}
       syncManager.trackChanged(actual.file);
       // ADR-0012: emit a per-track market into the constellation hub.
       if (gsHub && !actual.commercial && actual.title) {

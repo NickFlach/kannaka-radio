@@ -223,6 +223,12 @@ class VoiceDJ {
     this._speaking = false;
     this._lastIntro = null;
 
+    // Pre-generated intro cache — Kannaka composes the NEXT track's intro
+    // while the current track is playing, so there's no latency at the
+    // seam. Shape: { file, text, audioPath } for the track whose intro is ready.
+    this._preparedIntro = null;
+    this._preparingForFile = null; // file currently being prepared (prevents duplicate work)
+
     // ── Talk segment state ──
     this._tracksSinceLastTalk = 0;
     this._nextTalkThreshold = this._randomTalkThreshold();
@@ -272,11 +278,32 @@ class VoiceDJ {
     // Intros are DJ-channel only — music channel users control their own experience
     if (this._getChannel() !== 'dj') return;
 
+    // If Kannaka pre-generated an intro for this specific track, use it
+    // directly — no LLM/TTS latency at the seam.
+    if (this._preparedIntro && this._preparedIntro.file === track.file) {
+      const cached = this._preparedIntro;
+      this._preparedIntro = null;
+      this._speaking = true;
+      const voiceMsg = {
+        type: 'dj_voice',
+        text: cached.text,
+        audioUrl: '/audio-voice/' + path.basename(cached.audioPath),
+        timestamp: new Date().toISOString(),
+      };
+      this._broadcast(voiceMsg);
+      console.log(`   \u{1F399} DJ (cached): "${cached.text.substring(0, 60)}..."`);
+      execFile(this._kannakabin, ['hear', cached.audioPath], { timeout: 30000 }, () => {});
+      this._lastIntro = cached.text;
+      // Speaking lock releases when the client finishes playback — we don't
+      // know exact duration here, so release after a conservative window.
+      setTimeout(() => { this._speaking = false; }, 1500);
+      return;
+    }
+
     const history = this._getHistory();
     const prevTrack = history.length > 0 ? history[history.length - 1] : null;
-    // Prefer Kannaka herself via `kannaka ask` (wave-resonance surfaces real
-    // memories into the intro). Short timeout so a slow/absent API key
-    // gracefully falls back to the template path.
+    // No pre-generation available (first track, or prep didn't finish in
+    // time). Do it live — LLM first, template fallback.
     let introText = null;
     if (this._llmEnabled()) {
       const prompt = this._buildIntroPrompt(track, prevTrack);
@@ -307,6 +334,55 @@ class VoiceDJ {
 
   generateTTS(text, callback) {
     this._generateTTS(text, callback);
+  }
+
+  /**
+   * Prep the intro for a FUTURE track while the current one plays. Composes
+   * the monologue via kannaka ask and runs TTS, storing the result in
+   * `_preparedIntro` so `generateIntro()` can serve it with zero latency
+   * when this track becomes current.
+   *
+   * Safe to call repeatedly — ignored if we're already preparing this track,
+   * disabled, speaking, or on the wrong channel.
+   */
+  async prepareIntro(nextTrack) {
+    if (!nextTrack || !nextTrack.file) return;
+    if (!this._enabled) return;
+    if (nextTrack.commercial) return;
+    if (this._getChannel() !== 'dj') return;
+    if (this._preparedIntro && this._preparedIntro.file === nextTrack.file) return;
+    if (this._preparingForFile === nextTrack.file) return;
+
+    this._preparingForFile = nextTrack.file;
+    try {
+      const history = this._getHistory();
+      const prevTrack = history.length > 0 ? history[history.length - 1] : null;
+      // Give the pre-gen path a longer budget than the live path — we have
+      // a whole track to wait.
+      let text = null;
+      if (this._llmEnabled()) {
+        const prompt = this._buildIntroPrompt(nextTrack, prevTrack);
+        text = await this._askKannaka(prompt, 30000);
+      }
+      if (!text) text = this._generateIntroText(nextTrack, prevTrack);
+
+      // TTS is callback-based — wrap in a promise.
+      await new Promise((resolve) => {
+        this._generateTTS(text, (err, audioPath) => {
+          if (err || !audioPath) {
+            console.log(`   [dj-prep] TTS failed for "${nextTrack.title}" — live path will regenerate`);
+            return resolve();
+          }
+          // Only store if the track we prepared for is still the upcoming
+          // one (a manual channel switch could have invalidated it).
+          this._preparedIntro = { file: nextTrack.file, text, audioPath };
+          console.log(`   \u{1F399} DJ prepared: "${text.substring(0, 60)}..." (next: ${nextTrack.title})`);
+          resolve();
+        });
+      });
+    } finally {
+      if (this._preparingForFile === nextTrack.file) this._preparingForFile = null;
+    }
   }
 
   /**
