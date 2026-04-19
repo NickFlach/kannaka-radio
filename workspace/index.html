@@ -2906,6 +2906,19 @@ function applyState(s) {
         audio.src = '/audio/' + encodeURIComponent(c.file);
       }
       audio.load();
+      // In DJ mode, seek to the current position in the track before playing.
+      // The server sends trackStartedAt (ms timestamp). We compute how far
+      // into the track we should be so new/refreshing listeners join in sync
+      // instead of hearing the track restart from 0.
+      if (currentMode === 'dj' && s.trackStartedAt) {
+        var elapsed = (Date.now() - s.trackStartedAt) / 1000;
+        audio.addEventListener('loadedmetadata', function seekOnce() {
+          if (elapsed > 0 && elapsed < audio.duration) {
+            audio.currentTime = elapsed;
+          }
+          audio.removeEventListener('loadedmetadata', seekOnce);
+        });
+      }
       audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
 
       // Mirror to music-audio-controls if in music mode

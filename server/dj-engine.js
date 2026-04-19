@@ -152,6 +152,7 @@ class DJEngine {
       // 'podcast', 'kax', 'orc' — continuous streams with play/volume only.
       channel: 'dj',
       channelMeta: null, // { type, streamUrl? } when channel is a non-dj stream
+      trackStartedAt: Date.now(), // ms timestamp when current track began
     };
 
     this.userQueue = [];
@@ -566,6 +567,7 @@ class DJEngine {
       this.state.currentTrackIdx = 0; // Loop
     }
 
+    this.state.trackStartedAt = Date.now();
     const current = this.getCurrentTrack();
     if (current) {
       this._onTrackChange(current);
