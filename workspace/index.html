@@ -1317,12 +1317,6 @@ body.konami-mode .surface-header h1 {
       <!-- Hidden shared audio element (used by DJ + Music modes) -->
       <audio id="audio" preload="auto" style="display:none"></audio>
 
-      <div class="progress-info">
-        <span class="dot off" id="audio-dot"></span>
-        <span class="dot off" id="perception-dot"></span>
-        <span id="info">Connecting...</span>
-      </div>
-
       <!-- ═══ DJ MODE ═══ -->
       <div id="mode-dj" class="mode-content active">
         <div class="dj-now-playing">
@@ -1355,6 +1349,11 @@ body.konami-mode .surface-header h1 {
 
       <!-- ═══ MUSIC MODE ═══ -->
       <div id="mode-music" class="mode-content">
+        <div class="progress-info">
+          <span class="dot off" id="audio-dot"></span>
+          <span class="dot off" id="perception-dot"></span>
+          <span id="info">Connecting...</span>
+        </div>
         <div class="library-controls" id="dj-controls">
           <button class="btn" onclick="prevTrack()">&#x23EE; Prev</button>
           <button class="btn" onclick="togglePlayPause()">&#x23EF; Play/Pause</button>
