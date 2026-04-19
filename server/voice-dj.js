@@ -646,12 +646,14 @@ class VoiceDJ {
    * Generate 100-400 word talk segment text.
    */
   async _generateTalkText(upcomingTrack, prevTracks) {
-    // LLM-first path — Kannaka composes a talk segment from her own memories.
-    // Falls through to the template pipeline below if disabled or the call
-    // fails/times out, so the radio always has SOMETHING to say.
-    if (this._llmEnabled()) {
+    // Talk segments are synchronous — the track is paused while we await
+    // _generateTalkText. On Oracle `kannaka ask` takes 30s–3min, which
+    // would leave dead air. Intros use the pre-gen pipeline to hide the
+    // latency; talks can't yet (their timing is dynamic). Enable only when
+    // explicitly opted in via KANNAKA_RADIO_TALK_LLM=1.
+    if (this._llmEnabled() && process.env.KANNAKA_RADIO_TALK_LLM === '1') {
       const prompt = this._buildTalkPrompt(upcomingTrack, prevTracks);
-      const llmText = await this._askKannaka(prompt, 15000);
+      const llmText = await this._askKannaka(prompt, 300000);
       if (llmText && llmText.length > 40) return llmText;
     }
 
