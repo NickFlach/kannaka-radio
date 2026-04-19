@@ -514,6 +514,14 @@ class DJEngine {
         console.log(`   \u26A0 Track not found: "${title}"`);
       }
     }
+    // Shuffle the album's track order — Fisher-Yates. Without this, every
+    // album reload (block transition, channel re-entry) plays the same
+    // sequence starting from track 0, which sounds like a loop when the
+    // station is on for more than an hour.
+    for (let i = trackMetas.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [trackMetas[i], trackMetas[j]] = [trackMetas[j], trackMetas[i]];
+    }
     // DJ album: commercial every 3 tracks (matches music channel policy)
     const withAds = interleaveCommercials(trackMetas, this._commercials, 3);
     this.state.playlist = withAds.map(t => t.file);
@@ -559,6 +567,39 @@ class DJEngine {
   }
 
   /**
+   * Shuffle music tracks in place; keep commercials in their relative slots
+   * so the ad cadence isn't disturbed. Called when a DJ playlist loops.
+   */
+  _reshufflePlaylist() {
+    const meta = this.state.playlistMeta;
+    if (!meta || meta.length === 0) return;
+
+    // Collect the music tracks and their original positions.
+    const musicIdx = [];
+    const musicTracks = [];
+    for (let i = 0; i < meta.length; i++) {
+      if (!meta[i].commercial) {
+        musicIdx.push(i);
+        musicTracks.push(meta[i]);
+      }
+    }
+    if (musicTracks.length < 2) return;
+
+    // Fisher-Yates on the music tracks.
+    for (let i = musicTracks.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [musicTracks[i], musicTracks[j]] = [musicTracks[j], musicTracks[i]];
+    }
+
+    // Re-seat them into their original slots.
+    for (let k = 0; k < musicIdx.length; k++) {
+      meta[musicIdx[k]] = musicTracks[k];
+    }
+    this.state.playlist = meta.map(t => t.file);
+    console.log(`[dj] reshuffled "${this.state.currentAlbum}" for next loop`);
+  }
+
+  /**
    * Peek at the track that will play after the current one — used by the
    * voice DJ to pre-generate intros during the current track's playback,
    * so Kannaka has time to "think about what she's going to say."
@@ -576,6 +617,12 @@ class DJEngine {
 
     this.state.currentTrackIdx++;
     if (this.state.currentTrackIdx >= this.state.playlist.length) {
+      // Playlist exhausted — reshuffle so the next loop isn't identical
+      // to the last one. Skip for continuous channels (music/podcast/kax/orc)
+      // which build their own playlists with their own policies.
+      if (this.state.channel === 'dj' && this.state.playlistMeta && this.state.playlistMeta.length > 1) {
+        this._reshufflePlaylist();
+      }
       this.state.currentTrackIdx = 0; // Loop
     }
 
