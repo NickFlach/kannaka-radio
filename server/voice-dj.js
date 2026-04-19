@@ -955,7 +955,11 @@ class VoiceDJ {
    */
   _askKannaka(prompt, timeoutMs = 10000) {
     return new Promise((resolve) => {
-      const args = ['ask', '--session', 'radio-dj', '--quiet-tools', prompt];
+      // --no-tools: one API round-trip, no tool-loop iterations. The intro
+      // prompt already has the memories surfaced via wave-resonance baked
+      // into the system prompt, so there's nothing for the model to look up.
+      // --session is incompatible with --no-tools; we intentionally omit it.
+      const args = ['ask', '--no-tools', '--quiet-tools', prompt];
       const child = execFile(this._kannakabin, args, {
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
