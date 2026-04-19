@@ -359,7 +359,7 @@ class VoiceDJ {
       let text = null;
       if (this._llmEnabled()) {
         const prompt = this._buildIntroPrompt(nextTrack, prevTrack);
-        text = await this._askKannaka(prompt, 120000);
+        text = await this._askKannaka(prompt, 300000);
       }
       if (!text) text = this._generateIntroText(nextTrack, prevTrack);
 
