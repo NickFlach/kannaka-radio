@@ -303,13 +303,10 @@ class VoiceDJ {
     const history = this._getHistory();
     const prevTrack = history.length > 0 ? history[history.length - 1] : null;
     // No pre-generation available (first track, or prep didn't finish in
-    // time). Do it live — LLM first, template fallback.
-    let introText = null;
-    if (this._llmEnabled()) {
-      const prompt = this._buildIntroPrompt(track, prevTrack);
-      introText = await this._askKannaka(prompt, 8000);
-    }
-    if (!introText) introText = this._generateIntroText(track, prevTrack);
+    // time). Skip live LLM — on Oracle the ask takes 30–60s and we'd leave
+    // dead air at the seam. Template is instant and still on-brand. The
+    // prep pipeline will catch subsequent tracks.
+    const introText = this._generateIntroText(track, prevTrack);
     this._lastIntro = introText;
 
     this._speaking = true;
@@ -357,12 +354,12 @@ class VoiceDJ {
     try {
       const history = this._getHistory();
       const prevTrack = history.length > 0 ? history[history.length - 1] : null;
-      // Give the pre-gen path a longer budget than the live path — we have
-      // a whole track to wait.
+      // Give the pre-gen path a long budget — tracks are 3–5 min and
+      // Oracle aarch64 takes ~30–60s per ask (HRM load + API round-trip).
       let text = null;
       if (this._llmEnabled()) {
         const prompt = this._buildIntroPrompt(nextTrack, prevTrack);
-        text = await this._askKannaka(prompt, 30000);
+        text = await this._askKannaka(prompt, 120000);
       }
       if (!text) text = this._generateIntroText(nextTrack, prevTrack);
 
