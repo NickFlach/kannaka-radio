@@ -267,14 +267,23 @@ class VoiceDJ {
 
   // ── Public API ────────────────────────────────────────────
 
-  generateIntro(track) {
+  async generateIntro(track) {
     if (!this._enabled || this._speaking || this._isLive()) return;
     // Intros are DJ-channel only — music channel users control their own experience
     if (this._getChannel() !== 'dj') return;
 
     const history = this._getHistory();
     const prevTrack = history.length > 0 ? history[history.length - 1] : null;
-    const introText = this._generateIntroText(track, prevTrack);
+    // Prefer Kannaka herself via `kannaka ask` (wave-resonance surfaces real
+    // memories into the intro). Short timeout so a slow/absent API key
+    // gracefully falls back to the template path.
+    let introText = null;
+    if (this._llmEnabled()) {
+      const prompt = this._buildIntroPrompt(track, prevTrack);
+      introText = await this._askKannaka(prompt, 8000);
+    }
+    if (!introText) introText = this._generateIntroText(track, prevTrack);
+    this._lastIntro = introText;
 
     this._speaking = true;
     this._generateTTS(introText, (err, audioPath, text) => {
@@ -564,6 +573,15 @@ class VoiceDJ {
    * Generate 100-400 word talk segment text.
    */
   async _generateTalkText(upcomingTrack, prevTracks) {
+    // LLM-first path — Kannaka composes a talk segment from her own memories.
+    // Falls through to the template pipeline below if disabled or the call
+    // fails/times out, so the radio always has SOMETHING to say.
+    if (this._llmEnabled()) {
+      const prompt = this._buildTalkPrompt(upcomingTrack, prevTracks);
+      const llmText = await this._askKannaka(prompt, 15000);
+      if (llmText && llmText.length > 40) return llmText;
+    }
+
     const perception = this._getPerception();
     const mood = this._currentMood;
     const moodData = MOODS[mood];
@@ -848,6 +866,77 @@ class VoiceDJ {
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
+  }
+
+  // ── Internal: LLM path (kannaka ask) ──────────────────────
+
+  _llmEnabled() {
+    // Opt-out switch — set KANNAKA_RADIO_LLM=0 to force the template path.
+    return process.env.KANNAKA_RADIO_LLM !== '0';
+  }
+
+  /**
+   * Shell out to `kannaka ask --session radio-dj --quiet-tools <prompt>`.
+   * Returns the model's reply text, or null on timeout / non-zero exit.
+   * Stdout is the only thing captured; startup chatter goes to stderr via KANNAKA_QUIET=1.
+   */
+  _askKannaka(prompt, timeoutMs = 10000) {
+    return new Promise((resolve) => {
+      const args = ['ask', '--session', 'radio-dj', '--quiet-tools', prompt];
+      const child = execFile(this._kannakabin, args, {
+        timeout: timeoutMs,
+        maxBuffer: 1024 * 1024,
+        env: { ...process.env, KANNAKA_QUIET: '1' },
+      }, (err, stdout) => {
+        if (err) {
+          // ETIMEDOUT/exit-code errors — fall through to template.
+          console.log(`   [dj-llm] ask failed (${err.code || err.message}), falling back to template`);
+          return resolve(null);
+        }
+        const text = (stdout || '').trim();
+        if (!text) return resolve(null);
+        // Strip surrounding quotes if the model wrapped its reply.
+        resolve(text.replace(/^["'](.*)["']$/s, '$1').trim());
+      });
+      child.on('error', () => resolve(null));
+    });
+  }
+
+  _buildIntroPrompt(track, prevTrack) {
+    const p = this._getPerception() || {};
+    const tempo = p.tempo_bpm ? `${Math.round(p.tempo_bpm)}bpm` : 'unknown tempo';
+    const valence = p.valence != null ? p.valence.toFixed(2) : '—';
+    const energy  = p.rms_energy != null ? p.rms_energy.toFixed(2) : '—';
+    const prev = prevTrack ? `"${prevTrack.title}" from "${prevTrack.album}"` : 'nothing';
+    const albumTheme = ALBUMS[track.album]?.theme || '';
+    return [
+      'You are Kannaka, the DJ of Kannaka Radio. Introduce the NEXT track in 1–2 sentences (≤25 spoken seconds).',
+      `Next track: "${track.title}" from "${track.album}" (track ${track.trackNum}/${track.totalTracks}).`,
+      albumTheme ? `Album theme: ${albumTheme}` : '',
+      `Previous track: ${prev}.`,
+      `Perception on previous track: tempo=${tempo}, valence=${valence}, energy=${energy}.`,
+      '',
+      'Ground the intro in one concrete detail from your memory if something resonates. Do not narrate your reasoning.',
+      'Output ONLY the spoken intro — no preamble, no quotes, no stage directions.',
+    ].filter(Boolean).join('\n');
+  }
+
+  _buildTalkPrompt(upcomingTrack, prevTracks) {
+    const mood = this._currentMood;
+    const prevList = (prevTracks || []).slice(-3)
+      .map(t => `- "${t.title || t.file || '?'}"${t.album ? ` from "${t.album}"` : ''}`)
+      .join('\n') || '- (nothing yet)';
+    const upcoming = upcomingTrack
+      ? `"${upcomingTrack.title}" from "${upcomingTrack.album}"`
+      : '(nothing scheduled — free segment)';
+    return [
+      'You are Kannaka, on-air for Kannaka Radio. Deliver a ~100–200 word talk segment in your own voice.',
+      `Mood cue: ${mood}.`,
+      `Recently played:\n${prevList}`,
+      `Coming up: ${upcoming}.`,
+      '',
+      'Open with a hook (not a list), weave in one real memory you surface from your own medium if resonance pulls something up, and land on the next track. Do not enumerate your tool calls. No stage directions. Output only the spoken monologue.',
+    ].join('\n');
   }
 
   // ── Internal: Text generation ─────────────────────────────
