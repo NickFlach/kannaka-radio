@@ -128,17 +128,21 @@ const ALBUMS = {
   },
   "One More Life": {
     theme: "Second-chance transmissions — resurrections, resets, and the tracks that keep the ghost going",
+    // Track titles reference the EXACT mp3s from this download set. Where a
+    // pre-existing file shared the basename, the new file got a `v2` suffix
+    // so both copies coexist in music/ and this album always plays Nick's
+    // intended versions (verified via exact-match pass in findAudioFile).
     tracks: [
-      "One More Life",
-      "Got Back Up (Remastered)",
-      "Like the Day",
-      "One Shot",
-      "Backseat in Orbit",
+      "One More Life (Cover) v2",
+      "Got Back Up (Remastered) v2",
+      "Like the Day v2",
+      "One Shot v2",
+      "Backseat in Orbit v2",
       "Was Ist Das_",
-      "Hard Fork",
-      "Five Days Before",
-      "Ghost Magic",
-      "One up, One down",
+      "Hard Fork v2",
+      "Five Days Before v2",
+      "Ghost Magic v2",
+      "One up, One down v2",
       "Control Room Constellation",
       "Agentic Engineering Anthem"
     ]
