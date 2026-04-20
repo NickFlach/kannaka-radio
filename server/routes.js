@@ -1183,18 +1183,47 @@ module.exports = function setupRoutes(deps) {
       const stat = fs.statSync(resolved);
 
       const range = req.headers.range;
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-        res.writeHead(206, {
-          "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": end - start + 1,
-          "Content-Type": mime,
-        });
-        fs.createReadStream(resolved, { start, end }).pipe(res);
-      } else {
+      // Validate the range header ourselves before handing values to
+      // createReadStream — a malformed request (empty range, NaN parts,
+      // end past EOF, start > end) previously crashed the process with
+      // ERR_OUT_OF_RANGE when stat.size was 0 or parts[1] was missing
+      // with a starting - (e.g. "bytes=-1").
+      let handled = false;
+      if (range && stat.size > 0) {
+        const m = /^bytes=(\d*)-(\d*)$/.exec(range);
+        if (m) {
+          let start = m[1] === "" ? NaN : parseInt(m[1], 10);
+          let end   = m[2] === "" ? NaN : parseInt(m[2], 10);
+          // Suffix range: bytes=-N → last N bytes
+          if (Number.isNaN(start) && !Number.isNaN(end)) {
+            start = Math.max(0, stat.size - end);
+            end = stat.size - 1;
+          } else if (!Number.isNaN(start) && Number.isNaN(end)) {
+            end = stat.size - 1;
+          }
+          if (Number.isFinite(start) && Number.isFinite(end)
+              && start >= 0 && end < stat.size && start <= end) {
+            res.writeHead(206, {
+              "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+              "Accept-Ranges": "bytes",
+              "Content-Length": end - start + 1,
+              "Content-Type": mime,
+            });
+            fs.createReadStream(resolved, { start, end }).pipe(res);
+            handled = true;
+          }
+        }
+        if (!handled) {
+          // Unsatisfiable — reply per RFC 7233.
+          res.writeHead(416, {
+            "Content-Range": `bytes */${stat.size}`,
+            "Content-Type": "text/plain",
+          });
+          res.end("Range Not Satisfiable");
+          return;
+        }
+      }
+      if (!handled) {
         res.writeHead(200, { "Content-Length": stat.size, "Content-Type": mime, "Accept-Ranges": "bytes" });
         fs.createReadStream(resolved).pipe(res);
       }
