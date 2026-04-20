@@ -334,6 +334,24 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // API: admin trigger for the peace oration — force a delivery now.
+    // Useful to preview mid-day instead of waiting for midnight/noon.
+    if (parsed.pathname === "/api/oration/now" && req.method === "POST") {
+      if (!deps.peaceOration) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, reason: "peace_oration_unavailable" }));
+        return;
+      }
+      deps.peaceOration.deliverNow().then((ok) => {
+        res.writeHead(ok ? 200 : 500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok }));
+      }).catch((e) => {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      });
+      return;
+    }
+
     // API: switch channel — dj | music | podcast | kax
     if (parsed.pathname === "/api/channel" && req.method === "POST") {
       const type = parsed.searchParams.get("type") || "dj";

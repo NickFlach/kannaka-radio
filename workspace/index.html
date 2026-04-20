@@ -4457,6 +4457,12 @@ function connectWS() {
       if (msg.type === 'dj_talk_segment') {
         handleDJTalkSegment(msg);
       }
+      if (msg.type === 'dj_oration') {
+        // Peace oration — handled identically to a talk segment on the
+        // client (pause music, play voice audio, resume after duration).
+        // The pause was already requested by the server via dj_talk_pending.
+        handleDJTalkSegment(msg);
+      }
       if (msg.type === 'dream') {
         if (!dreamsData) dreamsData = { dreams: [] };
         dreamsData.dreams.unshift(msg.data);

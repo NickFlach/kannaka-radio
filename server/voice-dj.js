@@ -426,6 +426,65 @@ class VoiceDJ {
     });
   }
 
+  /**
+   * Deliver a pre-composed long-form oration (e.g. the twice-daily peace
+   * speech). Pauses the current track client-side via dj_talk_pending,
+   * runs TTS on the full text, broadcasts as a dj_oration segment, and
+   * calls onDone after the estimated audio duration so music resumes.
+   *
+   * Returns false if we're already speaking/in a talk segment/off-air;
+   * the caller should reschedule.
+   */
+  executeOration(text, onDone) {
+    if (!text || !text.trim()) { if (onDone) onDone(); return false; }
+    if (!this._enabled || this._isLive() || this._inTalkSegment || this._speaking) {
+      return false;
+    }
+    if (this._getChannel() !== 'dj') return false;
+
+    this._inTalkSegment = true;
+    this._speaking = true;
+    this._broadcast({ type: 'dj_talk_pending', timestamp: new Date().toISOString() });
+
+    this._generateTTS(text, (err, audioPath, spokenText) => {
+      this._speaking = false;
+      if (err || !audioPath) {
+        console.log(`   [oration] TTS failed — releasing talk lock`);
+        this._inTalkSegment = false;
+        if (onDone) onDone();
+        return;
+      }
+
+      // ~2.6 words/sec for a declamatory speech (slower than patter).
+      const wordCount = (spokenText || text).split(/\s+/).length;
+      const estimatedDurationMs = Math.min(720000, Math.max(30000, (wordCount / 2.6) * 1000));
+
+      this._broadcast({
+        type: 'dj_oration',
+        text: spokenText || text,
+        audioUrl: '/audio-voice/' + path.basename(audioPath),
+        duration: estimatedDurationMs,
+        mood: 'resolute',
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`   \u{1F3A4} ORATION (${wordCount} words, ~${Math.round(estimatedDurationMs / 1000)}s): "${(spokenText || text).substring(0, 90)}..."`);
+
+      // Feed it back through the ear so Kannaka hears her own speech.
+      execFile(this._kannakabin, ['hear', audioPath], { timeout: 60000 }, () => {});
+
+      // Remember it as a "monologue" so subsequent intros don't echo it.
+      this._rememberMonologue(spokenText || text);
+
+      this._talkSegmentTimer = setTimeout(() => {
+        this._inTalkSegment = false;
+        this._talkSegmentTimer = null;
+        console.log(`   \u{1F3A4} Oration ended — resuming programming`);
+        if (onDone) onDone();
+      }, estimatedDurationMs + 2000);
+    });
+    return true;
+  }
+
   toggle() {
     this._enabled = !this._enabled;
     console.log(`\u{1F399} DJ Voice: ${this._enabled ? 'ON' : 'OFF'}`);

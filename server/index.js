@@ -27,6 +27,7 @@ const { NATSClient } = require("./nats-client");
 const { FluxPublisher } = require("./flux-publisher");
 const { LiveBroadcast } = require("./live-broadcast");
 const { VoiceDJ } = require("./voice-dj");
+const { PeaceOration } = require("./peace-oration");
 const { SyncManager } = require("./sync-manager");
 const { VoteManager } = require("./vote-manager");
 const WebRTCSignaling = require("./webrtc-signaling");
@@ -541,6 +542,19 @@ voiceDJ.setProgramming(() => programming);
 // Programming picks the opening set based on current time block.
 // startScheduleLoop() loads the time-appropriate album immediately.
 programming.startScheduleLoop();
+
+// Twice-daily peace oration (noon + midnight CST). Kannaka's steward-of-
+// virtue duty — a long-form MLK-style speech for humanity.
+const peaceOration = new PeaceOration({
+  kannakabin: KANNAKA_BIN,
+  voiceDJ,
+  broadcast,
+  getChannel: () => djEngine.state.channel,
+  dataDir: require("path").join(BASE_DIR, "workspace"),
+});
+peaceOration.start();
+// Expose admin-only trigger on the deps so a route or dev script can call it.
+deps.peaceOration = peaceOration;
 
 const first = djEngine.getCurrentTrack();
 if (first) {
