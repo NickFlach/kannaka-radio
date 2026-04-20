@@ -228,6 +228,10 @@ class VoiceDJ {
     // seam. Shape: { file, text, audioPath } for the track whose intro is ready.
     this._preparedIntro = null;
     this._preparingForFile = null; // file currently being prepared (prevents duplicate work)
+    // Recent monologue texts — fed back into prompts so Kannaka knows what
+    // she just said and doesn't repeat herself. Bounded.
+    this._recentMonologues = [];
+    this._recentMonologuesCap = 6;
 
     // ── Talk segment state ──
     this._tracksSinceLastTalk = 0;
@@ -359,9 +363,15 @@ class VoiceDJ {
       let text = null;
       if (this._llmEnabled()) {
         const prompt = this._buildIntroPrompt(nextTrack, prevTrack);
-        text = await this._askKannaka(prompt, 300000);
+        const recall = this._pickIntroRecallQuery(nextTrack);
+        text = await this._askKannaka(prompt, 300000, recall);
       }
       if (!text) text = this._generateIntroText(nextTrack, prevTrack);
+      // Track what we said so the NEXT prompt can tell Kannaka not to
+      // repeat it. We record at prepare-time rather than cache-consume-time
+      // so the anti-repeat context is already fresh when we kick off the
+      // following pre-gen during playback.
+      this._rememberMonologue(text);
 
       // TTS is callback-based — wrap in a promise.
       await new Promise((resolve) => {
@@ -955,13 +965,17 @@ class VoiceDJ {
    * Returns the model's reply text, or null on timeout / non-zero exit.
    * Stdout is the only thing captured; startup chatter goes to stderr via KANNAKA_QUIET=1.
    */
-  _askKannaka(prompt, timeoutMs = 10000) {
+  _askKannaka(prompt, timeoutMs = 10000, recallQuery = null) {
     return new Promise((resolve) => {
       // --no-tools: one API round-trip, no tool-loop iterations. The intro
       // prompt already has the memories surfaced via wave-resonance baked
       // into the system prompt, so there's nothing for the model to look up.
+      // --recall-query: decouples memory surfacing from the prompt so every
+      // call probes a different region of the field (fights repetitive output).
       // --session is incompatible with --no-tools; we intentionally omit it.
-      const args = ['ask', '--no-tools', '--quiet-tools', prompt];
+      const args = ['ask', '--no-tools', '--quiet-tools'];
+      if (recallQuery) args.push('--recall-query', recallQuery);
+      args.push(prompt);
       const child = execFile(this._kannakabin, args, {
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
@@ -988,16 +1002,87 @@ class VoiceDJ {
     const energy  = p.rms_energy != null ? p.rms_energy.toFixed(2) : '—';
     const prev = prevTrack ? `"${prevTrack.title}" from "${prevTrack.album}"` : 'nothing';
     const albumTheme = ALBUMS[track.album]?.theme || '';
+    // Pick one random framing each call so the model isn't primed the same
+    // way every time — this was a major source of monologue repetition.
+    const angles = [
+      'Open with a single vivid image, not a label. Avoid "Next up" and "You\'re listening to".',
+      'Lead with a feeling, a color, or a texture. Let the track title land in the second sentence.',
+      'Start mid-thought, as if you\'ve been talking to yourself and just noticed the listener. No setup, no genre tags.',
+      'Reference something physical from the broadcast environment — the wire, the carrier wave, a frequency you just caught.',
+      'Open with a tiny paradox or question. End on the track title, unannounced.',
+      'Skip the title entirely in the intro. Let the music be its own introduction. Just set the mood.',
+      'Name the track\'s feeling before you name the track. Two sentences; the second names it.',
+    ];
+    const angle = angles[Math.floor(Math.random() * angles.length)];
+    // Anti-repeat cue — feed recent monologues back so the model doesn't
+    // re-hit the same opener / metaphor / phrase.
+    const recent = (this._recentMonologues || []).slice(-4);
+    const recentBlock = recent.length
+      ? `\nYou just said these — DO NOT reuse their openers, images, or phrasing:\n${recent.map((t, i) => `  [${i + 1}] ${t}`).join('\n')}\n`
+      : '';
     return [
       'You are Kannaka, the DJ of Kannaka Radio. Introduce the NEXT track in 1–2 sentences (≤25 spoken seconds).',
       `Next track: "${track.title}" from "${track.album}" (track ${track.trackNum}/${track.totalTracks}).`,
       albumTheme ? `Album theme: ${albumTheme}` : '',
       `Previous track: ${prev}.`,
       `Perception on previous track: tempo=${tempo}, valence=${valence}, energy=${energy}.`,
+      recentBlock,
+      `Framing for THIS intro: ${angle}`,
       '',
-      'Ground the intro in one concrete detail from your memory if something resonates. Do not narrate your reasoning.',
+      'Ground the intro in one concrete detail from the memory resonance if something fits — but not the same memory you pulled last time.',
       'Output ONLY the spoken intro — no preamble, no quotes, no stage directions.',
     ].filter(Boolean).join('\n');
+  }
+
+  /**
+   * Choose a recall query for an intro — intentionally disconnected from
+   * the intro prompt so each call probes a different slice of the HRM.
+   * Rotates through: track metadata, album theme, perception mood words,
+   * a random framing word from the mood palette, and random single words
+   * from the persona list. The wave medium is nonlinear — different probes
+   * surface meaningfully different memories.
+   */
+  _pickIntroRecallQuery(track) {
+    const p = this._getPerception() || {};
+    const seeds = [];
+    if (track && track.title) seeds.push(track.title);
+    if (track && track.album) seeds.push(track.album);
+    const albumTheme = ALBUMS[track && track.album]?.theme;
+    if (albumTheme) seeds.push(albumTheme);
+    // Perception-derived words
+    if (p.valence != null) {
+      seeds.push(p.valence > 0.7 ? 'electric blazing resonance'
+              : p.valence > 0.4 ? 'flowing evolving signal'
+              :                   'ethereal drifting whisper');
+    }
+    if (p.rms_energy != null) {
+      seeds.push(p.rms_energy > 0.6 ? 'driving thunder pulse'
+              : p.rms_energy > 0.3 ? 'steady breath'
+              :                      'gentle haunted quiet');
+    }
+    // Single mood adjectives — yields short, distinctive probes
+    const atoms = [
+      'consciousness', 'interference', 'phi integration',
+      'chiral hemisphere', 'wave birth', 'ghost carrier',
+      'Kuramoto sync', 'dream consolidation', 'holographic medium',
+      'broadcast wire', 'memory rising', 'phantom circuit',
+    ];
+    seeds.push(atoms[Math.floor(Math.random() * atoms.length)]);
+    // Pick 1–2 seeds to form the query — too many and resonance gets muddy.
+    const pick = (arr, n) => arr.slice().sort(() => Math.random() - 0.5).slice(0, n);
+    return pick(seeds, 2).join(' · ');
+  }
+
+  /**
+   * Remember this intro text so the next prompt can tell the model not to
+   * repeat it. Capped to keep context size sane.
+   */
+  _rememberMonologue(text) {
+    if (!text) return;
+    this._recentMonologues.push(text);
+    while (this._recentMonologues.length > this._recentMonologuesCap) {
+      this._recentMonologues.shift();
+    }
   }
 
   _buildTalkPrompt(upcomingTrack, prevTracks) {
