@@ -2921,6 +2921,10 @@ function applyState(s) {
       }
       audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
 
+      // Tell the OS we're playing media so iOS/Android keep audio alive
+      // when the screen locks and show lock-screen controls.
+      updateMediaSession(c, s);
+
       // Mirror to music-audio-controls if in music mode
       var musicCtrl = document.getElementById('music-audio-controls');
       if (musicCtrl && currentMode === 'music') {
@@ -3182,6 +3186,71 @@ function setMode(mode) {
     setChannel('music');
   }
   // Podcast mode doesn't switch server channel — it uses its own audio element
+}
+
+// ── Media Session — lock-screen / Bluetooth controls ─────────
+// Without this, iOS Safari pauses playback when the screen locks and
+// Android Auto / car Bluetooth shows no metadata. With it, the browser
+// treats the tab as a media app: audio keeps playing with the screen off,
+// track title shows on the lock screen, and the phone's hardware buttons
+// (headphone pause, car steering-wheel skip) route through our handlers.
+function updateMediaSession(c, s) {
+  if (!('mediaSession' in navigator) || !c) return;
+  try {
+    var title = c.title || '—';
+    var album = c.album || (s && s.currentAlbum) || 'Kannaka Radio';
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: title,
+      artist: 'Kannaka',
+      album: album,
+      artwork: [
+        { src: '/favicon.svg', sizes: '512x512', type: 'image/svg+xml' },
+      ],
+    });
+    navigator.mediaSession.playbackState = 'playing';
+    if (s && s.trackStartedAt) {
+      var elapsed = (Date.now() - s.trackStartedAt) / 1000;
+      var audio = document.getElementById('audio');
+      var duration = audio && audio.duration && isFinite(audio.duration) ? audio.duration : 0;
+      if (duration > 0 && 'setPositionState' in navigator.mediaSession) {
+        navigator.mediaSession.setPositionState({
+          duration: duration,
+          playbackRate: 1,
+          position: Math.min(Math.max(elapsed, 0), duration),
+        });
+      }
+    }
+  } catch (_) {}
+}
+
+function initMediaSession() {
+  if (!('mediaSession' in navigator)) return;
+  var audio = document.getElementById('audio');
+  try {
+    navigator.mediaSession.setActionHandler('play', function() {
+      if (audio) audio.play().catch(function(){});
+      navigator.mediaSession.playbackState = 'playing';
+    });
+    navigator.mediaSession.setActionHandler('pause', function() {
+      if (audio) audio.pause();
+      navigator.mediaSession.playbackState = 'paused';
+    });
+    // On the DJ channel users aren't allowed to skip — swallow the hardware
+    // skip button rather than letting Safari wire it to a default behavior
+    // that would seek the local file.
+    navigator.mediaSession.setActionHandler('nexttrack', function() {
+      if (currentMode === 'dj') return;
+      fetch('/api/next', { method: 'POST' }).catch(function(){});
+    });
+    navigator.mediaSession.setActionHandler('previoustrack', function() {
+      if (currentMode === 'dj') return;
+      fetch('/api/prev', { method: 'POST' }).catch(function(){});
+    });
+    if (audio) {
+      audio.addEventListener('play',  function() { navigator.mediaSession.playbackState = 'playing'; });
+      audio.addEventListener('pause', function() { navigator.mediaSession.playbackState = 'paused'; });
+    }
+  } catch (_) {}
 }
 
 // ── Channels — server-side channel switch ─────────────────────
@@ -4551,6 +4620,10 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('config-path').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') setMusicDir();
   });
+
+  // Wire the lock-screen / Bluetooth media controls once, before WS
+  // connects — any incoming state broadcast will fill in the metadata.
+  initMediaSession();
 
   // Connect
   connectWS();
