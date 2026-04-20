@@ -134,7 +134,7 @@ const ALBUMS = {
       "Like the Day",
       "One Shot",
       "Backseat in Orbit",
-      "Was Ist Das",
+      "Was Ist Das_",
       "Hard Fork",
       "Five Days Before",
       "Ghost Magic",

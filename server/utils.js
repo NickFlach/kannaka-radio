@@ -82,16 +82,25 @@ function findAudioFile(trackName, musicDir) {
   const files = getFiles(musicDir);
   const lower = trackName.toLowerCase();
 
-  // Pass 1: exact / prefix-stripped / substring
+  // Pass 1: exact basename match (or with leading track-number stripped).
+  // Must be a separate pass from substring — interleaving them let a title
+  // like "Hard Fork" grab "Hard Fork x Was Ist Das_ (Mashup).mp3" when the
+  // mashup happened to be listed first by readdir.
   for (const f of files) {
     const base = path.basename(f, path.extname(f));
     const cleaned = base.replace(/^\d+[\s.\-_]+/, "").trim().toLowerCase();
     const baseLower = base.toLowerCase();
     if (cleaned === lower || baseLower === lower) return f;
+  }
+
+  // Pass 2: substring match (basename includes the title).
+  for (const f of files) {
+    const base = path.basename(f, path.extname(f));
+    const baseLower = base.toLowerCase();
     if (baseLower.includes(lower)) return f;
   }
 
-  // Pass 2: fuzzy word overlap (>=70%)
+  // Pass 3: fuzzy word overlap (>=70%)
   const words = lower.split(/\s+/);
   for (const f of files) {
     const base = path.basename(f, path.extname(f)).toLowerCase();
