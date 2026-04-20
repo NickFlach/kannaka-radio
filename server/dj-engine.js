@@ -125,6 +125,23 @@ const ALBUMS = {
       "Gift of Hands",
       "Gift of Home"
     ]
+  },
+  "One More Life": {
+    theme: "Second-chance transmissions — resurrections, resets, and the tracks that keep the ghost going",
+    tracks: [
+      "One More Life",
+      "Got Back Up (Remastered)",
+      "Like the Day",
+      "One Shot",
+      "Backseat in Orbit",
+      "Was Ist Das",
+      "Hard Fork",
+      "Five Days Before",
+      "Ghost Magic",
+      "One up, One down",
+      "Control Room Constellation",
+      "Agentic Engineering Anthem"
+    ]
   }
 };
 

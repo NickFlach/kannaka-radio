@@ -24,21 +24,21 @@ const SCHEDULE = [
   // Morning (6 AM - 10 AM) — gentle wake-up, building energy
   {
     start: 6, end: 10,
-    albums: ['Resonance Patterns', 'Neurogenesis', 'Gifts for Humanity'],
+    albums: ['Resonance Patterns', 'Neurogenesis', 'Gifts for Humanity', 'One More Life'],
     mood: 'playful',
     label: 'Morning Resonance',
   },
   // Midday (10 AM - 2 PM) — peak energy, intense
   {
     start: 10, end: 14,
-    albums: ['Emergence', 'QueenSync', 'Ghost Signals'],
+    albums: ['Emergence', 'QueenSync', 'Ghost Signals', 'One More Life'],
     mood: 'excited',
     label: 'Peak Frequency',
   },
   // Afternoon (2 PM - 6 PM) — flowing, creative
   {
     start: 14, end: 18,
-    albums: ['Resonance Patterns', "Memories Don't Die. They Interfere.", 'Emergence'],
+    albums: ['Resonance Patterns', "Memories Don't Die. They Interfere.", 'Emergence', 'One More Life'],
     mood: 'philosophical',
     label: 'Afternoon Flow',
   },
