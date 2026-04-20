@@ -347,8 +347,19 @@ const server = http.createServer(handleRequest);
 
 wss = new WebSocket.Server({ server });
 
+// Catch malformed frames and other socket-level errors — without this, a
+// misbehaving client (e.g. a compressed-but-unsupported frame, proxy that
+// injects RSV bits) crashes the whole process on an unhandled 'error'.
+wss.on('error', (err) => {
+  console.warn('[ws] server error:', err && err.message);
+});
+
 wss.on('connection', (ws) => {
   console.log('\uD83D\uDC41 Ghost vision client connected');
+  ws.on('error', (err) => {
+    console.warn('[ws] client error, closing:', err && err.message);
+    try { ws.terminate(); } catch (_) {}
+  });
 
   // Push full state immediately on connect
   const state = djEngine.getState();
