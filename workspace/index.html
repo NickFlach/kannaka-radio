@@ -1315,7 +1315,11 @@ body.konami-mode .surface-header h1 {
       </div>
 
       <!-- Hidden shared audio element (used by DJ + Music modes) -->
-      <audio id="audio" preload="auto" style="display:none"></audio>
+      <!-- playsinline is required on iOS — without it, audio is treated as a
+           video that pauses when the screen locks or the user switches apps.
+           With it + the Media Session metadata, iOS keeps the audio alive in
+           the background and shows controls on the lock screen. -->
+      <audio id="audio" preload="auto" playsinline webkit-playsinline style="display:none"></audio>
 
       <!-- ═══ DJ MODE ═══ -->
       <div id="mode-dj" class="mode-content active">
@@ -2198,7 +2202,14 @@ setInterval(updateGenStatus, 30000);
 //  Web Audio Analyser Init
 // ══════════════════════════════════════════════════════
 
+// Skip the WebAudio analyser on mobile. `createMediaElementSource` hijacks
+// the native media pipeline, which makes iOS stop recognizing the audio as
+// background-capable — the tab pauses the moment the screen locks or the
+// user switches apps, even with Media Session metadata set. The spectrum
+// visualizer isn't useful when the user is in the car with AirPods anyway.
+var _isMobileAudio = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
 function initAudioAnalyser() {
+  if (_isMobileAudio) return;
   var audio = document.getElementById('audio');
   if (audioCtx) return;
 
@@ -3087,6 +3098,13 @@ function togglePlayPause() {
 function toggleMute() {
   var audio = document.getElementById('audio');
   audio.muted = !audio.muted;
+  // Mute is station-wide — the DJ voice and podcast audio live on separate
+  // HTMLAudioElements and don't share the music one's muted state. Sync
+  // them manually so "mute" actually silences everything.
+  var djv = document.getElementById('djVoiceAudio');
+  if (djv) djv.muted = audio.muted;
+  var pod = document.getElementById('podcastAudio');
+  if (pod) pod.muted = audio.muted;
   var btn = document.getElementById('dj-mute-btn');
   if (btn) btn.textContent = audio.muted ? '\uD83D\uDD07 Unmute' : '\uD83D\uDD0A Mute';
 }
@@ -4092,6 +4110,10 @@ function handleDJVoice(msg) {
   if (msg.audioUrl && djVoiceEnabled && audioEl) {
     audioEl.src = msg.audioUrl;
     audioEl.volume = 0.7;
+    // Inherit the station-wide mute state so a DJ voice that fires while
+    // the user has muted the station doesn't blast past the mute.
+    var mainAudio = document.getElementById('audio');
+    audioEl.muted = !!(mainAudio && mainAudio.muted);
     audioEl.play().catch(function() {
       console.log('DJ voice autoplay blocked');
     });
@@ -4150,6 +4172,8 @@ function handleDJTalkSegment(msg) {
   if (msg.audioUrl && djVoiceEnabled && audioEl) {
     audioEl.src = msg.audioUrl;
     audioEl.volume = 0.85;
+    // Inherit station mute state so orations / talk segments honor mute.
+    audioEl.muted = !!(audio && audio.muted);
     audioEl.play().catch(function() {
       console.log('DJ talk segment autoplay blocked');
     });
