@@ -551,6 +551,8 @@ const peaceOration = new PeaceOration({
   broadcast,
   getChannel: () => djEngine.state.channel,
   dataDir: require("path").join(BASE_DIR, "workspace"),
+  rootDir: BASE_DIR,
+  radioUrl: process.env.RADIO_PUBLIC_URL || "https://radio.ninja-portal.com",
 });
 peaceOration.start();
 // Expose admin-only trigger on the deps so a route or dev script can call it.
