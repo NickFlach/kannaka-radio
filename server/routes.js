@@ -336,6 +336,9 @@ module.exports = function setupRoutes(deps) {
 
     // API: admin trigger for the peace oration — force a delivery now.
     // Useful to preview mid-day instead of waiting for midnight/noon.
+    // Fires async: returns 202 immediately so curl doesn't have to hold
+    // the connection for 10+ minutes. Watch /home/opc/radio.log for
+    // "ORATION" and "Bluesky posted" events.
     if (parsed.pathname === "/api/oration/now" && req.method === "POST") {
       if (!deps.peaceOration) {
         res.writeHead(503, { "Content-Type": "application/json" });
@@ -343,12 +346,12 @@ module.exports = function setupRoutes(deps) {
         return;
       }
       deps.peaceOration.deliverNow().then((ok) => {
-        res.writeHead(ok ? 200 : 500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok }));
+        console.log(`[oration] admin trigger complete — ok=${ok}`);
       }).catch((e) => {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
+        console.warn(`[oration] admin trigger error: ${e.message}`);
       });
+      res.writeHead(202, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, status: "queued", note: "watch radio.log" }));
       return;
     }
 

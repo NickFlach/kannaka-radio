@@ -207,7 +207,7 @@ class PeaceOration {
       // Generous budget — orations can push the API past two minutes.
       const args = ["ask", "--no-tools", "--quiet-tools", "--recall-query", recallQuery, prompt];
       const child = execFile(this._kannakabin, args, {
-        timeout: 360000, // 6 min
+        timeout: 600000, // 10 min — previous 6 min was cutting it close on Oracle
         maxBuffer: 4 * 1024 * 1024,
         env: { ...process.env, KANNAKA_QUIET: "1" },
       }, (err, stdout) => {
