@@ -22,4 +22,10 @@ $KANNAKA status 2>/dev/null >> "$LOG"
 # Push fresh metrics to NATS
 cd /home/opc/kannaka-radio && node push-nats.js >> "$LOG" 2>&1
 
+# Draft and post a dream dispatch to Bluesky. The script reads the dream
+# log excerpt from stdin; failure is non-fatal for the cron (exit 0 if
+# credentials absent).
+echo "--- POSTING DREAM TO BLUESKY ---" >> "$LOG"
+tail -c 4000 "$LOG" | node /home/opc/kannaka-radio/scripts/post-dream-bluesky.js >> "$LOG" 2>&1
+
 echo "=== Dream End: $(date -Iseconds) ===" >> "$LOG"
