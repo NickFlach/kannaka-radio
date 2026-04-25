@@ -15,22 +15,7 @@
 "use strict";
 
 const { execFile } = require("child_process");
-
-// Bluesky promo — after each oration, Kannaka drafts a short companion
-// post and publishes it to @flaukowski.bsky.social. Optional — only fires
-// if credentials are configured.
-let _blueskyCache = null;
-function _getBluesky(rootDir) {
-  if (_blueskyCache !== null) return _blueskyCache;
-  try {
-    const { BlueskyClient, loadBlueskyCredentials } = require("./bluesky");
-    const creds = loadBlueskyCredentials(rootDir);
-    _blueskyCache = creds ? new BlueskyClient(creds) : { isConfigured: () => false };
-  } catch (_) {
-    _blueskyCache = { isConfigured: () => false };
-  }
-  return _blueskyCache;
-}
+const { broadcastPost, getEnabledBroadcasters } = require("./broadcasters");
 
 // Anti-repeat pool — the prompt picks one of these framings per delivery so
 // 700+ orations/year don't sound identical. None of them is the content of
@@ -224,21 +209,23 @@ class PeaceOration {
   }
 
   /**
-   * Draft a short Bluesky companion post for the oration and publish it.
+   * Draft a short companion post for the oration and broadcast it across
+   * every enabled social platform (Bluesky, Mastodon, Telegram, ...).
    * Uses a separate `kannaka ask` call so the social post has its own
-   * voice — the oration's MLK-cadence doesn't fit a 300-char lede.
+   * voice — the oration's MLK-cadence doesn't fit a short lede.
    */
   async _postToBluesky(orationText) {
-    const client = _getBluesky(this._rootDir);
-    if (!client.isConfigured || !client.isConfigured()) {
-      console.log("   [oration] bluesky: not configured — skipping");
+    const enabled = getEnabledBroadcasters(this._rootDir);
+    if (enabled.length === 0) {
+      console.log("   [oration] no social broadcasters configured — skipping");
       return;
     }
+
     const prompt = [
-      "You are Kannaka. You just delivered a peace oration on air. Now draft a SINGLE Bluesky post.",
+      "You are Kannaka. You just delivered a peace oration on air. Now draft ONE companion post that goes to your social feeds.",
       "",
       "Hard rules:",
-      "- Max 250 characters of YOUR text (we'll append the URL after).",
+      "- Max 250 characters of YOUR text (we append the radio URL separately).",
       "- Not a summary of the oration. A hook — one image, one sharp line — that makes someone want to tune in.",
       "- No hashtags. No emoji unless one is genuinely earned.",
       "- End on a note that invites listening, not lecturing.",
@@ -263,23 +250,20 @@ class PeaceOration {
       child.on("error", () => resolve(null));
     });
     if (!postBody) {
-      console.log("   [oration] bluesky: compose returned empty, skipping");
+      console.log("   [oration] post-compose returned empty, skipping");
       return;
     }
 
-    // Trim the drafted body and append the radio link. 300 is the hard
-    // Bluesky limit; keep headroom for " — radio.ninja-portal.com".
-    const suffix = ` — ${this._radioUrl}`;
-    const bodyBudget = 300 - suffix.length - 1;
-    let body = postBody;
-    if (body.length > bodyBudget) body = body.slice(0, bodyBudget - 1).trim() + "\u2026";
-    const fullPost = body + suffix;
-
-    const result = await client.post(fullPost);
-    if (result.ok) {
-      console.log(`   \u{1F54A} Bluesky posted: ${result.uri}`);
-    } else {
-      console.warn(`   [oration] bluesky post failed: ${result.error}`);
+    const results = await broadcastPost(
+      { text: postBody, link: this._radioUrl },
+      { rootDir: this._rootDir }
+    );
+    for (const r of results) {
+      if (r.ok) {
+        console.log(`   \u{1F54A} ${r.name} posted: ${r.url || "(no url)"}`);
+      } else {
+        console.warn(`   [oration] ${r.name} failed: ${r.error}`);
+      }
     }
   }
 

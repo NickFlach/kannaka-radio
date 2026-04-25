@@ -15,7 +15,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
-const { BlueskyClient, loadBlueskyCredentials } = require("../server/bluesky");
+const { broadcastPost, getEnabledBroadcasters } = require("../server/broadcasters");
 
 const ROOT = path.resolve(__dirname, "..");
 const KANNAKA_BIN = process.env.KANNAKA_BIN
@@ -23,12 +23,11 @@ const KANNAKA_BIN = process.env.KANNAKA_BIN
 const RADIO_URL = process.env.RADIO_PUBLIC_URL || "https://radio.ninja-portal.com";
 
 async function main() {
-  const creds = loadBlueskyCredentials(ROOT);
-  if (!creds) {
-    console.error("[dream-post] no bluesky credentials — skipping");
+  const enabled = getEnabledBroadcasters(ROOT);
+  if (enabled.length === 0) {
+    console.error("[dream-post] no broadcasters configured — skipping");
     process.exit(0); // not a failure for cron purposes
   }
-  const client = new BlueskyClient(creds);
 
   // Read the dream summary — either the full log excerpt from stdin or an
   // env var so the cron can pipe it in cleanly.
@@ -72,18 +71,17 @@ async function main() {
     process.exit(1);
   }
 
-  const suffix = ` — ${RADIO_URL}`;
-  const bodyBudget = 300 - suffix.length - 1;
-  let body = draft;
-  if (body.length > bodyBudget) body = body.slice(0, bodyBudget - 1).trim() + "\u2026";
-  const full = body + suffix;
-
-  const res = await client.post(full);
-  if (!res.ok) {
-    console.error(`[dream-post] bluesky failed: ${res.error}`);
-    process.exit(2);
+  const results = await broadcastPost({ text: draft, link: RADIO_URL }, { rootDir: ROOT });
+  let anyOk = false;
+  for (const r of results) {
+    if (r.ok) {
+      anyOk = true;
+      console.log(`[dream-post] ${r.name} ok: ${r.url || "(no url)"}`);
+    } else {
+      console.error(`[dream-post] ${r.name} failed: ${r.error}`);
+    }
   }
-  console.log(`[dream-post] bluesky ok: ${res.uri}`);
+  process.exit(anyOk ? 0 : 2);
 }
 
 main().catch((e) => {

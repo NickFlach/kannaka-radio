@@ -30,3 +30,6 @@ npm-debug.log*
 *.m4a
 *.oggworkspace/models/art/
 .bluesky.json
+.mastodon.json
+.telegram.json
+.nostr.json
