@@ -19,6 +19,7 @@
 const { BlueskyAdapter } = require("./bluesky-adapter");
 const { MastodonAdapter } = require("./mastodon-adapter");
 const { TelegramAdapter } = require("./telegram-adapter");
+const { NostrAdapter } = require("./nostr-adapter");
 
 /**
  * Build the list of adapters that have credentials configured.
@@ -29,6 +30,7 @@ function getEnabledBroadcasters(rootDir) {
     new BlueskyAdapter(rootDir),
     new MastodonAdapter(rootDir),
     new TelegramAdapter(rootDir),
+    new NostrAdapter(rootDir),
   ];
   return candidates.filter((b) => b.isEnabled());
 }
