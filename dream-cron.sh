@@ -2,6 +2,12 @@
 # Nightly deep dream + OODA harvest
 # Runs at 2 AM CDT via cron
 export KANNAKA_DATA_DIR=/home/opc/.kannaka
+# Load NATS credentials (ADR-0026 #73) so subsequent kannaka + push-nats
+# calls authenticate as kannaka_internal. Best-effort — anon still works
+# until the NATS server is locked down.
+if [ -f /home/opc/.kannaka-nats.env ]; then
+  set -a; . /home/opc/.kannaka-nats.env; set +a
+fi
 KANNAKA=/home/opc/kannaka-memory/target/release/kannaka
 LOG="/home/opc/.kannaka/dream-$(date +%Y-%m-%d).log"
 

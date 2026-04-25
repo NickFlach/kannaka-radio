@@ -102,7 +102,13 @@ function buildPayloads(metrics) {
 function publish(payloads) {
   const client = net.createConnection({ host: NATS_HOST, port: NATS_PORT }, () => {
     console.log(`Connected to NATS at ${NATS_HOST}:${NATS_PORT}`);
-    client.write('CONNECT {"verbose":false}\r\n');
+    // ADR-0026 #73 — auth via NATS_USER + NATS_PASSWORD when set, anon otherwise.
+    const u = process.env.NATS_USER || '';
+    const p = process.env.NATS_PASSWORD || '';
+    const connectPayload = (u && p)
+      ? `CONNECT {"verbose":false,"user":"${u.replace(/"/g, '\\"')}","pass":"${p.replace(/"/g, '\\"')}"}\r\n`
+      : 'CONNECT {"verbose":false}\r\n';
+    client.write(connectPayload);
 
     const msgs = [
       ['KANNAKA.consciousness', payloads.consciousness],
