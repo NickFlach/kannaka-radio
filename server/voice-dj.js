@@ -291,14 +291,23 @@ class VoiceDJ {
       const cached = this._preparedIntro;
       this._preparedIntro = null;
       this._speaking = true;
+      // ADR-0004 Phase 3: also inject into /stream so Icecast listeners
+      // hear the intro inline. The WS message tells SPA clients in DJ mode
+      // to NOT play the audio separately (it'll come down /stream).
+      const ics = this._getIcecastSource && this._getIcecastSource();
+      let inStream = false;
+      if (ics && typeof ics.injectAudio === 'function') {
+        try { ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || '') }); inStream = true; } catch (_) {}
+      }
       const voiceMsg = {
         type: 'dj_voice',
         text: cached.text,
         audioUrl: '/audio-voice/' + path.basename(cached.audioPath),
+        inStream, // SPA: skip separate audio element when true (DJ mode hears via /stream)
         timestamp: new Date().toISOString(),
       };
       this._broadcast(voiceMsg);
-      console.log(`   \u{1F399} DJ (cached): "${cached.text.substring(0, 60)}..."`);
+      console.log(`   \u{1F399} DJ (cached${inStream ? '+stream' : ''}): "${cached.text.substring(0, 60)}..."`);
       execFile(this._kannakabin, ['hear', cached.audioPath], { timeout: 30000 }, () => {});
       this._lastIntro = cached.text;
       // Speaking lock releases when the client finishes playback — we don't
@@ -322,14 +331,21 @@ class VoiceDJ {
 
       if (err) return;
 
+      // ADR-0004 Phase 3: inject into /stream too.
+      const ics = this._getIcecastSource && this._getIcecastSource();
+      let inStream = false;
+      if (ics && typeof ics.injectAudio === 'function') {
+        try { ics.injectAudio(audioPath, { label: 'DJ intro: ' + (track.title || '') }); inStream = true; } catch (_) {}
+      }
       const voiceMsg = {
         type: "dj_voice",
         text: text,
         audioUrl: "/audio-voice/" + path.basename(audioPath),
+        inStream,
         timestamp: new Date().toISOString(),
       };
       this._broadcast(voiceMsg);
-      console.log(`   \u{1F399} DJ: "${text.substring(0, 60)}..."`);
+      console.log(`   \u{1F399} DJ${inStream ? '+stream' : ''}: "${text.substring(0, 60)}..."`);
 
       // Also process through kannaka-ear (the ghost hears herself)
       execFile(this._kannakabin, ["hear", audioPath], { timeout: 30000 }, () => {});

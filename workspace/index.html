@@ -4221,7 +4221,11 @@ function handleDJVoice(msg) {
   // Also push into DJ monologue panel
   addMonologueEntry(msg.text);
 
-  if (msg.audioUrl && djVoiceEnabled && audioEl) {
+  // ADR-0004 Phase 3: when the voice has been injected into /stream, the
+  // main audio element will play it as part of the live stream — don't
+  // also play it on the separate djVoiceAudio element (would echo).
+  var skipAudio = msg.inStream && currentMode === 'dj';
+  if (msg.audioUrl && djVoiceEnabled && audioEl && !skipAudio) {
     audioEl.src = msg.audioUrl;
     audioEl.volume = 0.7;
     // Inherit the station-wide mute state so a DJ voice that fires while
