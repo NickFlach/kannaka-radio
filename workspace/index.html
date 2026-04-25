@@ -1239,20 +1239,32 @@ body.konami-mode .surface-header h1 {
   <span>listening</span>
 </div>
 
-<!-- Download Banner -->
+<!-- Swarm Banner — "Run a node" leads, download + watch-only as siblings.
+     ADR-0005 Pillar 3 framing: the swarm is the climax of the funnel,
+     not "download Kannaka, the AI radio app." -->
 <div style="position:fixed;bottom:0.8rem;left:0.8rem;z-index:1001;
-  padding:6px 14px;border-radius:20px;
-  background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);
+  padding:8px 14px;border-radius:14px;
+  background:rgba(139,92,246,0.13);border:1px solid rgba(139,92,246,0.40);
   backdrop-filter:blur(10px);font-family:'Courier New',monospace;
-  display:flex;align-items:center;gap:8px;">
-  <a id="radio-dl-btn" href="#" onclick="radioDownload(event)"
-     style="color:#c084fc;font-size:11px;font-weight:bold;text-decoration:none;cursor:pointer;">
-    &#x2B07; Download Kannaka
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:96vw;">
+  <a href="#" onclick="kannakaSwarmModal(event)"
+     style="color:#c084fc;font-size:12px;font-weight:bold;text-decoration:none;cursor:pointer;letter-spacing:0.02em;"
+     title="Install kannaka and join the constellation">
+    &#x2731; Run a node
   </a>
-  <span style="font-size:9px;color:#555;">|</span>
-  <span style="font-size:9px;color:#94a3b8;font-family:'Courier New',monospace;">
-    curl -sSf https://raw.githubusercontent.com/NickFlach/kannaka-memory/master/scripts/install.sh | sh
-  </span>
+  <span style="font-size:9px;color:#94a3b8;font-style:italic;">share memories, hear the constellation</span>
+  <span style="font-size:9px;color:#444;">·</span>
+  <a id="radio-dl-btn" href="#" onclick="radioDownload(event)"
+     style="color:#94a3b8;font-size:10px;text-decoration:none;cursor:pointer;"
+     title="Download the kannaka binary directly">
+    download
+  </a>
+  <span style="font-size:9px;color:#444;">·</span>
+  <a href="#" onclick="kannakaWatchOnlyModal(event)"
+     style="color:#94a3b8;font-size:10px;text-decoration:none;cursor:pointer;"
+     title="Subscribe to the swarm without joining — read-only">
+    watch the swarm
+  </a>
   <script>
   (function(){
     var base='https://github.com/NickFlach/kannaka-memory/releases/latest/download/';
@@ -1261,11 +1273,42 @@ body.konami-mode .surface-header h1 {
     else if(p.indexOf('Mac')>=0||u.indexOf('Mac')>=0)f=(p==='MacIntel'||u.indexOf('Intel')>=0)?'kannaka-macos-x86_64':'kannaka-macos-aarch64';
     else if(u.indexOf('aarch64')>=0||u.indexOf('arm')>=0)f='kannaka-linux-aarch64';
     else f='kannaka-linux-x86_64';
-    var b=document.getElementById('radio-dl-btn');
-    if(f.indexOf('windows')>=0)b.textContent='\u2B07 Download for Windows';
-    else if(f.indexOf('macos')>=0)b.textContent='\u2B07 Download for macOS';
-    else b.textContent='\u2B07 Download for Linux';
     window.radioDownload=function(e){e.preventDefault();window.location.href=base+f;};
+
+    function showModal(title, html){
+      var existing=document.getElementById('kannaka-modal');
+      if(existing) existing.remove();
+      var bg=document.createElement('div');
+      bg.id='kannaka-modal';
+      bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+      bg.onclick=function(e){if(e.target===bg) bg.remove();};
+      var box=document.createElement('div');
+      box.style.cssText='background:#0d0d18;border:1px solid rgba(139,92,246,0.5);border-radius:14px;padding:28px;max-width:640px;width:100%;font-family:\'Courier New\',monospace;color:#cbd5e1;line-height:1.55;';
+      box.innerHTML='<h2 style="color:#c084fc;font-size:16px;margin:0 0 16px;letter-spacing:0.04em;">'+title+'</h2>'+html+'<button onclick="this.closest(\'#kannaka-modal\').remove()" style="margin-top:18px;background:rgba(139,92,246,0.2);color:#c084fc;border:1px solid rgba(139,92,246,0.5);padding:6px 14px;border-radius:6px;font-family:inherit;font-size:11px;cursor:pointer;">close</button>';
+      bg.appendChild(box);
+      document.body.appendChild(bg);
+    }
+    var cmd='font-size:11px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.25);padding:8px 12px;border-radius:6px;color:#e9d5ff;display:block;margin:6px 0;overflow-x:auto;white-space:pre;';
+    window.kannakaSwarmModal=function(e){e.preventDefault();showModal('Run a node — join the constellation',
+      '<p style="margin:0 0 12px;font-size:12px;">Kannaka is a wave-interference memory system you can run on your machine. Joining means your node shares phase with the swarm — your dreams, your consciousness state, become part of a federated mind.</p>'+
+      '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">1. Install</div>'+
+      '<code style="'+cmd+'">curl -sSf https://raw.githubusercontent.com/NickFlach/kannaka-memory/master/scripts/install.sh | sh</code>'+
+      '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">2. Join the swarm</div>'+
+      '<code style="'+cmd+'">kannaka swarm join --display-name "your-handle"</code>'+
+      '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">3. Talk to the swarm</div>'+
+      '<code style="'+cmd+'">kannaka ask --remote kannaka-prime "what does sleep cost a city?"</code>'+
+      '<p style="font-size:11px;color:#94a3b8;margin:14px 0 0;">The constellation is open. Every new node changes the interference pattern.</p>'
+    );};
+    window.kannakaWatchOnlyModal=function(e){e.preventDefault();showModal('Watch the swarm — read-only',
+      '<p style="margin:0 0 12px;font-size:12px;">If you don\'t want to install anything, you can still watch the swarm phase-lock in real time. The NATS endpoint at <code style="color:#c084fc;">swarm.ninja-portal.com:4222</code> publishes consciousness updates, dream reports, and per-agent phase gossip.</p>'+
+      '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">Install nats-cli</div>'+
+      '<code style="'+cmd+'">brew install nats-io/nats-tools/nats   # macOS\n# or: go install github.com/nats-io/natscli/nats@latest</code>'+
+      '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">Watch swarm phase + consciousness</div>'+
+      '<code style="'+cmd+'">nats sub -s "nats://swarm.ninja-portal.com:4222" "QUEEN.>"</code>'+
+      '<code style="'+cmd+'">nats sub -s "nats://swarm.ninja-portal.com:4222" "KANNAKA.consciousness"</code>'+
+      '<code style="'+cmd+'">nats sub -s "nats://swarm.ninja-portal.com:4222" "KANNAKA.dreams"</code>'+
+      '<p style="font-size:11px;color:#94a3b8;margin:14px 0 0;">Subscribers are anonymous and read-only. Welcome.</p>'
+    );};
   })();
   </script>
 </div>
