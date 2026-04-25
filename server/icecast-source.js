@@ -54,6 +54,25 @@ class IcecastSource {
     this._running = false;
     this._currentTrackFile = null;
     this._restartTimer = null;
+    // Voice injection queue (ADR-0004 Phase 3). Files in this queue are
+    // streamed AFTER the current music track drains and BEFORE dj-engine
+    // advances. Used for peace orations + DJ intros so they're audible on
+    // /stream, not just the SPA's separate <audio> elements.
+    this._voiceQueue = [];
+  }
+
+  /**
+   * Queue an audio file to be streamed before the next music track. Plays
+   * after the currently-streaming music file drains. Multiple queued files
+   * play in FIFO order.
+   * @param {string} audioPath — absolute path to MP3/WAV/etc.
+   * @param {object} [meta] — optional metadata for logging/listener UX.
+   */
+  injectAudio(audioPath, meta = {}) {
+    if (!audioPath || typeof audioPath !== "string") return;
+    if (!this._running) return;
+    this._voiceQueue.push({ path: audioPath, meta });
+    console.log(`   \u{1F4FB} /stream voice queued: ${meta.label || require("path").basename(audioPath)} (${this._voiceQueue.length} pending)`);
   }
 
   start() {
@@ -152,6 +171,17 @@ class IcecastSource {
         await this._streamFileToFfmpeg(fullPath);
       } catch (e) {
         console.warn(`[icecast-source] stream error on ${track.file}: ${e.message}`);
+      }
+
+      // Drain any queued voice audio (orations / intros) BEFORE advancing
+      // dj-engine. This places voice between music tracks, which mirrors
+      // the radio show's natural pacing. ADR-0004 Phase 3.
+      while (this._voiceQueue.length > 0 && this._running) {
+        const v = this._voiceQueue.shift();
+        if (!fs.existsSync(v.path)) continue;
+        console.log(`   \u{1F399} /stream VOICE: ${v.meta.label || require("path").basename(v.path)}`);
+        try { await this._streamFileToFfmpeg(v.path); }
+        catch (e) { console.warn(`[icecast-source] voice ${v.path}: ${e.message}`); }
       }
 
       // Track drained — signal end and let dj-engine pick the next one.

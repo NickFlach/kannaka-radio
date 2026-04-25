@@ -214,6 +214,9 @@ class VoiceDJ {
     this._voiceDir = opts.voiceDir;
     this._kannakabin = opts.kannakabin;
     this._broadcast = opts.broadcast;
+    // Optional Icecast source for inline voice injection on /stream.
+    // Lazy getter so wiring order in index.js doesn't matter.
+    this._getIcecastSource = opts.getIcecastSource || (() => null);
     this._getPerception = opts.getPerception;
     this._getHistory = opts.getHistory;
     this._isLive = opts.isLive;
@@ -471,6 +474,17 @@ class VoiceDJ {
 
       // Feed it back through the ear so Kannaka hears her own speech.
       execFile(this._kannakabin, ['hear', audioPath], { timeout: 60000 }, () => {});
+
+      // ADR-0004 Phase 3: also inject the oration into the /stream
+      // Icecast source so /stream listeners hear it inline (between music
+      // tracks). The SPA's separate audio element is still used for the
+      // legacy /audio path.
+      try {
+        const ics = this._getIcecastSource && this._getIcecastSource();
+        if (ics && typeof ics.injectAudio === 'function') {
+          ics.injectAudio(audioPath, { label: 'Kannaka — Peace Oration' });
+        }
+      } catch (_) {}
 
       // Remember it as a "monologue" so subsequent intros don't echo it.
       this._rememberMonologue(spokenText || text);

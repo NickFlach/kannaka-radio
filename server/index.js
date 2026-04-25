@@ -29,6 +29,10 @@ const { LiveBroadcast } = require("./live-broadcast");
 const { VoiceDJ } = require("./voice-dj");
 const { PeaceOration } = require("./peace-oration");
 const { IcecastSource } = require("./icecast-source");
+
+// Forward-declared so VoiceDJ's getIcecastSource closure can capture it.
+// Actually instantiated near the bottom of init.
+let icecastSource = null;
 const { SyncManager } = require("./sync-manager");
 const { VoteManager } = require("./vote-manager");
 const WebRTCSignaling = require("./webrtc-signaling");
@@ -249,6 +253,8 @@ const voiceDJ = new VoiceDJ({
   getHistory: () => djEngine.state.history,
   isLive: () => live.state.active,
   getChannel: () => djEngine.state.channel,
+  // Lazy: icecastSource is created later, so resolve on each call.
+  getIcecastSource: () => icecastSource,
 });
 
 const syncManager = new SyncManager();
@@ -567,7 +573,7 @@ deps.peaceOration = peaceOration;
 // the /stream Icecast mount directly — public listeners get exactly
 // what dj-engine says is playing. Default off so the existing SPA flow
 // keeps working unchanged. /preview (ffmpeg loop) stays as fallback.
-let icecastSource = null;
+// (icecastSource declared at module top so VoiceDJ can capture it.)
 if (process.env.KANNAKA_ICECAST_SOURCE === "1") {
   icecastSource = new IcecastSource({
     djEngine,
