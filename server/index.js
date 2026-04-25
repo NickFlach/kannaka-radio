@@ -153,6 +153,9 @@ const djEngine = new DJEngine({
       broadcastState();
       flux.publishTrackChange(actual);
       perception_.hearTrack(actual);
+      // Push the same metadata to Icecast so listeners on /preview see
+      // a Now-Playing update (ADR-0004 Phase 2 stopgap, no Liquidsoap).
+      try { require("./icecast-metadata").updateMetadata(actual); } catch (_) {}
       // Don't ride commercials with a DJ voice intro — ads are standalone
       // spoken content and the intro would double-up the speech.
       if (!actual.commercial) {
