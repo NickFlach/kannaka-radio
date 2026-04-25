@@ -135,10 +135,12 @@ class IcecastSource {
       }
     });
     this._ffmpeg.on("exit", (code, sig) => {
-      console.warn(`[icecast-source] ffmpeg exited (code=${code} sig=${sig}); restarting in 5s`);
+      // 15s delay: Icecast holds the source mount for source-timeout=10s
+      // after disconnect. Reconnecting sooner gets us 403 Forbidden.
+      console.warn(`[icecast-source] ffmpeg exited (code=${code} sig=${sig}); restarting in 15s`);
       this._ffmpeg = null;
       if (this._running) {
-        this._restartTimer = setTimeout(() => this._spawnFfmpeg(), 5000);
+        this._restartTimer = setTimeout(() => this._spawnFfmpeg(), 15000);
       }
     });
   }
