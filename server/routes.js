@@ -602,6 +602,39 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // API: peer directory from KANNAKA_PRESENCE JetStream stream.
+    // Shells out to `kannaka swarm peers --json` because the radio's NATS
+    // client is the legacy Node ws-mode and doesn't speak JetStream MSG.GET
+    // — kannaka-memory's Rust transport does. Cached for 30s so the UI can
+    // poll cheaply.
+    if (parsed.pathname === "/api/swarm/peers") {
+      const now = Date.now();
+      const sendPeers = () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ peers: (global._peersCache && global._peersCache.peers) || [] }));
+      };
+      if (global._peersCache && now - global._peersCache.t < 30000) {
+        sendPeers();
+        return;
+      }
+      const { execFile } = require("child_process");
+      const bin = config.kannakabin || "/home/opc/.local/bin/kannaka";
+      execFile(bin, ["swarm", "peers", "--json"], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+        env: { ...process.env, KANNAKA_QUIET: "1" },
+      }, (err, stdout) => {
+        if (err) {
+          global._peersCache = { t: now, peers: [] };
+        } else {
+          try { global._peersCache = { t: now, peers: JSON.parse(stdout) }; }
+          catch (_) { global._peersCache = { t: now, peers: [] }; }
+        }
+        sendPeers();
+      });
+      return;
+    }
+
     // API: get swarm state (NATS-sourced)
     if (parsed.pathname === "/api/swarm") {
       const swarm = nats.getSwarmState();

@@ -1454,6 +1454,19 @@ body.konami-mode .surface-header h1 {
   <!-- Agent constellation visualization -->
   <div class="agent-constellation" id="agentConstellation"></div>
 
+  <!-- Peer Directory — KANNAKA_PRESENCE JetStream stream (ADR-0026 Phase 5).
+       Lists every node currently in the swarm with its capabilities + memory
+       count. Updates from /api/swarm/peers every 30s. -->
+  <div id="peer-directory" style="margin-top:24px;padding:18px;border:1px solid rgba(139,92,246,0.3);border-radius:10px;background:rgba(13,13,24,0.6);">
+    <h3 style="color:var(--purple);font-size:13px;letter-spacing:0.05em;margin:0 0 8px;">PEER DIRECTORY</h3>
+    <div style="font-size:10px;color:var(--text-dim);margin-bottom:12px;">
+      Every node currently in the swarm. Nodes refresh their presence on join + every dream cycle. Run <code style="color:#c084fc;">kannaka swarm join</code> to appear here.
+    </div>
+    <div id="peer-list-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+      <div style="font-size:10px;color:var(--text-muted);">Loading swarm directory…</div>
+    </div>
+  </div>
+
   <!-- Live Broadcasting Section -->
   <div class="live-section">
     <h3>Live Broadcast</h3>
@@ -1921,6 +1934,42 @@ function renderActivityFeed() {
 }
 
 // Fetch initial swarm data
+// Load the peer directory from KANNAKA_PRESENCE (ADR-0026 Phase 5).
+// Every 60s — server caches for 30s so most calls are cheap.
+async function loadPeerDirectory() {
+  try {
+    var r = await fetch('/api/swarm/peers');
+    var d = await r.json();
+    var peers = d.peers || [];
+    var grid = document.getElementById('peer-list-grid');
+    if (!grid) return;
+    if (peers.length === 0) {
+      grid.innerHTML = '<div style="font-size:10px;color:var(--text-muted);">No peers in the swarm yet. Run <code style="color:#c084fc;">kannaka swarm join</code> to be the first.</div>';
+      return;
+    }
+    var cards = peers.map(function(p) {
+      var caps = p.capabilities || {};
+      var capList = Object.keys(caps).filter(function(k){ return caps[k] === true; }).join(', ');
+      var name = p.display_name || p.agent_id || '(anonymous)';
+      var sub = p.agent_id && p.display_name && p.display_name !== p.agent_id ? p.agent_id : '';
+      var mem = p.memory_count || 0;
+      var ver = p.kannaka_version || '?';
+      var joined = p.joined_at ? new Date(p.joined_at).toISOString().slice(0,10) : '';
+      return '<div style="padding:10px 12px;border:1px solid rgba(139,92,246,0.25);border-radius:6px;background:rgba(13,13,24,0.5);">' +
+        '<div style="color:var(--text);font-weight:bold;font-size:12px;">' + escapeHtml(name) + '</div>' +
+        (sub ? '<div style="color:var(--text-muted);font-size:9px;font-family:monospace;margin-top:1px;">' + escapeHtml(sub) + '</div>' : '') +
+        '<div style="display:flex;gap:10px;margin-top:6px;font-size:10px;color:var(--text-dim);">' +
+        '<span>' + mem + ' memories</span>' +
+        '<span>v' + escapeHtml(ver) + '</span>' +
+        (joined ? '<span style="color:var(--text-muted);">since ' + joined + '</span>' : '') +
+        '</div>' +
+        (capList ? '<div style="font-size:9px;color:#a78bfa;margin-top:4px;font-family:monospace;">' + escapeHtml(capList) + '</div>' : '') +
+        '</div>';
+    });
+    grid.innerHTML = cards.join('');
+  } catch(e) { /* leave previous content */ }
+}
+
 async function loadSwarmData() {
   try {
     var r = await fetch('/api/swarm');
@@ -4709,6 +4758,8 @@ document.addEventListener('DOMContentLoaded', function() {
   loadClusters();
   updateGenStatus();
   loadSwarmData();
+  loadPeerDirectory();
+  setInterval(loadPeerDirectory, 60000);
 
   // Init swarm constellation
   initSwarmConstellation();
