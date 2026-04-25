@@ -56,6 +56,59 @@ class BlueskyClient {
   }
 
   /**
+   * Search Bluesky posts. Used by the reply-listener (#18) to poll for
+   * candidates. Returns up to `limit` recent posts matching `query`.
+   * @returns {Promise<{ok:boolean, posts?:Array, error?:string}>}
+   */
+  async searchPosts(query, limit = 25) {
+    if (!this.isConfigured()) return { ok: false, error: "not_configured" };
+    try {
+      const session = await this._ensureSession();
+      const path = `/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(query)}&limit=${limit}&sort=latest`;
+      const resp = await _request("GET", path, null, {
+        "Authorization": "Bearer " + session.accessJwt,
+      });
+      if (resp.status !== 200) return { ok: false, error: `searchPosts ${resp.status}: ${resp.body.slice(0, 200)}` };
+      const data = JSON.parse(resp.body);
+      return { ok: true, posts: data.posts || [] };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  /**
+   * Post a reply. `parent` and `root` are { uri, cid } strongRefs. For
+   * top-level replies, root === parent. The thread root is what AT Protocol
+   * uses to anchor the conversation.
+   */
+  async reply(text, parent, root) {
+    if (!this.isConfigured()) return { ok: false, error: "not_configured" };
+    const trimmed = _truncateToLimit(text, POST_MAX_CHARS);
+    const facets = _detectUrlFacets(trimmed);
+    try {
+      const session = await this._ensureSession();
+      const record = {
+        $type: "app.bsky.feed.post",
+        text: trimmed,
+        createdAt: new Date().toISOString(),
+        langs: ["en"],
+        reply: { root, parent },
+      };
+      if (facets.length > 0) record.facets = facets;
+      const body = JSON.stringify({
+        repo: session.did,
+        collection: "app.bsky.feed.post",
+        record,
+      });
+      const resp = await _request("POST", "/xrpc/com.atproto.repo.createRecord", body, {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + session.accessJwt,
+      });
+      if (resp.status !== 200) return { ok: false, error: `reply ${resp.status}: ${resp.body.slice(0, 200)}` };
+      const data = JSON.parse(resp.body);
+      return { ok: true, uri: data.uri, cid: data.cid };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  /**
    * Post text to Bluesky. Auto-truncates to 300 chars and auto-detects URLs
    * to turn them into clickable facets.
    * @returns {Promise<{ok: boolean, uri?: string, cid?: string, error?: string}>}
