@@ -50,6 +50,13 @@ function _trySecp() {
   if (_secp !== null) return _secp;
   try {
     _secp = require("@noble/secp256k1");
+    // v3 expects callers to install a SHA-256 implementation. Wire Node's
+    // built-in crypto so the schnorr.sign path doesn't blow up with
+    // "hashes.sha256 not set". Older v1/v2 ignore the assignment.
+    if (_secp.hashes && !_secp.hashes.sha256) {
+      _secp.hashes.sha256 = (msg) =>
+        new Uint8Array(crypto.createHash("sha256").update(Buffer.from(msg)).digest());
+    }
   } catch (_) {
     _secp = false;
   }
