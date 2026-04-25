@@ -3002,27 +3002,41 @@ function applyState(s) {
 
       currentFile = c.file;
       var audio = document.getElementById('audio');
-      // External URLs (kax, suno, etc.) play directly; local files go through /audio/
-      if (c.file && /^https?:\/\//i.test(c.file)) {
+      // ADR-0004 Phase 4: In DJ mode, the canonical audio is the live
+      // Icecast /stream — server-driven, all listeners synced, no per-track
+      // file loads. Switch to /stream once and leave it alone; track changes
+      // only update the displayed metadata via the WS bus.
+      // Music mode (per-track library playback) and KAX/external URLs keep
+      // the old per-file path.
+      var streamUrl = '/stream';
+      var useStream = (currentMode === 'dj');
+      if (useStream) {
+        // Only re-set src if we're not already on /stream — avoid restarting
+        // the live audio every track-change.
+        if (!audio.src || audio.src.indexOf(streamUrl) < 0) {
+          audio.src = streamUrl;
+          audio.load();
+          audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+        }
+      } else if (c.file && /^https?:\/\//i.test(c.file)) {
         audio.src = c.file;
+        audio.load();
+        audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
       } else {
         audio.src = '/audio/' + encodeURIComponent(c.file);
+        audio.load();
+        // Seek to current track position (so refreshing listeners join in sync).
+        if (s.trackStartedAt) {
+          var elapsed = (Date.now() - s.trackStartedAt) / 1000;
+          audio.addEventListener('loadedmetadata', function seekOnce() {
+            if (elapsed > 0 && elapsed < audio.duration) {
+              audio.currentTime = elapsed;
+            }
+            audio.removeEventListener('loadedmetadata', seekOnce);
+          });
+        }
+        audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
       }
-      audio.load();
-      // In DJ mode, seek to the current position in the track before playing.
-      // The server sends trackStartedAt (ms timestamp). We compute how far
-      // into the track we should be so new/refreshing listeners join in sync
-      // instead of hearing the track restart from 0.
-      if (currentMode === 'dj' && s.trackStartedAt) {
-        var elapsed = (Date.now() - s.trackStartedAt) / 1000;
-        audio.addEventListener('loadedmetadata', function seekOnce() {
-          if (elapsed > 0 && elapsed < audio.duration) {
-            audio.currentTime = elapsed;
-          }
-          audio.removeEventListener('loadedmetadata', seekOnce);
-        });
-      }
-      audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
 
       // Tell the OS we're playing media so iOS/Android keep audio alive
       // when the screen locks and show lock-screen controls.
@@ -3292,6 +3306,14 @@ function setMode(mode) {
   // Switch server channel
   if (mode === 'dj') {
     setChannel('dj');
+    // ADR-0004 Phase 4: jump to the live Icecast stream as soon as DJ
+    // mode opens. Don't wait for a track-change WS message.
+    var djAudio = document.getElementById('audio');
+    if (djAudio && (!djAudio.src || djAudio.src.indexOf('/stream') < 0)) {
+      djAudio.src = '/stream';
+      djAudio.load();
+      djAudio.play().then(function(){ initAudioAnalyser(); }).catch(function(){});
+    }
   } else if (mode === 'music') {
     setChannel('music');
   }
@@ -4701,12 +4723,25 @@ function connectWS() {
 // ══════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', function() {
-  // Audio events — only auto-advance in DJ/Music modes (not podcast)
+  // Audio events — only auto-advance in DJ/Music modes (not podcast).
+  // ADR-0004 Phase 4: in DJ mode the audio src is /stream (Icecast),
+  // which never naturally 'ends' — server drives advancement. The 'ended'
+  // event in DJ mode means the stream dropped; reconnect instead of
+  // calling /api/next.
   document.getElementById('audio').addEventListener('ended', function() {
     if (_inTalkSegment) return;
     if (currentMode === 'podcast') return; // podcast has its own audio element
-    var source = (currentMode === 'dj') ? '?source=ended' : '';
-    fetch('/api/next' + source, {method:'POST'});
+    if (currentMode === 'dj') {
+      // Stream disconnect — try to reconnect to /stream after a short delay.
+      var a = document.getElementById('audio');
+      setTimeout(function() {
+        a.src = '/stream?reconnect=' + Date.now();
+        a.load();
+        a.play().catch(function(){});
+      }, 1500);
+      return;
+    }
+    fetch('/api/next', {method:'POST'});
   });
   document.getElementById('audio').addEventListener('play', function() { initAudioAnalyser(); });
   document.getElementById('audio').addEventListener('error', function(e) {
