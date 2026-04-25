@@ -22,6 +22,13 @@ $KANNAKA status 2>/dev/null >> "$LOG"
 # Push fresh metrics to NATS
 cd /home/opc/kannaka-radio && node push-nats.js >> "$LOG" 2>&1
 
+# Broadcast top exemplars to the swarm (ADR-0026 Phase 2 / #72).
+# Other agents running 'kannaka swarm absorb --from kannaka-prime' can
+# selectively pull these into their own HRM. Best-effort — failures
+# don't break the cron.
+echo "--- PUBLISHING EXEMPLARS ---" >> "$LOG"
+$KANNAKA swarm exemplars publish --agent-id kannaka-prime --top-k 25 --nats-url nats://127.0.0.1:4222 >> "$LOG" 2>&1
+
 # Draft and post a dream dispatch to Bluesky. The script reads the dream
 # log excerpt from stdin; failure is non-fatal for the cron (exit 0 if
 # credentials absent).
