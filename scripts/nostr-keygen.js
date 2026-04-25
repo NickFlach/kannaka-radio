@@ -28,7 +28,15 @@ function main() {
     process.exit(1);
   }
 
-  const priv = secp.utils.randomPrivateKey();
+  // @noble/secp256k1 renamed `utils.randomPrivateKey` → `utils.randomSecretKey`
+  // in v3. Support both API surfaces.
+  const randomKey = secp.utils.randomSecretKey || secp.utils.randomPrivateKey;
+  if (!randomKey) {
+    console.error("@noble/secp256k1 missing key-generation helper — got version "
+      + (secp.utils ? "(unknown)" : "(no utils)"));
+    process.exit(1);
+  }
+  const priv = randomKey();
   const pub = secp.schnorr.getPublicKey(priv);
   const privHex = Buffer.from(priv).toString("hex");
   const pubHex = Buffer.from(pub).toString("hex");
