@@ -28,6 +28,7 @@ const { FluxPublisher } = require("./flux-publisher");
 const { LiveBroadcast } = require("./live-broadcast");
 const { VoiceDJ } = require("./voice-dj");
 const { PeaceOration } = require("./peace-oration");
+const { IcecastSource } = require("./icecast-source");
 const { SyncManager } = require("./sync-manager");
 const { VoteManager } = require("./vote-manager");
 const WebRTCSignaling = require("./webrtc-signaling");
@@ -560,6 +561,28 @@ const peaceOration = new PeaceOration({
 peaceOration.start();
 // Expose admin-only trigger on the deps so a route or dev script can call it.
 deps.peaceOration = peaceOration;
+
+// ── Icecast Source (ADR-0004 Phase 2) ─────────────────────────
+// Opt-in via KANNAKA_ICECAST_SOURCE=1. When enabled, the radio drives
+// the /stream Icecast mount directly — public listeners get exactly
+// what dj-engine says is playing. Default off so the existing SPA flow
+// keeps working unchanged. /preview (ffmpeg loop) stays as fallback.
+let icecastSource = null;
+if (process.env.KANNAKA_ICECAST_SOURCE === "1") {
+  icecastSource = new IcecastSource({
+    djEngine,
+    getMusicDir: () => MUSIC_DIR,
+    onTrackEnd: (_track) => {
+      // The metadata is already pushed via onTrackChange when the next
+      // track loads; this hook exists for future use (analytics, etc.)
+    },
+  });
+  icecastSource.start();
+  console.log("\u{1F4FB} icecast-source: ENABLED on /stream");
+} else {
+  console.log("\u{1F4FB} icecast-source: disabled (set KANNAKA_ICECAST_SOURCE=1 to enable)");
+}
+deps.icecastSource = icecastSource;
 
 const first = djEngine.getCurrentTrack();
 if (first) {

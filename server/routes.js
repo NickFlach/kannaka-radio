@@ -272,6 +272,15 @@ module.exports = function setupRoutes(deps) {
           return;
         }
       }
+      // ADR-0004 Phase 2: when the Node-driven Icecast source owns the
+      // stream, IT is the authoritative track-advance signal. SPA's
+      // audio.ended → /api/next would race it and double-skip tracks.
+      // Acknowledge but don't advance.
+      if (deps.icecastSource && process.env.KANNAKA_ICECAST_SOURCE === "1") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, deferred: true, reason: "icecast_source_authoritative" }));
+        return;
+      }
       const track = djEngine.advanceTrack();
       config.broadcastState();
       console.log(`\u23ED Next: ${track?.title || "end"} (${track?.album || ""})`);
