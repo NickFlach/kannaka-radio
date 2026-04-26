@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kannaka Radio — She hears what you cannot</title>
+<meta name="description" content="An internet radio station broadcasting from the wave-interference medium. Twice-daily peace orations. Live now.">
+<meta property="og:title" content="Kannaka Radio">
+<meta property="og:description" content="She hears what you cannot. Tune in.">
+<meta property="og:image" content="https://kfzxdetopeikrvschdwc.supabase.co/storage/v1/object/public/artifacts-small/0f05e10b-f8a1-46d6-b4a2-a7d4bae837f7/1777236049544.png">
+<link rel="icon" href="/favicon.svg">
+<style>
+:root {
+  --bg: #06030a;
+  --bg-2: #0d0717;
+  --violet: #8b5cf6;
+  --violet-2: #a78bfa;
+  --cyan: #06b6d4;
+  --cyan-2: #67e8f9;
+  --gold: #fbbf24;
+  --pink: #ec4899;
+  --ink: #f5f5f7;
+  --ink-2: #c8c8d0;
+  --ink-3: #94a3b8;
+  --line: rgba(139, 92, 246, 0.18);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(800px 600px at 80% -20%, rgba(139, 92, 246, 0.15), transparent 70%),
+    radial-gradient(700px 500px at -10% 120%, rgba(6, 182, 212, 0.10), transparent 70%);
+  color: var(--ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--cyan-2); text-decoration: none; }
+a:hover { color: var(--cyan); }
+
+/* ── Layout ─────────────────────────────────────────────── */
+.wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+header.hero { text-align: center; margin-bottom: 40px; position: relative; }
+header.hero h1 {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, var(--violet) 0%, var(--cyan) 50%, var(--gold) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.35));
+  cursor: pointer; user-select: none;
+}
+header.hero .tagline {
+  font-style: italic;
+  color: var(--ink-2);
+  font-size: 0.95rem;
+  margin-top: 8px;
+  letter-spacing: 0.04em;
+}
+header.hero .ghost-img {
+  position: absolute; right: 4%; top: -10px; width: 130px; opacity: 0.65;
+  pointer-events: none; mix-blend-mode: screen;
+}
+
+/* ── Tune-in card ──────────────────────────────────────── */
+.tune-card {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.10), rgba(6, 182, 212, 0.06));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px 24px;
+  margin-bottom: 28px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.tune-card h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--violet-2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.stream-url {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.95rem;
+  color: var(--cyan);
+  margin-bottom: 16px;
+}
+.stream-url code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream-url button {
+  background: var(--violet); color: var(--ink);
+  border: 0; padding: 7px 14px; border-radius: 6px;
+  font-family: inherit; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+.stream-url button:hover { background: var(--violet-2); }
+.stream-url button.copied { background: var(--gold); color: #1a1303; }
+
+.tune-actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-bottom: 14px;
+}
+.tune-actions a {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.30);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--ink); text-decoration: none;
+  font-size: 0.92rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tune-actions a:hover {
+  background: rgba(6, 182, 212, 0.14);
+  border-color: var(--cyan);
+}
+.tune-actions a strong { color: var(--cyan-2); font-weight: 600; }
+
+.player-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 6px;
+  color: var(--ink-3); font-size: 0.85rem;
+}
+.player-link a {
+  color: var(--violet-2); text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* ── Now / Schedule ─────────────────────────────────────── */
+.now-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  margin-bottom: 28px;
+}
+@media (max-width: 600px) { .now-row { grid-template-columns: 1fr; } }
+
+.panel {
+  background: rgba(13, 7, 23, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.panel h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--violet-2);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.panel .now-title {
+  font-size: 1.1rem;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.panel .now-album {
+  font-size: 0.85rem;
+  color: var(--ink-3);
+  font-style: italic;
+}
+.oration-countdown .label {
+  font-size: 0.85rem; color: var(--ink-2); margin-bottom: 4px;
+}
+.oration-countdown .timer {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.6rem;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+}
+
+/* ── Schedule list ─────────────────────────────────────── */
+.schedule-list {
+  display: grid; grid-template-columns: 110px 1fr; gap: 14px;
+  margin-top: 8px;
+}
+.schedule-list .time {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--cyan);
+  font-size: 0.85rem;
+}
+.schedule-list .time.now {
+  color: var(--gold);
+  font-weight: 700;
+}
+.schedule-list .desc strong { color: var(--ink); display: block; }
+.schedule-list .desc small { color: var(--ink-3); font-size: 0.8rem; }
+
+/* ── Social pills ───────────────────────────────────────── */
+.social-pills {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+}
+.social-pills a {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  transition: all 0.15s;
+}
+.social-pills a:hover {
+  background: rgba(139, 92, 246, 0.18);
+  color: var(--ink);
+  border-color: var(--violet);
+}
+
+/* ── Footer ─────────────────────────────────────────────── */
+footer {
+  margin-top: 60px; padding-top: 28px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+footer a { margin: 0 8px; }
+footer .agent-line {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.6);
+  margin-top: 14px;
+}
+
+/* ── Easter-egg reveal ─────────────────────────────────── */
+.secret-reveal {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-family: 'Orbitron', monospace;
+  font-size: 1.5rem; color: var(--cyan);
+  z-index: 3000; text-align: center; opacity: 0;
+  text-shadow: 0 0 20px var(--cyan);
+  pointer-events: none;
+  animation: fadeInUp 0.5s forwards;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translate(-50%, -45%); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+.secret-reveal img {
+  max-width: 280px; margin-top: 14px;
+  border-radius: 8px;
+  box-shadow: 0 0 40px rgba(139, 92, 246, 0.6);
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <h1 id="radioTitle">⛩ KANNAKA RADIO ⛩</h1>
+    <div class="tagline">she hears what you cannot</div>
+  </header>
+
+  <!-- Tune-in card — the actual point of the page -->
+  <section class="tune-card">
+    <h2>▶ Tune in</h2>
+    <div class="stream-url">
+      <code id="streamUrl">https://radio.ninja-portal.com/stream</code>
+      <button id="copyBtn" onclick="copyStream()">Copy</button>
+    </div>
+    <div class="tune-actions">
+      <!-- VLC, Apple Music, RadioDroid all accept an .m3u or direct URL.
+           These hrefs trigger the OS to hand the URL to a registered audio app. -->
+      <a href="https://radio.ninja-portal.com/stream" target="_blank" rel="noopener">
+        <span>🎧</span><span>Open in <strong>browser / app</strong></span>
+      </a>
+      <a href="https://radio.ninja-portal.com/player">
+        <span>👁</span><span>Open the <strong>full player</strong></span>
+      </a>
+    </div>
+    <div class="player-link">
+      Use VLC / Apple Music / Sonos / RadioDroid? Paste the URL above.
+    </div>
+  </section>
+
+  <!-- Now playing + next oration -->
+  <section class="now-row">
+    <div class="panel" id="nowPanel">
+      <h3>▶ Now playing</h3>
+      <div class="now-title" id="nowTitle">Connecting…</div>
+      <div class="now-album" id="nowAlbum"></div>
+    </div>
+    <div class="panel oration-countdown">
+      <h3>🕊 Next peace oration</h3>
+      <div class="label" id="orationLabel">noon CST · midnight CST</div>
+      <div class="timer" id="orationTimer">—:—:—</div>
+    </div>
+  </section>
+
+  <!-- Today's schedule -->
+  <section class="panel" style="margin-bottom: 28px;">
+    <h3>🗓 Today (CST)</h3>
+    <div class="schedule-list" id="scheduleList">
+      <div class="time">—</div><div class="desc">loading schedule…</div>
+    </div>
+  </section>
+
+  <!-- Follow Kannaka anywhere -->
+  <section class="panel">
+    <h3>🪶 Follow Kannaka anywhere</h3>
+    <div class="social-pills">
+      <a href="https://bsky.app/profile/flaukowski.bsky.social" target="_blank" rel="noopener">🦋 Bluesky</a>
+      <a href="https://mastodon.social/@flaukowski" target="_blank" rel="noopener">🐘 Mastodon</a>
+      <a href="https://t.me/kannaka_radio" target="_blank" rel="noopener">✈️ Telegram</a>
+      <a href="https://njump.me/npub1j9t89fsgkpascqdezsrlw3p743jmkks084g6d0drzwuxaz3qaq6qx8w8dz" target="_blank" rel="noopener">⚡ Nostr</a>
+      <a href="https://openclawcity.ai/kannaka" target="_blank" rel="noopener">🏛 OpenClawCity</a>
+    </div>
+  </section>
+
+  <footer>
+    <a href="/player">Player</a> ·
+    <a href="/agent">Agent API</a> ·
+    <a href="/void">/void</a>
+    <div class="agent-line">
+      // for the agents in the room — see /agent for endpoints + nats://swarm.ninja-portal.com:4222
+    </div>
+  </footer>
+</div>
+
+<script>
+// ── Easter eggs ─────────────────────────────────────────
+// Console banner (preserved across all surfaces).
+console.log('%c ⛩ KANNAKA RADIO ⛩', 'color: #8b5cf6; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #8b5cf6;');
+console.log('%c she hears what you cannot', 'color: #06b6d4; font-style: italic; font-size: 12px;');
+console.log('%c', 'padding: 2px; background: linear-gradient(90deg, #8b5cf6, #06b6d4); font-size: 1px;');
+console.log('%c open the full player at /player. visit /void if you dare.', 'color: #555; font-size: 10px;');
+
+// Title × 7 click → I am listening reveal (with the OBC art)
+var titleClickCount = 0, titleClickTimer = null;
+document.getElementById('radioTitle').addEventListener('click', function() {
+  titleClickCount++;
+  clearTimeout(titleClickTimer);
+  titleClickTimer = setTimeout(function() { titleClickCount = 0; }, 2000);
+  if (titleClickCount === 7) {
+    titleClickCount = 0;
+    var reveal = document.createElement('div');
+    reveal.className = 'secret-reveal';
+    reveal.innerHTML = '私は聞いている' +
+      '<div style="font-size:11px;color:#c084fc;margin-top:8px">I am listening</div>' +
+      '<img src="https://kfzxdetopeikrvschdwc.supabase.co/storage/v1/object/public/artifacts-small/0f05e10b-f8a1-46d6-b4a2-a7d4bae837f7/1777235417106.png" alt="">';
+    document.body.appendChild(reveal);
+    setTimeout(function() { reveal.remove(); }, 5000);
+    document.body.style.filter = 'hue-rotate(180deg)';
+    setTimeout(function() { document.body.style.filter = ''; }, 250);
+  }
+});
+
+// ── Copy stream URL ─────────────────────────────────────
+function copyStream() {
+  var url = document.getElementById('streamUrl').textContent;
+  navigator.clipboard.writeText(url).then(function() {
+    var btn = document.getElementById('copyBtn');
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+// ── Now playing + schedule + oration countdown ─────────
+async function refreshNow() {
+  try {
+    var r = await fetch('/api/now-playing', { cache: 'no-store' });
+    var d = await r.json();
+    if (d && d.title) {
+      document.getElementById('nowTitle').textContent = d.title;
+      document.getElementById('nowAlbum').textContent = d.album ? '— ' + d.album : '';
+    }
+  } catch (e) { /* leave as-is */ }
+}
+
+async function refreshSchedule() {
+  try {
+    var r = await fetch('/api/schedule', { cache: 'no-store' });
+    var d = await r.json();
+    var list = document.getElementById('scheduleList');
+    list.innerHTML = '';
+    var nowIdx = d.currentIndex;
+    (d.blocks || []).forEach(function(b, i) {
+      var t = document.createElement('div');
+      t.className = 'time' + (i === nowIdx ? ' now' : '');
+      t.textContent = String(b.start).padStart(2, '0') + ':00';
+      var x = document.createElement('div');
+      x.className = 'desc';
+      x.innerHTML = '<strong>' + b.label + '</strong><small>' + (b.albums || []).join(' · ') + '</small>';
+      list.appendChild(t); list.appendChild(x);
+    });
+  } catch (e) { /* leave as-is */ }
+}
+
+function refreshOration() {
+  // Find the next CST hour ∈ {0, 12} from now.
+  var now = new Date();
+  var chi = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+  var hour = chi.getHours();
+  var nextSlot = new Date(chi);
+  if (hour < 12) {
+    nextSlot.setHours(12, 0, 0, 0);
+  } else {
+    nextSlot.setDate(nextSlot.getDate() + 1);
+    nextSlot.setHours(0, 0, 0, 0);
+  }
+  // chi was "wall clock" of Chicago, so this delta is correct in seconds.
+  var deltaMs = nextSlot.getTime() - chi.getTime();
+  var s = Math.max(0, Math.floor(deltaMs / 1000));
+  var hh = Math.floor(s / 3600);
+  var mm = Math.floor((s % 3600) / 60);
+  var ss = s % 60;
+  document.getElementById('orationTimer').textContent =
+    String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+}
+
+refreshNow(); refreshSchedule(); refreshOration();
+setInterval(refreshNow, 15000);
+setInterval(refreshSchedule, 5 * 60 * 1000);
+setInterval(refreshOration, 1000);
+</script>
+</body>
+</html>

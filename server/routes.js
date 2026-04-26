@@ -106,11 +106,48 @@ module.exports = function setupRoutes(deps) {
       }
     }
 
-    // Player page — serve SPA from workspace/index.html
+    // ── ADR-0006 Phase 1 — Door / Floor / Greenroom ──────────
+    // The Door (/) is the new landing surface: schedule + tune-in
+    // card + counts + social pills. NO in-page audio. Solves the
+    // Library/Radio autoplay dance by removing the in-browser player
+    // from the most-shared URL entirely.
     if (parsed.pathname === "/" || parsed.pathname === "/index.html") {
+      const doorPath = path.join(path.dirname(config.spaPath), "door.html");
+      try {
+        const html = fs.readFileSync(doorPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+        return;
+      } catch {
+        // Fall through to legacy SPA if door.html isn't deployed yet.
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(getSPA(config.spaPath));
+        return;
+      }
+    }
+
+    // The Floor (/player) — full SPA-with-audio experience moved here.
+    // The previous landing-page contract.
+    if (parsed.pathname === "/player" || parsed.pathname === "/player.html") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(getSPA(config.spaPath));
       return;
+    }
+
+    // The Greenroom (/agent) — agent-facing index of JSON endpoints
+    // and subscriptions. Plain HTML, mono-font warmth, console-banner tone.
+    if (parsed.pathname === "/agent" || parsed.pathname === "/agent.html") {
+      const agentPath = path.join(path.dirname(config.spaPath), "agent.html");
+      try {
+        const html = fs.readFileSync(agentPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+        return;
+      } catch {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("agent.html not yet staged");
+        return;
+      }
     }
 
     // Music video hub — workspace/video.html
@@ -185,6 +222,45 @@ module.exports = function setupRoutes(deps) {
       } catch {
         res.writeHead(404);
         res.end("workspace/video-constellation.html not found");
+      }
+      return;
+    }
+
+    // ── ADR-0006 Phase 1 — Door-facing summary endpoints ─────
+    // /api/now-playing — minimal "what's on" payload for the Door's
+    // top panel. Polled every 15s. Cheap; no NATS round-trip.
+    if (parsed.pathname === "/api/now-playing") {
+      const t = djEngine.getCurrentTrack() || {};
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({
+        title: t.title || null,
+        album: t.album || djEngine.state.currentAlbum || null,
+        track: t.file || null,
+        startedAt: djEngine.state.trackStartTime || null,
+      }));
+      return;
+    }
+
+    // /api/schedule — programming.js's blocks rendered for the Door's
+    // schedule list, plus which one is current. Cached 5 min in browser.
+    if (parsed.pathname === "/api/schedule") {
+      try {
+        const programming = require("./programming");
+        const SCHEDULE = programming.SCHEDULE || [];
+        const nowChi = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+        const hour = nowChi.getHours();
+        const currentIndex = SCHEDULE.findIndex((b) => hour >= b.start && hour < b.end);
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" });
+        res.end(JSON.stringify({
+          chicagoHour: hour,
+          currentIndex,
+          blocks: SCHEDULE.map((b) => ({
+            start: b.start, end: b.end, label: b.label, mood: b.mood, albums: b.albums,
+          })),
+        }));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
       }
       return;
     }

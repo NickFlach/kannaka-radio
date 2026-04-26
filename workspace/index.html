@@ -1325,7 +1325,48 @@ body.konami-mode .surface-header h1 {
 <!-- ═══════════════════════════════════════════
      LAYER 1: THE SURFACE
      ═══════════════════════════════════════════ -->
+<!-- ADR-0007 Tier 1: Kannaka rotates above the surface header.
+     model-viewer is lazy-loaded so it doesn't block first paint. -->
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.4.0/dist/model-viewer.min.js" defer></script>
+<style>
+  .kannaka-stage {
+    display: flex; justify-content: center; align-items: center;
+    margin: 0 auto 8px; height: 220px;
+    pointer-events: none;
+  }
+  .kannaka-stage model-viewer {
+    width: 220px; height: 220px;
+    pointer-events: auto;
+    --poster-color: transparent;
+    background: transparent;
+    filter: drop-shadow(0 0 24px rgba(139, 92, 246, 0.40));
+  }
+  body.konami-mode .kannaka-stage model-viewer {
+    filter: drop-shadow(0 0 28px rgba(255, 0, 128, 0.55));
+  }
+  @media (max-width: 600px) {
+    .kannaka-stage { height: 160px; }
+    .kannaka-stage model-viewer { width: 160px; height: 160px; }
+  }
+</style>
+
 <section class="layer" id="the-surface">
+  <div class="kannaka-stage">
+    <model-viewer
+      src="/models/kannaka-v4.glb"
+      alt="Kannaka, the medium"
+      auto-rotate
+      auto-rotate-delay="0"
+      rotation-per-second="18deg"
+      camera-controls
+      disable-zoom
+      shadow-intensity="0"
+      exposure="0.95"
+      interaction-prompt="none"
+      camera-orbit="0deg 80deg 1.4m"
+      style="--poster-color:transparent">
+    </model-viewer>
+  </div>
   <header class="surface-header">
     <h1 id="radioTitle">KANNAKA RADIO</h1>
     <div class="subtitle">experiencing music through a ghost's eyes</div>
@@ -1797,11 +1838,15 @@ function activateKonamiMode() {
   document.body.classList.toggle('konami-mode');
   var reveal = document.createElement('div');
   reveal.className = 'secret-reveal';
+  // ADR-0006 Phase 1: easter-egg art is the visual design language.
+  // The OBC pixel-art piece becomes the Konami reveal background.
   reveal.innerHTML = document.body.classList.contains('konami-mode')
-    ? '⛩ GHOST MODE ACTIVATED ⛩<br><span style="font-size:12px;color:#c084fc">the veil is thin tonight</span>'
+    ? '⛩ GHOST MODE ACTIVATED ⛩<br>' +
+      '<span style="font-size:12px;color:#c084fc">the veil is thin tonight</span>' +
+      '<img src="https://kfzxdetopeikrvschdwc.supabase.co/storage/v1/object/public/artifacts-small/0f05e10b-f8a1-46d6-b4a2-a7d4bae837f7/1777235099823.png" alt="" style="display:block;margin:14px auto 0;max-width:280px;border-radius:8px;box-shadow:0 0 40px rgba(255,0,128,0.6)">'
     : '⛩ RETURNING TO NORMAL ⛩';
   document.body.appendChild(reveal);
-  setTimeout(function() { reveal.remove(); }, 3000);
+  setTimeout(function() { reveal.remove(); }, document.body.classList.contains('konami-mode') ? 4500 : 2000);
 }
 
 // Title click easter egg
@@ -1813,7 +1858,10 @@ document.getElementById('radioTitle').addEventListener('click', function() {
     titleClickCount = 0;
     var reveal = document.createElement('div');
     reveal.className = 'secret-reveal';
-    reveal.innerHTML = '私は聞いている<br><span style="font-size:11px;color:#c084fc;margin-top:8px;display:block">I am listening</span>';
+    // 7-click → I am listening, paired with the OBC art piece (Charter ADR-0006).
+    reveal.innerHTML = '私は聞いている<br>' +
+      '<span style="font-size:11px;color:#c084fc;margin-top:8px;display:block">I am listening</span>' +
+      '<img src="https://kfzxdetopeikrvschdwc.supabase.co/storage/v1/object/public/artifacts-small/0f05e10b-f8a1-46d6-b4a2-a7d4bae837f7/1777235417106.png" alt="" style="display:block;margin:12px auto 0;max-width:260px;border-radius:8px;box-shadow:0 0 40px rgba(139,92,246,0.55)">';
     document.body.appendChild(reveal);
     setTimeout(function() { reveal.remove(); }, 3000);
     // Brief glitch effect
@@ -1824,7 +1872,9 @@ document.getElementById('radioTitle').addEventListener('click', function() {
 
 // /void route
 if (window.location.pathname === '/void') {
-  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;font-family:Orbitron,monospace;background:#000">' +
+  // The Void is the only easter egg with a permanent route. The cinematic
+  // OBC piece (d560e883) sits behind the glyph at low opacity per ADR-0006.
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;font-family:Orbitron,monospace;background:#000;background-image:url(https://kfzxdetopeikrvschdwc.supabase.co/storage/v1/object/public/artifacts-small/0f05e10b-f8a1-46d6-b4a2-a7d4bae837f7/1777237173877.png);background-size:cover;background-position:center;background-blend-mode:screen;background-color:rgba(0,0,0,0.92)">' +
     '<div style="font-size:4rem;margin-bottom:2rem;animation:ghostfloat 3s ease-in-out infinite">👁</div>' +
     '<div style="color:#8b5cf6;font-size:1rem;letter-spacing:6px;text-transform:uppercase">THE VOID STARES BACK</div>' +
     '<div style="color:#333;font-size:11px;margin-top:2rem;max-width:400px;text-align:center;line-height:1.8">' +
