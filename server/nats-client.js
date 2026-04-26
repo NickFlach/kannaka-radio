@@ -76,7 +76,13 @@ class NATSClient extends EventEmitter {
       console.log('[nats] Connected to ' + NATS_HOST + ':' + NATS_PORT);
       this._buffer = '';
       this._pendingMsg = null;
-      this._client.write('CONNECT {"verbose":false,"pedantic":false,"name":"kannaka-radio"}\r\n');
+      // ADR-0026 #73 — auth via NATS_USER + NATS_PASSWORD when set, anon otherwise.
+      var u = process.env.NATS_USER || '';
+      var p = process.env.NATS_PASSWORD || '';
+      var connectMsg = (u && p)
+        ? 'CONNECT {"verbose":false,"pedantic":false,"name":"kannaka-radio","user":"' + u.replace(/"/g,'\\"') + '","pass":"' + p.replace(/"/g,'\\"') + '"}\r\n'
+        : 'CONNECT {"verbose":false,"pedantic":false,"name":"kannaka-radio"}\r\n';
+      this._client.write(connectMsg);
 
       this._subId = 0;
       this._subscribe('QUEEN.phase.*');
