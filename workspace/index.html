@@ -1372,10 +1372,27 @@ body.konami-mode .surface-header h1 {
           <div class="dj-block" id="dj-block">&mdash;</div>
         </div>
         <div class="dj-mode-controls">
+          <button class="mute-btn" id="dj-play-btn" onclick="togglePlayMain()" style="background:rgba(139,92,246,0.25);font-weight:bold;">&#x25B6; Play</button>
           <button class="mute-btn" id="dj-mute-btn" onclick="toggleMute()">&#x1F50A; Mute</button>
           <input type="range" min="0" max="1" step="0.05" value="0.7"
                  oninput="setVolume(this.value)" class="volume-slider">
           <span class="live-badge">LIVE</span>
+        </div>
+        <!-- Listen From Anywhere — public stream URL for any music app -->
+        <div style="margin-top:14px;padding:10px 12px;border:1px solid rgba(139,92,246,0.3);border-radius:8px;background:rgba(13,13,24,0.5);font-family:'Courier New',monospace;font-size:11px;">
+          <div style="color:var(--text-muted);font-size:9px;margin-bottom:6px;letter-spacing:0.05em;">LISTEN FROM ANY MUSIC APP</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <code id="streamUrlText" style="color:#c084fc;flex:1;min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">https://radio.ninja-portal.com/stream</code>
+            <button onclick="copyStreamUrl(this)" style="background:rgba(139,92,246,0.2);color:#c084fc;border:1px solid rgba(139,92,246,0.4);border-radius:4px;padding:4px 10px;font-family:inherit;font-size:10px;cursor:pointer;">copy</button>
+          </div>
+          <div id="next-oration" style="color:var(--text-muted);font-size:9px;margin-top:6px;">Next peace oration: —</div>
+        </div>
+        <!-- Follow Kannaka — social presence across federated platforms -->
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;font-size:10px;">
+          <a href="https://bsky.app/profile/flaukowski.bsky.social" target="_blank" rel="noopener" style="color:#c084fc;text-decoration:none;padding:3px 8px;border:1px solid rgba(139,92,246,0.3);border-radius:4px;">Bluesky</a>
+          <a href="https://mastodon.social/@flaukowski" target="_blank" rel="noopener" style="color:#c084fc;text-decoration:none;padding:3px 8px;border:1px solid rgba(139,92,246,0.3);border-radius:4px;">Mastodon</a>
+          <a href="https://t.me/kannaka_radio" target="_blank" rel="noopener" style="color:#c084fc;text-decoration:none;padding:3px 8px;border:1px solid rgba(139,92,246,0.3);border-radius:4px;">Telegram</a>
+          <a href="https://njump.me/npub1j9t89fsgkpascqdezsrlw3p743jmkks084g6d0drzwuxaz3qaq6qx8w8dz" target="_blank" rel="noopener" style="color:#c084fc;text-decoration:none;padding:3px 8px;border:1px solid rgba(139,92,246,0.3);border-radius:4px;">Nostr</a>
         </div>
         <div class="dj-monologue" id="dj-monologue">
           <div class="dj-monologue-empty">Kannaka is your DJ &mdash; monologues appear here</div>
@@ -1467,8 +1484,8 @@ body.konami-mode .surface-header h1 {
     </div>
   </div>
 
-  <!-- Live Broadcasting Section -->
-  <div class="live-section">
+  <!-- Live Broadcasting Section (hidden — niche WebRTC feature, low ROI) -->
+  <div class="live-section" style="display:none">
     <h3>Live Broadcast</h3>
     <div class="live-status-badge" id="liveStatus">LIVE</div>
     <canvas class="live-waveform" id="liveWaveform" width="600" height="100"></canvas>
@@ -1510,7 +1527,7 @@ body.konami-mode .surface-header h1 {
   </div>
 
   <!-- Vote Next Track Section -->
-  <div class="vote-section" id="voteSection">
+  <div class="vote-section" id="voteSection" style="display:none">
     <h3>Vote Next Track</h3>
     <div class="vote-controls">
       <button class="vote-btn" id="startVoteBtn" onclick="startVoteWindow()">Open Voting (60s)</button>
@@ -3200,6 +3217,71 @@ function togglePlayPause() {
     audio.pause();
   }
 }
+
+// Big-button play/pause for the main /stream audio.
+function togglePlayMain() {
+  var a = document.getElementById('audio');
+  var btn = document.getElementById('dj-play-btn');
+  if (!a) return;
+  // If src isn't /stream yet (we're in DJ mode), set it.
+  if (currentMode === 'dj' && (!a.src || a.src.indexOf('/stream') < 0)) {
+    a.src = '/stream';
+    a.load();
+  }
+  if (a.paused) {
+    a.play().then(function(){ initAudioAnalyser(); if(btn) btn.textContent = '\u23F8 Pause'; }).catch(function(){});
+  } else {
+    a.pause();
+    if (btn) btn.textContent = '\u25B6 Play';
+  }
+}
+
+// Reflect play state on the button.
+(function syncPlayBtn() {
+  var t = setInterval(function() {
+    var a = document.getElementById('audio');
+    var btn = document.getElementById('dj-play-btn');
+    if (a && btn) { btn.textContent = a.paused ? '\u25B6 Play' : '\u23F8 Pause'; }
+  }, 1000);
+})();
+
+// One-tap copy of the public stream URL to clipboard.
+function copyStreamUrl(btn) {
+  var url = 'https://radio.ninja-portal.com/stream';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function() {
+      var orig = btn.textContent;
+      btn.textContent = 'copied!';
+      setTimeout(function() { btn.textContent = orig; }, 1500);
+    }).catch(function() {});
+  }
+}
+
+// "Next peace oration: 4h 12m" countdown — orations fire at 00:00 and
+// 12:00 America/Chicago. Compute time-to-next every minute.
+function updateNextOration() {
+  var el = document.getElementById('next-oration');
+  if (!el) return;
+  try {
+    var now = new Date();
+    // Get current Chicago time as Date.
+    var chiStr = now.toLocaleString('en-US', { timeZone: 'America/Chicago' });
+    var chi = new Date(chiStr);
+    var h = chi.getHours();
+    var m = chi.getMinutes();
+    // Minutes until next noon or midnight in Chicago.
+    var minsToNext;
+    if (h < 12) minsToNext = (12 - h) * 60 - m;
+    else minsToNext = (24 - h) * 60 - m;
+    if (minsToNext <= 0) minsToNext = 1;
+    var hh = Math.floor(minsToNext / 60);
+    var mm = minsToNext % 60;
+    var slot = (h < 12) ? 'noon' : 'midnight';
+    el.textContent = 'Next peace oration (' + slot + ' CST) in ' + hh + 'h ' + mm + 'm';
+  } catch (e) { el.textContent = 'Next peace oration: noon + midnight CST'; }
+}
+setInterval(updateNextOration, 60000);
+setTimeout(updateNextOration, 800);
 
 function toggleMute() {
   var audio = document.getElementById('audio');
