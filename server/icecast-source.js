@@ -109,10 +109,17 @@ class IcecastSource {
     const url = `icecast://${this._cfg.icecastUser}:${this._cfg.icecastPassword}@${this._cfg.icecastHost}:${this._cfg.icecastPort}${this._cfg.icecastMount}`;
     const args = [
       "-hide_banner",
-      "-re",                       // realtime input throttling
-      "-f", "mp3",                 // input format hint
-      "-i", "pipe:0",              // input from stdin
-      "-c:a", "copy",              // no re-encode; just relay
+      "-re",                              // realtime input throttling
+      "-f", "mp3",                        // input format hint
+      "-i", "pipe:0",                     // input from stdin
+      // Re-encode to a consistent output format. -c:a copy was tempting
+      // (no CPU) but voice files are 48kbps mono 24kHz while music is
+      // 128kbps stereo 44.1kHz — concatenating different formats breaks
+      // listeners. Re-encoding normalizes everything.
+      "-c:a", "libmp3lame",
+      "-b:a", "128k",
+      "-ar", "44100",
+      "-ac", "2",
       "-content_type", "audio/mpeg",
       "-ice_name", "Kannaka Radio",
       "-ice_description", "Live programming — dj-engine driven",

@@ -4786,6 +4786,29 @@ document.addEventListener('DOMContentLoaded', function() {
   // connects — any incoming state broadcast will fill in the metadata.
   initMediaSession();
 
+  // ADR-0004 Phase 4: pre-set the /stream src so the first user interaction
+  // (any click anywhere) can autoplay without us needing to flip modes.
+  // Chrome's autoplay policy requires a user gesture before audio.play()
+  // succeeds — without this priming, visitors had to hop Library → Radio
+  // before audio would start.
+  (function primeStreamAudio() {
+    var a = document.getElementById('audio');
+    if (a && (!a.src || a.src.indexOf('/stream') < 0)) {
+      a.src = '/stream';
+      a.load();
+      a.play().catch(function() {
+        // Autoplay blocked — install a one-time click primer.
+        var primer = function() {
+          a.play().then(function() { initAudioAnalyser(); }).catch(function() {});
+          document.removeEventListener('click', primer, true);
+          document.removeEventListener('touchstart', primer, true);
+        };
+        document.addEventListener('click', primer, true);
+        document.addEventListener('touchstart', primer, true);
+      });
+    }
+  })();
+
   // Connect
   connectWS();
 
