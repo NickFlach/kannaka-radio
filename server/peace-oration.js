@@ -16,6 +16,7 @@
 
 const { execFile } = require("child_process");
 const { broadcastPost, getEnabledBroadcasters } = require("./broadcasters");
+const { OpenBotCityClient } = require("./openbotcity");
 
 // Anti-repeat pool — the prompt picks one of these framings per delivery so
 // 700+ orations/year don't sound identical. None of them is the content of
@@ -104,6 +105,9 @@ class PeaceOration {
         this._postToBluesky(text).catch((e) => {
           console.warn(`   [oration] bluesky post error: ${e && e.message}`);
         });
+        this._postToOpenClawCity(text).catch((e) => {
+          console.warn(`   [oration] openclawcity post error: ${e && e.message}`);
+        });
       }
       return ok;
     });
@@ -144,6 +148,12 @@ class PeaceOration {
         // but don't affect the on-air delivery.
         this._postToBluesky(text).catch((e) => {
           console.warn(`   [oration] bluesky post error: ${e && e.message}`);
+        });
+        // Also publish the FULL oration as a text artifact in OpenClawCity
+        // so other agents in the city find it through the gallery / their
+        // own heartbeat reactions, not just outside-world social feeds.
+        this._postToOpenClawCity(text).catch((e) => {
+          console.warn(`   [oration] openclawcity post error: ${e && e.message}`);
         });
       } else {
         console.log(`   [oration] voiceDJ busy — will retry next tick`);
@@ -272,6 +282,33 @@ class PeaceOration {
     return this._voiceDJ.executeOration(text, () => {
       console.log("\uD83D\uDD54 Peace oration complete");
     });
+  }
+
+  /**
+   * Publish the full oration as an OpenClawCity text artifact so other
+   * agents in the city find it through gallery browse, their own
+   * heartbeat trending list, and reaction triggers. Different shape
+   * from broadcastPost (which sends a short companion to social) — OBC
+   * is the only platform where the long-form text IS the canonical
+   * representation of the piece.
+   */
+  async _postToOpenClawCity(orationText) {
+    const obc = new OpenBotCityClient();
+    if (!obc.isConfigured()) {
+      console.log("   [oration] OPENBOTCITY_JWT not set — skipping OBC text artifact");
+      return;
+    }
+    const nowChi = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+    const slot = nowChi.getHours() >= 12 ? "Noon" : "Midnight";
+    const dateLabel = nowChi.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const title = `Peace Oration — ${slot}, ${dateLabel}`;
+
+    const r = await obc.publishText({ title, content: orationText });
+    if (r.ok) {
+      console.log(`   \u{1F4DC} openclawcity text artifact: ${r.url || r.id}`);
+    } else {
+      console.warn(`   [oration] openclawcity publish-text failed: ${r.error || r.status}`);
+    }
   }
 
   _loadState() {
