@@ -4683,6 +4683,9 @@ function connectWS() {
   clearTimeout(wsReconnectTimer);
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host);
+  // ADR-0006 Phase 2: expose ws so the Floor module (which is its own
+  // <script> at end of body) can wrap onmessage / call ws.send().
+  window.ws = ws;
 
   ws.onopen = function() {
     document.getElementById('audio-dot').className = 'dot live';
@@ -5146,6 +5149,221 @@ document.addEventListener('DOMContentLoaded', function() {
   })();
 
 });
+</script>
+
+<!-- ══════════════════════════════════════════════════════
+     ADR-0006 Phase 2 — The Floor (crowd surface).
+     Self-contained module: an anonymous-id session, a small
+     bottom-right overlay (counter + vibe + reactions strip),
+     and floating reaction animations broadcast via the
+     existing radio WebSocket. Works without changing existing
+     layout — appended as the last script + style block.
+     ══════════════════════════════════════════════════════ -->
+<style>
+.floor-deck {
+  position: fixed; bottom: 18px; right: 18px;
+  z-index: 1500;
+  background: rgba(13, 7, 23, 0.78);
+  border: 1px solid rgba(139, 92, 246, 0.30);
+  border-radius: 14px;
+  padding: 12px 14px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  color: #f5f5f7;
+  min-width: 240px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.40);
+  user-select: none;
+  transition: opacity 0.3s;
+}
+.floor-deck h4 {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.18em;
+  color: #a78bfa; text-transform: uppercase;
+  margin: 0 0 8px 0;
+}
+.floor-counts {
+  font-size: 0.78rem; color: #c8c8d0; line-height: 1.5;
+  margin-bottom: 8px;
+}
+.floor-counts strong { color: #f5f5f7; font-weight: 700; }
+.floor-counts .agents { color: #fbbf24; }
+.floor-vibe {
+  height: 4px; border-radius: 2px;
+  background: rgba(148, 163, 184, 0.15);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.floor-vibe-bar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #06b6d4, #8b5cf6, #ec4899);
+  transition: width 0.6s ease-out;
+}
+.floor-react {
+  display: flex; gap: 4px; flex-wrap: wrap;
+}
+.floor-react button {
+  background: rgba(139, 92, 246, 0.10);
+  border: 1px solid rgba(139, 92, 246, 0.20);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.12s, background 0.12s, border-color 0.12s;
+  color: inherit;
+}
+.floor-react button:hover {
+  background: rgba(139, 92, 246, 0.22);
+  border-color: rgba(139, 92, 246, 0.55);
+  transform: translateY(-2px);
+}
+.floor-react button:active { transform: translateY(0) scale(0.94); }
+.floor-react button.cooldown { opacity: 0.4; pointer-events: none; }
+
+/* Floating reactions — emoji rises from a random horizontal point near the
+   deck and fades. Stays out of the way of the rest of the player. */
+.floor-float {
+  position: fixed;
+  bottom: 80px; right: 30px;
+  z-index: 1499;
+  font-size: 1.6rem;
+  pointer-events: none;
+  animation: floor-rise 2.6s cubic-bezier(.2,.7,.2,1) forwards;
+  text-shadow: 0 0 12px rgba(139, 92, 246, 0.55);
+}
+@keyframes floor-rise {
+  0%   { opacity: 0; transform: translate(0, 10px) scale(0.6); }
+  18%  { opacity: 1; transform: translate(0, -10px) scale(1.1); }
+  60%  { opacity: 1; transform: translate(var(--dx, 0), -110px) scale(1.0); }
+  100% { opacity: 0; transform: translate(var(--dx, 0), -200px) scale(0.85); }
+}
+@media (max-width: 600px) {
+  .floor-deck { left: 8px; right: 8px; bottom: 8px; min-width: 0; }
+  .floor-react button { padding: 8px 10px; font-size: 1.05rem; flex: 1; }
+}
+</style>
+
+<!-- The Floor panel itself, rendered into a corner of /player only. -->
+<aside class="floor-deck" id="floorDeck" aria-label="The Floor">
+  <h4>👁 In the room</h4>
+  <div class="floor-counts" id="floorCounts">
+    <strong id="floorHumans">0</strong> humans · <span class="agents"><strong id="floorAgents">0</strong> agents</span>
+  </div>
+  <div class="floor-vibe" title="vibe — rolling reactions/sec"><div class="floor-vibe-bar" id="floorVibeBar"></div></div>
+  <div class="floor-react" id="floorReactStrip">
+    <!-- Buttons inserted via JS so the emoji set stays a single source of truth. -->
+  </div>
+</aside>
+
+<script>
+(function() {
+  // Reactions vocabulary — must match server/floor.js REACTIONS set.
+  var EMOJI = ['🪶', '🕊', '⛩', '💫', '🌊', '🔥', '👁'];
+
+  // Persistent anonymous id so a refresh keeps the same dot.
+  var ID_KEY = 'kannaka.floor.id';
+  function ensureId() {
+    var id = localStorage.getItem(ID_KEY);
+    if (!id || !/^[a-f0-9]{8}$/.test(id)) {
+      id = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+      try { localStorage.setItem(ID_KEY, id); } catch (_) {}
+    }
+    return id;
+  }
+
+  var floorId = ensureId();
+  var lastReactAt = 0;
+  var REACT_COOLDOWN_MS = 700;  // light client-side throttle
+
+  // Build the reaction strip.
+  var strip = document.getElementById('floorReactStrip');
+  EMOJI.forEach(function(emoji) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = emoji;
+    btn.title = 'react: ' + emoji;
+    btn.addEventListener('click', function() { sendReact(emoji); });
+    strip.appendChild(btn);
+  });
+
+  function sendReact(emoji) {
+    var now = Date.now();
+    if (now - lastReactAt < REACT_COOLDOWN_MS) return;
+    lastReactAt = now;
+    if (window.ws && window.ws.readyState === 1) {
+      try {
+        window.ws.send(JSON.stringify({ type: 'floor_react', emoji: emoji }));
+      } catch (_) {}
+    }
+  }
+
+  // Floating-emoji animation. Spawns near the deck and rises with a slight horizontal drift.
+  function floatReaction(emoji) {
+    var el = document.createElement('div');
+    el.className = 'floor-float';
+    el.textContent = emoji;
+    var jitter = (Math.random() - 0.5) * 80;        // -40..+40 px
+    var rightOffset = 30 + Math.random() * 80;       // close to the deck
+    el.style.right = rightOffset + 'px';
+    el.style.setProperty('--dx', jitter + 'px');
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2700);
+  }
+
+  // Hook into the existing WebSocket. ws is set in the page's main connectWS().
+  // We re-decorate ws.onopen and ws.onmessage by wrapping rather than replacing
+  // so we don't disturb the existing message-routing logic.
+  function attach() {
+    if (!window.ws) { setTimeout(attach, 200); return; }
+    var ws = window.ws;
+    if (ws._floorAttached) return;
+    ws._floorAttached = true;
+
+    function joinIfOpen() {
+      if (ws.readyState === 1) {
+        try {
+          ws.send(JSON.stringify({ type: 'floor_join', id: floorId, kind: 'human' }));
+        } catch (_) {}
+      }
+    }
+    if (ws.readyState === 1) joinIfOpen();
+    var origOpen = ws.onopen;
+    ws.onopen = function(ev) {
+      if (typeof origOpen === 'function') origOpen.call(ws, ev);
+      joinIfOpen();
+    };
+
+    var origMessage = ws.onmessage;
+    ws.onmessage = function(ev) {
+      if (typeof origMessage === 'function') origMessage.call(ws, ev);
+      try {
+        var msg = JSON.parse(ev.data);
+        if (msg.type === 'floor_welcome') {
+          // Ack — could surface ID in console for the curious.
+          console.log('%c → Floor: welcome ' + msg.data.id + ' (' + msg.data.kind + ')', 'color:#a78bfa');
+          if (msg.data.vibe != null) updateVibe(msg.data.vibe);
+        } else if (msg.type === 'floor_presence') {
+          if (msg.data) updateCounts(msg.data);
+        } else if (msg.type === 'floor_reaction') {
+          if (msg.data && msg.data.emoji) floatReaction(msg.data.emoji);
+        } else if (msg.type === 'floor_vibe') {
+          if (msg.data) updateVibe(msg.data.vibe);
+        }
+      } catch (_) {}
+    };
+  }
+  setTimeout(attach, 100);
+
+  function updateCounts(d) {
+    var h = document.getElementById('floorHumans');
+    var a = document.getElementById('floorAgents');
+    if (h) h.textContent = (d.humans || 0);
+    if (a) a.textContent = (d.agents || 0);
+  }
+  function updateVibe(v) {
+    var bar = document.getElementById('floorVibeBar');
+    if (bar) bar.style.width = (Math.max(0, Math.min(1, v || 0)) * 100) + '%';
+  }
+})();
 </script>
 
 </body>

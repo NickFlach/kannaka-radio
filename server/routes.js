@@ -21,7 +21,7 @@ const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
  * @param {object}                                   deps.config
  */
 module.exports = function setupRoutes(deps) {
-  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, config, gsHub } = deps;
+  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub } = deps;
 
   // Listener tracking
   const listeners = {
@@ -61,7 +61,7 @@ module.exports = function setupRoutes(deps) {
   // Expose handleTrackRequest for WS message handling
   deps._handleTrackRequest = handleTrackRequest;
 
-  return function handleRequest(req, res) {
+  return async function handleRequest(req, res) {
     const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
     // Art directory listing
@@ -238,6 +238,36 @@ module.exports = function setupRoutes(deps) {
         track: t.file || null,
         startedAt: djEngine.state.trackStartTime || null,
       }));
+      return;
+    }
+
+    // /api/floor — current Floor snapshot (counts, vibe, recent histogram).
+    // Polled by the Door so even visitors who never enter /player can see
+    // the room is alive. No PII; ids are anonymous and ephemeral.
+    if (parsed.pathname === "/api/floor") {
+      if (!floor) { res.writeHead(503); res.end("{}"); return; }
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(floor.snapshot()));
+      return;
+    }
+
+    // /agent/react — POST { emoji, agentId? }. Lets agents (GossipGhost,
+    // Kannaktopus, anyone with the URL) drop a reaction onto the Floor.
+    // No auth — public read-only-ish surface. Rate-limit lives in the
+    // floor manager via the REACTIONS allowlist + the vibe rolling cap.
+    if (parsed.pathname === "/agent/react" && req.method === "POST") {
+      if (!floor) { res.writeHead(503); res.end("{}"); return; }
+      // readBody is callback-style: readBody(req, res, cb). Wrap it.
+      const body = await new Promise((resolve) => readBody(req, res, resolve));
+      try {
+        const payload = body ? JSON.parse(body) : {};
+        const result = floor.reactFromAgent({ emoji: payload.emoji, agentId: payload.agentId });
+        res.writeHead(result.ok ? 200 : 400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
       return;
     }
 

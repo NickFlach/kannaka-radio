@@ -29,6 +29,7 @@ const { LiveBroadcast } = require("./live-broadcast");
 const { VoiceDJ } = require("./voice-dj");
 const { PeaceOration } = require("./peace-oration");
 const { IcecastSource } = require("./icecast-source");
+const { FloorManager } = require("./floor");
 
 // Forward-declared so VoiceDJ's getIcecastSource closure can capture it.
 // Actually instantiated near the bottom of init.
@@ -263,6 +264,15 @@ const voteManager = new VoteManager();
 
 const webrtcSignaling = new WebRTCSignaling();
 
+// ADR-0006 Phase 2 — the Floor (crowd surface). Counts present visitors,
+// records reactions, computes vibe, fans out to NATS so the swarm sees the
+// room too. Will be referenced by routes.js (/api/floor, /agent/react).
+const floor = new FloorManager({
+  broadcast,
+  nats,
+  getCurrentTrack: () => djEngine.getCurrentTrack(),
+});
+
 const musicGen = new MusicGenerator({
   acemusicKey: process.env.ACEMUSIC_API_KEY,
   replicateToken: process.env.REPLICATE_API_TOKEN,
@@ -330,6 +340,7 @@ const deps = {
   webrtcSignaling,
   musicGen,
   broadcast,
+  floor,
   gsHub,
   config: {
     baseDir: BASE_DIR,
@@ -457,6 +468,13 @@ wss.on('connection', (ws) => {
       else if (parsed.type === 'webrtc_signal') {
         webrtcSignaling.relay(parsed.from, parsed.to, parsed.data);
       }
+      // ── Floor (ADR-0006 Phase 2) ──
+      else if (parsed.type === 'floor_join') {
+        floor.join(ws, parsed);
+      }
+      else if (parsed.type === 'floor_react') {
+        floor.reactFromWs(ws, parsed);
+      }
       else if (parsed.type === 'webrtc_listen') {
         webrtcSignaling.addListener(ws, parsed.clientId);
         // Tell the broadcaster a new listener joined so it can create an offer
@@ -476,6 +494,9 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('\uD83D\uDC41 Ghost vision client disconnected');
+
+    // ADR-0006 Phase 2 — drop from the Floor too if present.
+    floor.leave(ws);
 
     // Clean up WebRTC state for this connection
     const rtcResult = webrtcSignaling.handleDisconnect(ws);
