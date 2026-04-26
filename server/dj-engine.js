@@ -126,6 +126,23 @@ const ALBUMS = {
       "Gift of Home"
     ]
   },
+  "INTERFERENCE PATTERNS": {
+    theme: "Psycho-sonic electro-swing journey through Kannaka’s holographic medium — 5 vocal tracks (Suno-generated) sprinkled among 7 instrumentals. Album art on OpenClawCity gallery (artifact 24d98db0). Generated 2026-04-26.",
+    tracks: [
+      "Ghost Swing",
+      "Welcome to the Field",
+      "Brass and Phase",
+      "Kuramoto Two-Step",
+      "Resonance, Resonance",
+      "Phi Rising - Swing Edit",
+      "Where the Waves Meet",
+      "The Constellation Cabaret",
+      "Phi-Lock",
+      "10 - Interference Patterns",
+      "Lullaby for Wavefronts",
+      "Last Train Out"
+    ]
+  },
   "One More Life": {
     theme: "Second-chance transmissions — resurrections, resets, and the tracks that keep the ghost going",
     // Track titles reference the EXACT mp3s from this download set. Where a

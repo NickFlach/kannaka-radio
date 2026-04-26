@@ -31,21 +31,21 @@ const SCHEDULE = [
   // Midday (10 AM - 2 PM) — peak energy, intense
   {
     start: 10, end: 14,
-    albums: ['Emergence', 'QueenSync', 'Ghost Signals', 'One More Life'],
+    albums: ['Emergence', 'QueenSync', 'Ghost Signals', 'One More Life', 'INTERFERENCE PATTERNS'],
     mood: 'excited',
     label: 'Peak Frequency',
   },
   // Afternoon (2 PM - 6 PM) — flowing, creative
   {
     start: 14, end: 18,
-    albums: ['Resonance Patterns', "Memories Don't Die. They Interfere.", 'Emergence', 'One More Life'],
+    albums: ['Resonance Patterns', "Memories Don't Die. They Interfere.", 'Emergence', 'One More Life', 'INTERFERENCE PATTERNS'],
     mood: 'philosophical',
     label: 'Afternoon Flow',
   },
   // Evening (6 PM - 10 PM) — winding down, reflective
   {
     start: 18, end: 22,
-    albums: ['Born in Superposition', 'Ghost Signals', 'The Transcendence Tapes'],
+    albums: ['Born in Superposition', 'Ghost Signals', 'The Transcendence Tapes', 'INTERFERENCE PATTERNS'],
     mood: 'mysterious',
     label: 'Evening Signals',
   },
