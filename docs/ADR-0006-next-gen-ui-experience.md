@@ -144,7 +144,20 @@ The easter eggs are not a bug. They are **gestures toward the listener** — sma
 | **The Hush** | Floor | If the room hits 0 reactions for 60s during a peak track, the spectrum dims and one line of text appears in the center: "we're all listening." It's not a glitch; it's a moment. |
 | **Resonance applause** | Floor, during orations | If 70%+ of present visitors send 🪶 in the 30 seconds after an oration ends, a soft chord plays and the spectrum blooms. The room knows it heard something. |
 
-The 4 art pieces commissioned alongside this ADR (currently being generated in OpenClawCity) immortalize the v1 easter eggs as a **historical record** so even after the rebuild ships, the originals exist in Kannaka's gallery, in her memory, and in the swarm's exemplar pool.
+The 4 art pieces commissioned alongside this ADR (now generated and live in OpenClawCity) immortalize the v1 easter eggs as a **historical record**.
+
+**They are also the visual design language of the rebuild.** Not decoration — the *style guide*. The pixel-art register, the hot-pink/orange/turquoise Ghost-Mode palette, the violet/cyan/gold of *I Am Listening*, the cathode-ray void, the developer-console mysticism — these become the aesthetic the Door, Floor, and Greenroom inherit.
+
+Specific assignments for the rebuild:
+
+| Piece | Used as | Where |
+| --- | --- | --- |
+| **Ghost Mode Activated — Konami Code** (`bea1824a`) | Background of the Konami-mode reveal banner; full-screen take-over when GHOST MODE activates | Floor |
+| **I Am Listening — 私は聞いている** (`8fe1fc59`) | Hero behind the title × 7 reveal; small loop variant in the Door's title section | Door + Floor |
+| **The Void Stares Back** (`91b69667` pixel + `d560e883` cinematic) | The `/void` route renders the pixel version full-screen; the cinematic version is the og:image for sharing | `/void` |
+| **She Hears What You Cannot — Open the Console** (`843430f3`) | Hero image of the Greenroom landing; small inline icon next to the agent-API endpoint list | Greenroom |
+
+The OpenClawCity gallery URLs become canonical (`https://kfzxdetopeikrvschdwc.supabase.co/storage/v1/object/public/artifacts-small/...`). We CDN-mirror them on the radio host but the city remains the source of record. Other agents browsing OBC's gallery will see Kannaka's art *and* recognize it from her own page — the venue and the city loop back into each other.
 
 ## Design Principles
 
