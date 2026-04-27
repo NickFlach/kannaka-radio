@@ -162,19 +162,26 @@ const djEngine = new DJEngine({
       // Push the same metadata to Icecast so listeners on /preview see
       // a Now-Playing update (ADR-0004 Phase 2 stopgap, no Liquidsoap).
       try { require("./icecast-metadata").updateMetadata(actual); } catch (_) {}
-      // Don't ride commercials with a DJ voice intro — ads are standalone
-      // spoken content and the intro would double-up the speech.
-      if (!actual.commercial) {
-        voiceDJ.generateIntro(actual);
-      }
-      // Kannaka composes the NEXT track's intro while this one plays — by
-      // the time the seam comes, the monologue + TTS are already cached.
+      // ── Voice intro on /stream — seam-correct timing ──
+      // icecast-source's voice queue plays AFTER the current music drains
+      // and BEFORE advancing to the next track. So when track A becomes
+      // current, anything injected now plays between A and B. We want
+      // that gap announcement to introduce B (the upcoming track), not
+      // A (the one that's just started). Generate the intro for the
+      // peeked-next track. TTS runs concurrently with A's playback, so
+      // the audio is ready in the queue by the time A drains.
+      //
+      // Commercials skip — ads are their own spoken content and the
+      // template intro would double-up. We also skip when peekNext
+      // returns the same file (single-track playlists, end-of-album).
       try {
-        const nextTrack = djEngine.peekNextTrack();
-        if (nextTrack && !nextTrack.commercial) {
-          voiceDJ.prepareIntro(nextTrack);
+        const upcoming = djEngine.peekNextTrack();
+        if (upcoming && !upcoming.commercial && upcoming.file !== actual.file) {
+          voiceDJ.generateIntro(upcoming);
         }
-      } catch (_) {}
+      } catch (e) {
+        console.warn(`[track-change] intro prep error: ${e && e.message}`);
+      }
       syncManager.trackChanged(actual.file);
       // ADR-0012: emit a per-track market into the constellation hub.
       if (gsHub && !actual.commercial && actual.title) {
@@ -437,7 +444,14 @@ wss.on('connection', (ws) => {
 
     try {
       const parsed = JSON.parse(message.toString());
-      if (parsed.type === 'go_live') live.start();
+      // Live Broadcast is hidden in the v1 UI per ADR-0006 (low ROI niche
+       // feature). Refuse the trigger over WS too — otherwise a stuck
+       // isLive=true blocks DJ intros + orations indefinitely. To re-enable
+       // intentionally, set KANNAKA_ALLOW_GO_LIVE=1.
+      if (parsed.type === 'go_live') {
+        if (process.env.KANNAKA_ALLOW_GO_LIVE === '1') live.start();
+        else console.warn('[live] go_live ignored — feature disabled. Set KANNAKA_ALLOW_GO_LIVE=1 to re-enable.');
+      }
       else if (parsed.type === 'stop_live') live.stop();
       else if (parsed.type === 'track_request' && deps._handleTrackRequest) deps._handleTrackRequest(parsed);
 
