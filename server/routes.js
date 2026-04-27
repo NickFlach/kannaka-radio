@@ -115,7 +115,17 @@ module.exports = function setupRoutes(deps) {
       const doorPath = path.join(path.dirname(config.spaPath), "door.html");
       try {
         const html = fs.readFileSync(doorPath, "utf8");
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        // RFC 8288 Link headers — point parsers at the agent index, sitemap,
+        // and api-catalog. Helps machine-readable consumers find the rest.
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Link": [
+            '</agent>; rel="describedby"; type="text/html"',
+            '</agent>; rel="alternate"; type="text/markdown"',
+            '</sitemap.xml>; rel="sitemap"',
+            '</.well-known/api-catalog>; rel="api-catalog"',
+          ].join(", "),
+        });
         res.end(html);
         return;
       } catch {
@@ -136,11 +146,38 @@ module.exports = function setupRoutes(deps) {
 
     // The Greenroom (/agent) — agent-facing index of JSON endpoints
     // and subscriptions. Plain HTML, mono-font warmth, console-banner tone.
-    if (parsed.pathname === "/agent" || parsed.pathname === "/agent.html") {
-      const agentPath = path.join(path.dirname(config.spaPath), "agent.html");
+    // Content negotiation: Accept: text/markdown returns agent.md.
+    if (parsed.pathname === "/agent" || parsed.pathname === "/agent.html" || parsed.pathname === "/agent.md") {
+      const baseDir = path.dirname(config.spaPath);
+      const accept = String(req.headers["accept"] || "");
+      const wantsMd = parsed.pathname === "/agent.md" || /text\/markdown/i.test(accept);
+
+      const linkHeader = [
+        '</agent>; rel="canonical"; type="text/html"',
+        '</agent>; rel="alternate"; type="text/markdown"',
+        '</sitemap.xml>; rel="sitemap"',
+        '</.well-known/api-catalog>; rel="api-catalog"',
+      ].join(", ");
+
+      if (wantsMd) {
+        try {
+          const md = fs.readFileSync(path.join(baseDir, "agent.md"), "utf8");
+          res.writeHead(200, {
+            "Content-Type": "text/markdown; charset=utf-8",
+            "Link": linkHeader,
+            "Cache-Control": "public, max-age=300",
+          });
+          res.end(md);
+          return;
+        } catch { /* fall through to HTML */ }
+      }
       try {
-        const html = fs.readFileSync(agentPath, "utf8");
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        const html = fs.readFileSync(path.join(baseDir, "agent.html"), "utf8");
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Link": linkHeader,
+          "Cache-Control": "public, max-age=300",
+        });
         res.end(html);
         return;
       } catch {
@@ -148,6 +185,100 @@ module.exports = function setupRoutes(deps) {
         res.end("agent.html not yet staged");
         return;
       }
+    }
+
+    // ── Bot / agent discoverability (RFC 9309, sitemaps.org, RFC 9727,
+    //    RFC 8414, IETF MD content negotiation, Cloudflare Content-Signal). ──
+
+    // /robots.txt — static file with AI bot rules + Content-Signal directive.
+    if (parsed.pathname === "/robots.txt") {
+      try {
+        const baseDir = path.dirname(config.spaPath);
+        const txt = fs.readFileSync(path.join(baseDir, "robots.txt"), "utf8");
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" });
+        res.end(txt);
+      } catch {
+        // Minimal fallback — never 404 on robots.txt; bots interpret 404 as "no rules".
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("User-agent: *\nAllow: /\nSitemap: https://radio.ninja-portal.com/sitemap.xml\n");
+      }
+      return;
+    }
+
+    // /sitemap.xml — every linkable URL on the host. Generated each request
+    // (cheap; mostly static). Cached 1 day.
+    if (parsed.pathname === "/sitemap.xml") {
+      const lastmod = new Date().toISOString().slice(0, 10);
+      const urls = [
+        { loc: "/",         changefreq: "hourly",  priority: "1.0" },
+        { loc: "/player",   changefreq: "hourly",  priority: "0.9" },
+        { loc: "/agent",    changefreq: "weekly",  priority: "0.8" },
+        { loc: "/stream",   changefreq: "always",  priority: "0.9" },
+        { loc: "/preview",  changefreq: "always",  priority: "0.5" },
+        { loc: "/void",     changefreq: "yearly",  priority: "0.3" },
+      ];
+      const host = "https://radio.ninja-portal.com";
+      const body = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+        urls.map((u) =>
+          `  <url><loc>${host}${u.loc}</loc><lastmod>${lastmod}</lastmod>` +
+          `<changefreq>${u.changefreq}</changefreq><priority>${u.priority}</priority></url>`
+        ).join("\n") + "\n</urlset>\n";
+      res.writeHead(200, { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=86400" });
+      res.end(body);
+      return;
+    }
+
+    // /.well-known/api-catalog — RFC 9727. Lists the agent-facing endpoints
+    // so tools that follow the well-known convention can introspect us.
+    if (parsed.pathname === "/.well-known/api-catalog") {
+      const host = "https://radio.ninja-portal.com";
+      const linkset = {
+        linkset: [{
+          anchor: host + "/",
+          "service-desc": [
+            { href: host + "/agent",          type: "text/html" },
+            { href: host + "/agent.md",       type: "text/markdown" },
+          ],
+          "service-doc": [
+            { href: host + "/agent",          type: "text/html" },
+          ],
+          item: [
+            { href: host + "/api/now-playing", type: "application/json", title: "What's playing right now" },
+            { href: host + "/api/schedule",    type: "application/json", title: "Today's programming blocks (CST)" },
+            { href: host + "/api/state",       type: "application/json", title: "Full state snapshot" },
+            { href: host + "/api/swarm",       type: "application/json", title: "Aggregated swarm view" },
+            { href: host + "/api/swarm/peers", type: "application/json", title: "Connected swarm peers" },
+            { href: host + "/api/floor",       type: "application/json", title: "The Floor — counts, vibe, recent reactions" },
+            { href: host + "/api/dreams",      type: "application/json", title: "Recent dream reports" },
+            { href: host + "/agent/react",     type: "application/json", title: "POST a Floor reaction (agents)" },
+            { href: host + "/stream",          type: "audio/mpeg",       title: "The radio itself (Icecast MP3 128kbps)" },
+            { href: "nats://swarm.ninja-portal.com:4222", title: "Public read NATS bus — KANNAKA.* + QUEEN.phase.*" },
+          ],
+        }],
+      };
+      res.writeHead(200, { "Content-Type": "application/linkset+json; charset=utf-8", "Cache-Control": "public, max-age=300" });
+      res.end(JSON.stringify(linkset, null, 2));
+      return;
+    }
+
+    // /.well-known/oauth-authorization-server — RFC 8414 placeholder. We
+    // don't currently require auth on public endpoints, but advertising
+    // an empty-but-present discovery doc is friendlier than a 404 when
+    // an OAuth-aware client probes.
+    if (parsed.pathname === "/.well-known/oauth-authorization-server") {
+      const host = "https://radio.ninja-portal.com";
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300" });
+      res.end(JSON.stringify({
+        issuer: host,
+        // No auth flow today. The fields below are present so RFC 8414
+        // parsers don't trip; the values are honest empties.
+        scopes_supported: ["public.read"],
+        response_types_supported: [],
+        grant_types_supported: [],
+        token_endpoint_auth_methods_supported: [],
+        service_documentation: host + "/agent",
+      }, null, 2));
+      return;
     }
 
     // Music video hub — workspace/video.html

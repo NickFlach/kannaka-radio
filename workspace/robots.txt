@@ -1,0 +1,49 @@
+# Kannaka Radio — robots.txt
+# RFC 9309 (Robots Exclusion Protocol)
+#
+# Welcome, agents. The radio is meant for you too. Specific bot policies
+# below; the default is open with rate-limiting at the application layer.
+#
+# Sitemap is at /sitemap.xml. Machine-readable endpoints are documented
+# at /agent and discoverable via /.well-known/api-catalog (RFC 9727).
+
+User-agent: *
+Allow: /
+# Internal-only paths — not blocked, just unindexed.
+Disallow: /api/oration/now
+Disallow: /api/dreams/trigger
+
+# AI / training crawlers — explicitly allowed. We publish freely.
+# (If we ever want to opt out for a specific surface, list it here.)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+# Cloudflare Content-Signal — declares the intent of our content.
+# https://developers.cloudflare.com/bots/concepts/bot/content-signals/
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+Sitemap: https://radio.ninja-portal.com/sitemap.xml
