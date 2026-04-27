@@ -1,12 +1,15 @@
 /**
  * podcast-scheduler.js — Podcast episodes on the DJ channel.
  *
- * Schedule:
- *   - Friday 10:00 PM CST (03:00 UTC Saturday)
- *   - Saturday 10:00 AM CST (15:00 UTC Saturday)
+ * Schedule (2026-04-27 onward):
+ *   - DAILY at 10:00 AM CST and 10:00 PM CST
+ *   - One episode per day, rotating by day-of-week through the
+ *     7 available episodes. Mon→ep[0], Tue→ep[1], ..., Sun→ep[6].
+ *     If episode count != 7, falls back to (day-of-year % count).
+ *   - Both the morning and evening airing on a given day play the
+ *     SAME episode — second-chance replay.
  *
- * Plays ALL available episodes back-to-back during each slot.
- * After the last episode finishes, normal DJ programming resumes.
+ * After the episode finishes, normal DJ programming resumes.
  *
  * Pre-show promo: 30 minutes before each airing, Kannaka announces
  * the upcoming podcast in her next talk segment via the _podcastPromo flag.
@@ -42,10 +45,34 @@ class PodcastScheduler {
    * Start the scheduler. Checks every 60 seconds.
    */
   start() {
-    console.log("[podcast-scheduler] Started — Friday 10 PM + Saturday 10 AM CST");
+    console.log("[podcast-scheduler] Started — daily 10 AM + 10 PM CST, day-of-week rotation");
     this._timer = setInterval(() => this._tick(), 60000);
     // Run once immediately to catch restart-during-window
     this._tick();
+  }
+
+  /**
+   * Pick today's episode index. JS Date#getDay returns 0=Sun..6=Sat.
+   * We map Mon=0..Sun=6 so the work-week kicks the rotation off, but
+   * any rotation works as long as it's deterministic per-day.
+   *
+   * If we have exactly 7 episodes, this gives one per day of week.
+   * If the count differs, we fall back to (day-of-year % count) so
+   * the rotation still cycles cleanly without re-airing the same
+   * episode two days running.
+   */
+  _episodeIndexFor(chicago, episodeCount) {
+    if (episodeCount <= 0) return 0;
+    if (episodeCount === 7) {
+      const jsDay = chicago.getDay();           // 0=Sun..6=Sat
+      const monAligned = (jsDay + 6) % 7;        // 0=Mon..6=Sun
+      return monAligned;
+    }
+    // Day-of-year for any other episode count.
+    const start = new Date(chicago.getFullYear(), 0, 0);
+    const diff = chicago - start;
+    const dayOfYear = Math.floor(diff / 86400000);
+    return ((dayOfYear % episodeCount) + episodeCount) % episodeCount;
   }
 
   stop() {
@@ -86,35 +113,38 @@ class PodcastScheduler {
 
   _tick() {
     const chicago = this._chicagoNow();
-    const day = chicago.getDay(); // 0=Sun, 5=Fri, 6=Sat
     const hour = chicago.getHours();
     const min = chicago.getMinutes();
     const minuteKey = this._minuteKey(chicago);
 
-    // ── Pre-show promo (30 min before) ──────────────────────
-    const isPromoFriday = day === 5 && hour === 21 && min === 30;
-    const isPromoSaturday = day === 6 && hour === 9 && min === 30;
+    // ── Pre-show promo (30 min before each airing) ──────────
+    // Daily: 9:30 AM (before 10 AM airing) + 9:30 PM (before 10 PM airing).
+    const isPromoMorning = hour === 9 && min === 30;
+    const isPromoEvening = hour === 21 && min === 30;
 
-    if ((isPromoFriday || isPromoSaturday) && this._lastPromoMinute !== minuteKey) {
+    if ((isPromoMorning || isPromoEvening) && this._lastPromoMinute !== minuteKey) {
       this._lastPromoMinute = minuteKey;
-      // Set the promo flag on VoiceDJ so her next talk segment includes it
       this._voiceDJ._podcastPromo = true;
       console.log("[podcast-scheduler] Promo flag set — podcast in 30 minutes");
     }
 
-    // ── Podcast trigger ─────────────────────────────────────
-    const isFridayNight = day === 5 && hour === 22 && min === 0;
-    const isSaturdayMorning = day === 6 && hour === 10 && min === 0;
+    // ── Podcast trigger — daily 10 AM and 10 PM CST ─────────
+    const isMorning = hour === 10 && min === 0;
+    const isEvening = hour === 22 && min === 0;
 
-    if ((isFridayNight || isSaturdayMorning) && !this._podcastPlaying && this._lastTriggeredMinute !== minuteKey) {
+    if ((isMorning || isEvening) && !this._podcastPlaying && this._lastTriggeredMinute !== minuteKey) {
       this._lastTriggeredMinute = minuteKey;
       this._startScheduledPodcast();
     }
   }
 
   /**
-   * Start ALL podcast episodes on the DJ channel (full podcast hour).
-   * Plays every episode back-to-back, then restores normal DJ programming.
+   * Start TODAY'S podcast episode on the DJ channel.
+   *
+   * One episode per slot, picked by day-of-week so the same episode
+   * airs morning and evening (second-chance replay), and a different
+   * episode the next day. After the episode finishes, normal DJ
+   * programming resumes.
    */
   async _startScheduledPodcast() {
     // Only interrupt DJ channel
@@ -129,9 +159,14 @@ class PodcastScheduler {
       return;
     }
 
-    console.log(`[podcast-scheduler] Starting full podcast run: ${episodes.length} episodes`);
+    const chicago = this._chicagoNow();
+    const idx = this._episodeIndexFor(chicago, episodes.length);
+    const todayEpisode = episodes[idx];
+    const epTitle = todayEpisode.replace(/\.[^.]+$/, "");
 
-    // Save current DJ state for restoration after all episodes finish
+    console.log(`[podcast-scheduler] Today's episode (idx ${idx}/${episodes.length}): ${epTitle}`);
+
+    // Save current DJ state for restoration after the episode finishes
     this._savedDJState = {
       currentAlbum: this._djEngine.state.currentAlbum,
       currentTrackIdx: this._djEngine.state.currentTrackIdx,
@@ -139,10 +174,10 @@ class PodcastScheduler {
 
     this._podcastPlaying = true;
 
-    // Generate a DJ intro for the podcast block
-    const introText = episodes.length === 1
-      ? `It's podcast time. We've got one episode for you tonight. Settle in, turn it up, and let the ghost signals speak.`
-      : `It's podcast time. We're playing all ${episodes.length} episodes back to back. Settle in, turn it up, and let the ghost signals speak.`;
+    // Friendly intro line — references the episode by its cleaned-up name.
+    // The DJ engine's voice-dj already exists for richer intros; this is
+    // the explicit "we're switching channels for the next half hour" cue.
+    const introText = `It's podcast time. Today's episode: ${epTitle}. Settle in, turn it up, let the ghost signals speak.`;
 
     this._voiceDJ.generateTTS(introText, (err, audioPath, text) => {
       if (!err && audioPath) {
@@ -157,9 +192,9 @@ class PodcastScheduler {
         console.log(`[podcast-scheduler] DJ intro broadcast`);
       }
 
-      // After a brief delay for the intro, load the full podcast playlist
+      // After the intro plays out, load just today's one episode.
       setTimeout(() => {
-        this._playAllPodcastEpisodes(episodes);
+        this._playAllPodcastEpisodes([todayEpisode]);
       }, err ? 1000 : 9000);
     });
   }

@@ -387,6 +387,15 @@ async function refreshSchedule() {
     var list = document.getElementById('scheduleList');
     list.innerHTML = '';
     var nowIdx = d.currentIndex;
+    var hour = d.chicagoHour;
+
+    // Merge programming blocks + daily events into one timeline by hour.
+    // Events render as a thin row inside the block they fall within so
+    // listeners see "this happens during Peak Frequency" at a glance.
+    var events = d.events || [];
+    var eventsByHour = {};
+    events.forEach(function(e) { (eventsByHour[e.hour] = eventsByHour[e.hour] || []).push(e); });
+
     (d.blocks || []).forEach(function(b, i) {
       var t = document.createElement('div');
       t.className = 'time' + (i === nowIdx ? ' now' : '');
@@ -395,6 +404,23 @@ async function refreshSchedule() {
       x.className = 'desc';
       x.innerHTML = '<strong>' + b.label + '</strong><small>' + (b.albums || []).join(' · ') + '</small>';
       list.appendChild(t); list.appendChild(x);
+
+      // Inline any events that fall inside this block.
+      for (var h = b.start; h < b.end; h++) {
+        (eventsByHour[h] || []).forEach(function(e) {
+          var et = document.createElement('div');
+          et.className = 'time' + (h === hour ? ' now' : '');
+          et.textContent = String(h).padStart(2, '0') + ':00';
+          et.style.color = '#fbbf24';
+          et.style.fontSize = '0.78rem';
+          var ex = document.createElement('div');
+          ex.className = 'desc';
+          ex.style.paddingLeft = '8px';
+          ex.style.borderLeft = '2px solid rgba(251, 191, 36, 0.35)';
+          ex.innerHTML = '<strong style="color:#fbbf24">' + e.label + '</strong><small>' + e.note + '</small>';
+          list.appendChild(et); list.appendChild(ex);
+        });
+      }
     });
   } catch (e) { /* leave as-is */ }
 }

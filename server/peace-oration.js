@@ -125,7 +125,12 @@ class PeaceOration {
     const chi = new Date(now.toLocaleString("en-US", { timeZone: "America/Chicago" }));
     const hour = chi.getHours();
     const minute = chi.getMinutes();
-    if (minute > 1) return;                // only fire in the first 2 minutes of the hour
+    // Wider retry window — was 0..1, now 0..14. The original 2-minute slot
+    // lost the 2026-04-27 midnight oration when voiceDJ was busy at the
+    // first attempt and the window closed before it freed up. Fifteen
+    // minutes lets transient busy/ASK-failure states retry without losing
+    // the day. Once _lastFired[key] is set, this guard is moot.
+    if (minute > 14) return;
     if (hour !== 0 && hour !== 12) return; // only at midnight + noon
 
     const key = this._keyFor(chi, hour);

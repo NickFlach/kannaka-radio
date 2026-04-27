@@ -402,8 +402,10 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
-    // /api/schedule — programming.js's blocks rendered for the Door's
-    // schedule list, plus which one is current. Cached 5 min in browser.
+    // /api/schedule — programming.js's blocks for the Door's schedule
+    // list, plus daily events (peace orations, podcast slots) overlaid
+    // so the Door surfaces the things listeners actually plan around.
+    // Cached 5 min in the browser.
     if (parsed.pathname === "/api/schedule") {
       try {
         const programming = require("./programming");
@@ -411,6 +413,15 @@ module.exports = function setupRoutes(deps) {
         const nowChi = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
         const hour = nowChi.getHours();
         const currentIndex = SCHEDULE.findIndex((b) => hour >= b.start && hour < b.end);
+
+        // Daily events — recurrence keyed in Chicago time.
+        const events = [
+          { hour: 0,  label: "🕊 Peace Oration", kind: "oration", note: "midnight" },
+          { hour: 10, label: "🎙 Ghost Signals Podcast", kind: "podcast", note: "morning airing" },
+          { hour: 12, label: "🕊 Peace Oration", kind: "oration", note: "noon" },
+          { hour: 22, label: "🎙 Ghost Signals Podcast", kind: "podcast", note: "evening airing" },
+        ];
+
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" });
         res.end(JSON.stringify({
           chicagoHour: hour,
@@ -418,6 +429,7 @@ module.exports = function setupRoutes(deps) {
           blocks: SCHEDULE.map((b) => ({
             start: b.start, end: b.end, label: b.label, mood: b.mood, albums: b.albums,
           })),
+          events,
         }));
       } catch (e) {
         res.writeHead(500, { "Content-Type": "application/json" });

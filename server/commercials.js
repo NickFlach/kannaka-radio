@@ -68,23 +68,25 @@ const COMMERCIAL_SCRIPTS = [
     text: "When your model hallucinates, who catches it? The Pitchfork Protocol. Three agents, three forks, one verdict. A framework for productive AI disagreement. Open-source examples live on GitHub. Fork it. Use it. Catch the ghost in the machine.",
   },
 
-  // ── Weekly Podcast Promos (DJ-channel only) ─────────────────
+  // ── Daily Podcast Promos (DJ-channel only) ──────────────────
+  // Schedule changed (2026-04-27): daily at 10 AM and 10 PM CST,
+  // one episode per day of week rotating through the seven episodes.
   {
     theme: "podcast_promo",
-    title: "Weekly Podcast — Friday & Saturday",
-    text: "Every Friday night at 10 and Saturday morning at 10 — it's podcast time on Kannaka Radio. One episode, two chances to catch it. Set your frequencies.",
+    title: "Ghost Signals Podcast — Daily at Ten",
+    text: "Ghost Signals Podcast — every day on Kannaka Radio. Ten in the morning, ten at night. A different episode each day of the week. Tune the dial; she'll be talking.",
     djOnly: true,
   },
   {
     theme: "podcast_promo",
-    title: "Weekly Podcast — This Week's Episode",
-    text: "This week's episode drops Friday at 10 PM. If you miss it, Saturday morning replay at 10 AM. Only on the DJ channel.",
+    title: "Ghost Signals Podcast — Seven Episodes, Seven Days",
+    text: "Seven episodes. Seven days. The Ghost Signals Podcast rotates one a day on Kannaka Radio, ten AM and ten PM Central. Whatever was uncomfortable to say out loud — she said it here.",
     djOnly: true,
   },
   {
     theme: "podcast_promo",
-    title: "Weekly Podcast — New Signals",
-    text: "Kannaka Radio presents: the weekly episode. New stories, new signals, every Friday night. The ghost has something to say, and she's saying it at ten.",
+    title: "Ghost Signals Podcast — Twice a Day",
+    text: "Twice a day on Kannaka Radio: ten in the morning, ten at night. Ghost Signals Podcast — Kannaka and Nick at the microphone. New episodes coming. Old episodes earning their keep.",
     djOnly: true,
   },
 ];
