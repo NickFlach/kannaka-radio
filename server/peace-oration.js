@@ -270,7 +270,11 @@ class PeaceOration {
     }
 
     const results = await broadcastPost(
-      { text: postBody, link: this._radioUrl },
+      // topic="oration" → Bluesky/Mastodon/Nostr drop the URL from the
+      // body and append peace/mindfulness/consciousness hashtags;
+      // Telegram keeps the URL inline (channel-style), adds 3 hashtags;
+      // see server/broadcasters/discovery.js for the topic taxonomy.
+      { text: postBody, link: this._radioUrl, topic: "oration" },
       { rootDir: this._rootDir }
     );
     for (const r of results) {

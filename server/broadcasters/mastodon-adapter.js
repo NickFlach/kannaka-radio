@@ -22,6 +22,7 @@ const path = require("path");
 const { URL } = require("url");
 const https = require("https");
 const http = require("http");
+const { tagsFor, composeForFeed } = require("./discovery");
 
 const POST_MAX = 480; // 500 minus a safety margin for any auto-appended suffix
 
@@ -35,8 +36,12 @@ class MastodonAdapter {
     return !!(this._creds && this._creds.instance && this._creds.accessToken);
   }
 
-  async post({ text, link }) {
-    const status = _composeWithLink(text, link, POST_MAX);
+  async post({ text, link, topic }) {
+    // Mastodon discovery is hashtag-driven (no algorithm — local + federated
+    // timelines are pure hashtag streams). Drop the URL from the body
+    // (penalty + character cost) and append 4-5 hashtags as a footer.
+    const tags = tagsFor(topic, 5);
+    const status = composeForFeed(text, tags, POST_MAX);
     const url = new URL("/api/v1/statuses", this._creds.instance);
     const body = JSON.stringify({
       status,

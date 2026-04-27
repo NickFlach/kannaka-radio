@@ -22,6 +22,7 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
+const { tagsFor, composeForChat } = require("./discovery");
 
 const POST_MAX = 4000; // headroom under the real 4096
 
@@ -35,10 +36,14 @@ class TelegramAdapter {
     return !!(this._creds && this._creds.botToken && this._creds.chatId);
   }
 
-  async post({ text, link }) {
+  async post({ text, link, topic }) {
+    // Telegram is channel-based — no algorithm penalizing outbound links.
+    // Subscribers actively click. Keep the URL inline. Hashtags help
+    // people who follow #kannakaradio across channels.
+    const tags = tagsFor(topic, 3);
     const body = JSON.stringify({
       chat_id: this._creds.chatId,
-      text: _composeWithLink(text, link, POST_MAX),
+      text: composeForChat(text, link, tags, POST_MAX),
       // Plain text — markdown parsing is fragile when Kannaka's voice
       // includes literal asterisks for emphasis. Telegram auto-detects URLs.
       disable_web_page_preview: false,

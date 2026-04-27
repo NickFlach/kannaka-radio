@@ -86,13 +86,25 @@ class NostrAdapter {
     return true;
   }
 
-  async post({ text, link }) {
+  async post({ text, link, topic }) {
     if (!this.isEnabled()) return { ok: false, error: "not_configured" };
     const secp = _trySecp();
     const WS = _tryWS();
 
-    const content = _composeWithLink(text, link, POST_MAX);
-    const tags = link ? [["r", link]] : [];
+    // Nostr discovery (NIP-12): topic hashtags travel as `t` event tags,
+    // NOT in the body. Clients render topic feeds from these. URL stays
+    // out of the body too — relays + clients don't reward outbound links
+    // and the body should stay readable.
+    const { tagsFor, renderNostrTags } = require("./discovery");
+    const topicTags = tagsFor(topic, 5);
+
+    const content = _truncate((text || "").trim(), POST_MAX);
+    const tags = [
+      ...renderNostrTags(topicTags),
+      // Optional reference tag — clients that DO surface refs (rare on
+      // primary feeds) get the radio link, but it's not part of body.
+      ...(link ? [["r", link]] : []),
+    ];
     const created_at = Math.floor(Date.now() / 1000);
 
     const privkey = _hexToBytes(this._creds.privkey);
