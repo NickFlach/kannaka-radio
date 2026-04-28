@@ -1065,10 +1065,39 @@ class VoiceDJ {
       const args = ['ask', '--no-tools', '--quiet-tools'];
       if (recallQuery) args.push('--recall-query', recallQuery);
       args.push(prompt);
+      // Per-track DJ intros are high-volume (~12/hour) and don't need an
+      // LLM — the existing template-only fallback is instant, on-brand,
+      // and free. Default behavior: skip the ask call entirely, return
+      // null, let generateIntro fall back to the template path.
+      //
+      // To opt back in, set KANNAKA_DJ_LLM_PROVIDER (and optionally
+      // KANNAKA_DJ_LLM_MODEL / KANNAKA_DJ_LLM_BASE_URL) in the radio's
+      // env. Two reasonable choices:
+      //   anthropic — burns credits per track (~12 calls/hour); good if
+      //               you've got headroom and want richer copy.
+      //   ollama    — local, free, but viable only on hardware that can
+      //               actually run inference (NOT Oracle Cloud Free Tier
+      //               where qwen2.5:0.5b takes 200+ s for short replies).
+      //
+      // Orations (peace-oration.js) bypass this gate — they call the
+      // binary directly with default config, which means Anthropic.
+      const djProvider = process.env.KANNAKA_DJ_LLM_PROVIDER;
+      if (!djProvider) {
+        // Default path on every install: skip the ask, let the template
+        // fire instantly. Logged at debug-ish level — too chatty at info.
+        return resolve(null);
+      }
+      const djEnv = {
+        ...process.env,
+        KANNAKA_QUIET: '1',
+        KANNAKA_LLM_PROVIDER: djProvider,
+        KANNAKA_LLM_MODEL:    process.env.KANNAKA_DJ_LLM_MODEL    || (djProvider === 'ollama' ? 'qwen2.5:0.5b' : ''),
+        KANNAKA_LLM_BASE_URL: process.env.KANNAKA_DJ_LLM_BASE_URL || (djProvider === 'ollama' ? 'http://localhost:11434' : ''),
+      };
       const child = execFile(this._kannakabin, args, {
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
-        env: { ...process.env, KANNAKA_QUIET: '1' },
+        env: djEnv,
       }, (err, stdout) => {
         if (err) {
           // ETIMEDOUT/exit-code errors — fall through to template.
