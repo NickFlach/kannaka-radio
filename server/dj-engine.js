@@ -204,6 +204,41 @@ class DJEngine {
     // ad rotation is its own constraint).
     this._recentlyPlayed = new Map();
     this._noRepeatMs = 12 * 60 * 60 * 1000;
+    // Persisted to disk so restarts don't wipe the ledger — without
+    // persistence, every restart was a free pass to replay anything
+    // recent, defeating the no-repeat purpose.
+    this._recentsPath = require("path").join(
+      require("path").resolve(__dirname, ".."),
+      "workspace",
+      "recently-played.json"
+    );
+    this._loadRecents();
+  }
+
+  _loadRecents() {
+    try {
+      const fs = require("fs");
+      if (!fs.existsSync(this._recentsPath)) return;
+      const raw = JSON.parse(fs.readFileSync(this._recentsPath, "utf8"));
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      for (const [k, t] of Object.entries(raw || {})) {
+        if (typeof t === "number" && t >= cutoff) this._recentlyPlayed.set(k, t);
+      }
+      if (this._recentlyPlayed.size > 0) {
+        console.log(`   \u23F1 12h no-repeat: restored ${this._recentlyPlayed.size} recents from disk`);
+      }
+    } catch (_) { /* fall through — fresh ledger */ }
+  }
+
+  _saveRecents() {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      fs.mkdirSync(path.dirname(this._recentsPath), { recursive: true });
+      const obj = {};
+      for (const [k, t] of this._recentlyPlayed) obj[k] = t;
+      fs.writeFileSync(this._recentsPath, JSON.stringify(obj));
+    } catch (_) { /* best-effort; not fatal */ }
   }
 
   /** Stamp a track as just-played for the 12-hr ledger. */
@@ -216,6 +251,7 @@ class DJEngine {
     for (const [k, t] of this._recentlyPlayed) {
       if (t < cutoff) this._recentlyPlayed.delete(k);
     }
+    this._saveRecents();
   }
 
   /** True if this track was played within the no-repeat window. */
@@ -582,14 +618,27 @@ class DJEngine {
       }
     }
     // 12-hour no-repeat: filter out tracks heard within the cooldown.
-    // If filtering empties the list we fall back to the full set —
-    // small albums (1-2 tracks) shouldn't go silent when their only
-    // tracks are recent.
+    // If the filtered pool is too small (< MIN_POOL), fall back to the
+    // full album — otherwise advanceTrack loops on the 1-2 fresh tracks
+    // for 30+ min, which sounds far worse than the occasional repeat.
+    // A "small album" or a "mostly-played" album shouldn't get stuck.
+    const MIN_POOL = 3;
     const fresh = trackMetas.filter((t) => !this._onCooldown(t));
-    let pool = fresh.length > 0 ? fresh : trackMetas;
+    let pool;
+    let mode;
+    if (fresh.length >= MIN_POOL) {
+      pool = fresh;
+      mode = 'filtered';
+    } else {
+      pool = trackMetas;
+      mode = (fresh.length === 0) ? 'all-recent' : 'pool-too-small';
+    }
     const skipped = trackMetas.length - fresh.length;
-    if (skipped > 0 && fresh.length > 0) {
-      console.log(`   \u23F1 12h no-repeat: skipped ${skipped} of ${trackMetas.length} tracks already heard recently`);
+    if (skipped > 0) {
+      const tag = mode === 'filtered'
+        ? `filtered to ${pool.length}`
+        : `pool too small (${fresh.length}); reusing full album`;
+      console.log(`   \u23F1 12h no-repeat: ${skipped}/${trackMetas.length} recent — ${tag}`);
     }
     // Shuffle the album's (filtered) track order — Fisher-Yates.
     for (let i = pool.length - 1; i > 0; i--) {
