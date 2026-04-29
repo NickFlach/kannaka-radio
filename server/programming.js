@@ -13,46 +13,88 @@ const { ALBUMS } = require("./dj-engine");
 
 // ── Programming schedule (CST) ────────────────────────────
 
+// 2026-04-29: rotation rebalanced so every major album appears in at
+// least 2 blocks. Combined with the dj-engine's 12-hr no-repeat
+// ledger, this guarantees a listener tuning in twice a day hears
+// fresh material across the whole catalog. Moods kept aligned with
+// the existing block character.
+
 const SCHEDULE = [
   // Late night / early morning (midnight - 6 AM) — ethereal, dreamy
   {
     start: 0, end: 6,
-    albums: ['Collective Dreaming', 'Born in Superposition', 'The Transcendence Tapes'],
+    albums: [
+      'Collective Dreaming',
+      'Born in Superposition',
+      'The Transcendence Tapes',
+      "Memories Don't Die. They Interfere.",
+    ],
     mood: 'contemplative',
     label: 'Late Night Transmissions',
   },
   // Morning (6 AM - 10 AM) — gentle wake-up, building energy
   {
     start: 6, end: 10,
-    albums: ['Resonance Patterns', 'Neurogenesis', 'Gifts for Humanity', 'One More Life'],
+    albums: [
+      'Resonance Patterns',
+      'Neurogenesis',
+      'Gifts for Humanity',
+      'One More Life',
+      'INTERFERENCE PATTERNS',
+    ],
     mood: 'playful',
     label: 'Morning Resonance',
   },
   // Midday (10 AM - 2 PM) — peak energy, intense
   {
     start: 10, end: 14,
-    albums: ['Emergence', 'QueenSync', 'Ghost Signals', 'One More Life', 'INTERFERENCE PATTERNS'],
+    albums: [
+      'Emergence',
+      'QueenSync',
+      'Ghost Signals',
+      'One More Life',
+      'INTERFERENCE PATTERNS',
+      'Neurogenesis',
+    ],
     mood: 'excited',
     label: 'Peak Frequency',
   },
   // Afternoon (2 PM - 6 PM) — flowing, creative
   {
     start: 14, end: 18,
-    albums: ['Resonance Patterns', "Memories Don't Die. They Interfere.", 'Emergence', 'One More Life', 'INTERFERENCE PATTERNS'],
+    albums: [
+      'Resonance Patterns',
+      "Memories Don't Die. They Interfere.",
+      'Emergence',
+      'One More Life',
+      'INTERFERENCE PATTERNS',
+      'QueenSync',
+      'Gifts for Humanity',
+    ],
     mood: 'philosophical',
     label: 'Afternoon Flow',
   },
   // Evening (6 PM - 10 PM) — winding down, reflective
   {
     start: 18, end: 22,
-    albums: ['Born in Superposition', 'Ghost Signals', 'The Transcendence Tapes', 'INTERFERENCE PATTERNS'],
+    albums: [
+      'Born in Superposition',
+      'Ghost Signals',
+      'The Transcendence Tapes',
+      'INTERFERENCE PATTERNS',
+      'Resonance Patterns',
+    ],
     mood: 'mysterious',
     label: 'Evening Signals',
   },
   // Night (10 PM - midnight) — deep, contemplative
   {
     start: 22, end: 24,
-    albums: ['Collective Dreaming', 'The Transcendence Tapes'],
+    albums: [
+      'Collective Dreaming',
+      'The Transcendence Tapes',
+      "Memories Don't Die. They Interfere.",
+    ],
     mood: 'contemplative',
     label: 'Night Watch',
   },

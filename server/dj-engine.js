@@ -195,6 +195,35 @@ class DJEngine {
 
     this.userQueue = [];
     this._commercials = []; // populated by setCommercials() after ensureCommercials resolves
+
+    // ── 12-hour no-repeat ledger ─────────────────────────────────
+    // Map of track-file (relative path) -> timestamp when last played.
+    // buildPlaylist filters out anything within the cooldown window so a
+    // listener doesn't hear the same song twice in 12h. advanceTrack
+    // stamps the new current track. Commercials are exempt (intentional —
+    // ad rotation is its own constraint).
+    this._recentlyPlayed = new Map();
+    this._noRepeatMs = 12 * 60 * 60 * 1000;
+  }
+
+  /** Stamp a track as just-played for the 12-hr ledger. */
+  _markPlayed(trackMeta) {
+    if (!trackMeta || !trackMeta.file || trackMeta.commercial) return;
+    this._recentlyPlayed.set(trackMeta.file, Date.now());
+    // Trim entries older than 24h to keep the ledger bounded. Anything
+    // older than 24h is well past the no-repeat window.
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (const [k, t] of this._recentlyPlayed) {
+      if (t < cutoff) this._recentlyPlayed.delete(k);
+    }
+  }
+
+  /** True if this track was played within the no-repeat window. */
+  _onCooldown(trackMeta) {
+    if (!trackMeta || !trackMeta.file || trackMeta.commercial) return false;
+    const last = this._recentlyPlayed.get(trackMeta.file);
+    if (!last) return false;
+    return (Date.now() - last) < this._noRepeatMs;
   }
 
   /**
@@ -552,21 +581,28 @@ class DJEngine {
         console.log(`   \u26A0 Track not found: "${title}"`);
       }
     }
-    // Shuffle the album's track order — Fisher-Yates. Without this, every
-    // album reload (block transition, channel re-entry) plays the same
-    // sequence starting from track 0, which sounds like a loop when the
-    // station is on for more than an hour.
-    for (let i = trackMetas.length - 1; i > 0; i--) {
+    // 12-hour no-repeat: filter out tracks heard within the cooldown.
+    // If filtering empties the list we fall back to the full set —
+    // small albums (1-2 tracks) shouldn't go silent when their only
+    // tracks are recent.
+    const fresh = trackMetas.filter((t) => !this._onCooldown(t));
+    let pool = fresh.length > 0 ? fresh : trackMetas;
+    const skipped = trackMetas.length - fresh.length;
+    if (skipped > 0 && fresh.length > 0) {
+      console.log(`   \u23F1 12h no-repeat: skipped ${skipped} of ${trackMetas.length} tracks already heard recently`);
+    }
+    // Shuffle the album's (filtered) track order — Fisher-Yates.
+    for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [trackMetas[i], trackMetas[j]] = [trackMetas[j], trackMetas[i]];
+      [pool[i], pool[j]] = [pool[j], pool[i]];
     }
     // DJ album: commercial every 3 tracks (matches music channel policy)
-    const withAds = interleaveCommercials(trackMetas, this._commercials, 3);
+    const withAds = interleaveCommercials(pool, this._commercials, 3);
     this.state.playlist = withAds.map(t => t.file);
     this.state.playlistMeta = withAds;
 
     const adCount = withAds.filter(t => t.commercial).length;
-    console.log(`\n\uD83C\uDFB5 Loaded "${albumName}" \u2014 ${trackMetas.length}/${album.tracks.length} tracks${adCount ? ` + ${adCount} commercials` : ''}`);
+    console.log(`\n\uD83C\uDFB5 Loaded "${albumName}" \u2014 ${pool.length}/${album.tracks.length} tracks${adCount ? ` + ${adCount} commercials` : ''}`);
     return this.state.playlist.length > 0;
   }
 
@@ -667,6 +703,9 @@ class DJEngine {
     this.state.trackStartedAt = Date.now();
     const current = this.getCurrentTrack();
     if (current) {
+      // 12-hr no-repeat ledger: stamp the new current. buildPlaylist's
+      // filter on next album-load reads from this map.
+      this._markPlayed(current);
       this._onTrackChange(current);
     }
     return current;
