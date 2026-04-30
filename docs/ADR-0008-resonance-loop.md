@@ -64,10 +64,12 @@ nodes someday, they'll share crowd state through this subject.
 
 These were proposed in the Charter but not landed in this ADR:
 
-- **HRM re-absorption**: at each dream cycle, the top-N reacted tracks
-  get re-absorbed via `kannaka remember` with importance proportional
-  to the crowd response. Effect: the medium learns what the room
-  feels, not just what Nick or the radio fed it.
+- ~~**HRM re-absorption**~~ *(shipped 2026-04-30):* on `queen:dream:end`,
+  the radio takes the last-24h top reaction track from the Floor and
+  re-absorbs it via `kannaka remember` with importance scaled to the
+  reaction count (0.4..0.85). Throttled to once per 6h so frequent
+  dream cycles don't bloat the medium. The medium now learns what
+  the room *feels*, not just what was fed to it.
 - ~~**Oration framing pulled from morning's resonance**~~ *(shipped
   2026-04-30):* `_compose()` now folds the last-24h top reaction
   tracks into the prompt as optional context — Kannaka may, if it

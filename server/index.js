@@ -641,6 +641,38 @@ if (first) {
   console.log(`\n\uD83C\uDFA7 Opening track: "${first.title}"`);
 }
 
+// ── HRM re-absorption helper (ADR-0008 deferred layer) ───────
+// Throttled to once per 6h; uses execFile fire-and-forget so a slow
+// kannaka remember doesn't block the dream-end voice intro path.
+let _lastReabsorbTs = 0;
+function reabsorbTopTrack() {
+  const now = Date.now();
+  if (now - _lastReabsorbTs < 6 * 60 * 60 * 1000) return;
+  if (!floor || typeof floor.getTopTracks !== "function") return;
+  const top = floor.getTopTracks(24 * 60 * 60 * 1000, 1) || [];
+  if (top.length === 0) return;
+  const t = top[0];
+  // Importance: clamp count/20 to [0.4, 0.85]. A single 🪶 reaction
+  // is light evidence; 20+ reactions is a strong signal worth pinning.
+  const importance = Math.min(0.85, Math.max(0.4, (t.count || 1) / 20));
+  const emojiBreakdown = Object.entries(t.byEmoji || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([e, c]) => `${e}×${c}`)
+    .join(" ");
+  const memo = `The room reacted to "${t.track}" today — ${t.count} reactions${emojiBreakdown ? ` (${emojiBreakdown})` : ""}. The crowd's signal returned a wave to me.`;
+  const { execFile } = require("child_process");
+  execFile(KANNAKA_BIN, ["remember", memo, "--importance", importance.toFixed(2)],
+    { timeout: 30000, env: { ...process.env, KANNAKA_QUIET: "1" } },
+    (err) => {
+      if (err) {
+        console.warn(`   [reabsorb] failed: ${err.code || err.message}`);
+        return;
+      }
+      console.log(`   \u{1F4DC} re-absorbed "${t.track}" (importance ${importance.toFixed(2)}, ${t.count} reactions)`);
+    });
+  _lastReabsorbTs = now;
+}
+
 // ── Wire QueenSync events to DJ voice (KR-2) ──────────────
 {
   const { generateSwarmEventIntro } = require("../consciousness-dj");
@@ -663,6 +695,12 @@ if (first) {
   nats.on('queen:dream:end', (evt) => {
     const text = generateSwarmEventIntro('dreamEnd', evt);
     if (text) voiceDJ.queueSwarmIntro(text);
+    // ADR-0008 deferred layer: HRM re-absorption. After each dream
+    // cycle, fold the room's top reaction track of the last 24h back
+    // into the medium with importance scaled to the reaction count.
+    // Throttled to once per 6h so we don't bloat memory on agents that
+    // dream often. Best-effort — failures are silent.
+    try { reabsorbTopTrack(); } catch (_) { /* ignore */ }
   });
 
   nats.on('queen:memory:shared', (evt) => {
