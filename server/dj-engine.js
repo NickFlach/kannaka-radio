@@ -175,6 +175,11 @@ class DJEngine {
   constructor(opts) {
     this._getMusicDir = opts.getMusicDir;
     this._onTrackChange = opts.onTrackChange || (() => {});
+    // Phase 3 of ADR-0006 — feedback loop. The Floor (workspace/index.html)
+    // accumulates reactions per track; we read those stats here to bump
+    // high-resonance tracks toward the front of new playlists. Settable
+    // post-construction so the wiring order in index.js stays simple.
+    this._floorRef = null;
 
     this.state = {
       currentAlbum: null,
@@ -213,6 +218,15 @@ class DJEngine {
       "recently-played.json"
     );
     this._loadRecents();
+  }
+
+  /** Wire the FloorManager after both are constructed (Phase 3 loop). */
+  setFloor(floor) {
+    this._floorRef = floor;
+  }
+
+  _getFloorStats() {
+    return this._floorRef;
   }
 
   _loadRecents() {
@@ -645,6 +659,30 @@ class DJEngine {
       const j = Math.floor(Math.random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
+    // ── Phase 3 of ADR-0006 — Resonance Loop (soft-bump) ────
+    // Tracks the room reacted to in the last 6 hours rise toward the
+    // front of the playlist. We don't override the shuffle entirely
+    // (avoids stale-feeling rotation when one track gets locked in);
+    // we move the top-3 reacted tracks to positions 0-2 so the room's
+    // recent loves actually get heard sooner. No reactions, no change.
+    try {
+      const stats = this._getFloorStats?.() || null;
+      const top = (stats?.getTopTracks?.(6 * 60 * 60 * 1000, 3) || []).map(t => t.track);
+      if (top.length > 0) {
+        const promoted = [];
+        const remaining = [];
+        for (const tm of pool) {
+          if (top.includes(tm.title)) promoted.push(tm); else remaining.push(tm);
+        }
+        if (promoted.length > 0) {
+          // Preserve top-track ordering by reaction count (already sorted).
+          promoted.sort((a, b) => top.indexOf(a.title) - top.indexOf(b.title));
+          pool.length = 0;
+          pool.push(...promoted, ...remaining);
+          console.log(`   \u{1F525} resonance bump: ${promoted.map(t => t.title).join(', ')}`);
+        }
+      }
+    } catch (_) { /* feedback loop is best-effort; never block playlist build */ }
     // DJ album: commercial every 3 tracks (matches music channel policy)
     const withAds = interleaveCommercials(pool, this._commercials, 3);
     this.state.playlist = withAds.map(t => t.file);

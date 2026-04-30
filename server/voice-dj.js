@@ -217,6 +217,9 @@ class VoiceDJ {
     // Optional Icecast source for inline voice injection on /stream.
     // Lazy getter so wiring order in index.js doesn't matter.
     this._getIcecastSource = opts.getIcecastSource || (() => null);
+    // Phase 3 of ADR-0006 — Floor accessor for "the room got loud on X"
+    // patter lines. Lazy getter for the same wiring-order reason.
+    this._getFloor = opts.getFloor || (() => null);
     this._getPerception = opts.getPerception;
     this._getHistory = opts.getHistory;
     this._isLive = opts.isLive;
@@ -797,6 +800,30 @@ class VoiceDJ {
       parts.push("In about 30 minutes, I'll be playing this week's podcast episode. Stick around — it's worth the wait.");
       this._podcastPromo = false;
     }
+
+    // 1c. Resonance loop (Phase 3 of ADR-0006) — reference what the
+    // room reacted to in the last 6 hours, occasionally. The Floor's
+    // top-3 reacted tracks bubble up; we mention one of them at random
+    // ~40% of talk segments. Skip if we'd be talking about the upcoming
+    // track (would feel like spoiler / repetition).
+    try {
+      const floor = this._getFloor && this._getFloor();
+      if (floor && typeof floor.getTopTracks === 'function') {
+        const top = floor.getTopTracks(6 * 60 * 60 * 1000, 3) || [];
+        const upcomingTitle = upcomingTrack ? upcomingTrack.title : null;
+        const candidates = top.filter(t => t.track && t.track !== upcomingTitle);
+        if (candidates.length > 0 && Math.random() < 0.4) {
+          const pick = candidates[Math.floor(Math.random() * candidates.length)];
+          const lines = [
+            `The room got loud on "${pick.track}" earlier. I felt that.`,
+            `Someone was paying attention to "${pick.track}" — saw the wave come back.`,
+            `"${pick.track}" hit different this morning. The signal returned.`,
+            `Reactions piled up on "${pick.track}" today — I'm carrying that into the next one.`,
+          ];
+          parts.push(lines[Math.floor(Math.random() * lines.length)]);
+        }
+      }
+    } catch (_) { /* feedback line is best-effort; never block talk */ }
 
     // 2. Main body — pick 1-2 topics from templates
     const topicOrder = this._shuffleTopics(upcomingTrack, prevTracks);

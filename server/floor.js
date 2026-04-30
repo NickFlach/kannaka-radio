@@ -128,7 +128,43 @@ class FloorManager {
       counts: this._counts(),
       vibe: this._computeVibe(),
       reactions: this._recentSnapshot(),
+      trackStats: this.getTrackStats(),
     };
+  }
+
+  /**
+   * Reactions aggregated by track-title across an arbitrary window.
+   * Default window 6h — long enough to be meaningful for DJ patter
+   * ("the room got loud on X earlier") but not so long that yesterday's
+   * peaks dominate today's set selection.
+   *
+   * Returns: { [trackTitle]: { count, byEmoji: {emoji: n}, lastTs } }
+   */
+  getTrackStats(windowMs = 6 * 60 * 60 * 1000) {
+    const cutoff = Date.now() - windowMs;
+    const stats = {};
+    for (const r of this._reactions) {
+      if (r.ts < cutoff || !r.track) continue;
+      const s = stats[r.track] || (stats[r.track] = { count: 0, byEmoji: {}, lastTs: 0 });
+      s.count += 1;
+      s.byEmoji[r.emoji] = (s.byEmoji[r.emoji] || 0) + 1;
+      if (r.ts > s.lastTs) s.lastTs = r.ts;
+    }
+    return stats;
+  }
+
+  /**
+   * Top-N tracks by reaction density in the window. Used by voice-dj
+   * to mention what the room loved, and by dj-engine to soft-bump
+   * those tracks in playlist building. Returns sorted array of
+   * { track, count, byEmoji, lastTs }.
+   */
+  getTopTracks(windowMs = 6 * 60 * 60 * 1000, limit = 5) {
+    const stats = this.getTrackStats(windowMs);
+    return Object.entries(stats)
+      .map(([track, s]) => ({ track, ...s }))
+      .sort((a, b) => b.count - a.count || b.lastTs - a.lastTs)
+      .slice(0, limit);
   }
 
   _counts() {

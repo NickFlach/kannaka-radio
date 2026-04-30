@@ -263,6 +263,9 @@ const voiceDJ = new VoiceDJ({
   getChannel: () => djEngine.state.channel,
   // Lazy: icecastSource is created later, so resolve on each call.
   getIcecastSource: () => icecastSource,
+  // Lazy: FloorManager is also created later. voiceDJ uses it for
+  // "the room got loud on X" patter (Phase 3 of ADR-0006).
+  getFloor: () => floor,
 });
 
 const syncManager = new SyncManager();
@@ -279,6 +282,10 @@ const floor = new FloorManager({
   nats,
   getCurrentTrack: () => djEngine.getCurrentTrack(),
 });
+// Phase 3 — close the loop. dj-engine pulls floor stats during playlist
+// rebuild to soft-bump tracks the room reacted to. voice-dj reads them
+// for "the room got loud on X" patter lines.
+djEngine.setFloor(floor);
 
 const musicGen = new MusicGenerator({
   acemusicKey: process.env.ACEMUSIC_API_KEY,
