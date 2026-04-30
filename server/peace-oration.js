@@ -120,7 +120,11 @@ class PeaceOration {
 
   _tick() {
     if (!this._enabled) return;
-    if (this._getChannel() !== "dj") return;
+    // Peace orations are stewardship — they fire twice a day regardless of
+    // which channel the user has selected. The 2026-04-30 noon oration was
+    // lost because the user switched to the 'music' channel before the slot
+    // and the previous early-return silently skipped the day. Voice DJ
+    // intros remain channel-gated; orations don't.
     if (this._preparingKey) return;
 
     const now = new Date();

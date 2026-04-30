@@ -31,6 +31,7 @@ class LiveBroadcast {
     this.state = {
       active: false,
       startedAt: null,
+      lastChunkAt: null,
       chunkCount: 0,
       savedTrackIdx: -1,
       clients: new Set(),
@@ -38,6 +39,12 @@ class LiveBroadcast {
     };
 
     this._chunkFiles = [];
+    // Auto-stop after this many ms of chunk-silence. Browsers send mic
+    // chunks ~every second; 5 minutes is well past any normal hiccup.
+    // Without this, a closed browser tab leaves the radio thinking it's
+    // live forever (which silences voice DJ + peace orations).
+    this._idleTimeoutMs = 5 * 60 * 1000;
+    this._idleCheckInterval = null;
 
     // Ensure chunks directory exists
     if (!fs.existsSync(this._chunksDir)) fs.mkdirSync(this._chunksDir, { recursive: true });
@@ -49,12 +56,27 @@ class LiveBroadcast {
     if (this.state.active) return;
     this.state.active = true;
     this.state.startedAt = Date.now();
+    this.state.lastChunkAt = Date.now();
     this.state.chunkCount = 0;
     this.state.savedTrackIdx = this._getCurrentTrackIdx();
     if (this.state.recording) this._rawChunks = [];
     if (this._onStart) this._onStart();
+    // Watchdog: every 30s, check whether chunks have been arriving. If
+    // the client closed its tab without calling /api/live/stop we'd
+    // otherwise stay "live" indefinitely — and that silences orations.
+    if (this._idleCheckInterval) clearInterval(this._idleCheckInterval);
+    this._idleCheckInterval = setInterval(() => this._idleCheck(), 30000);
     console.log(`\n\uD83D\uDD34 LIVE \u2014 Broadcasting started`);
     this._broadcastStatus();
+  }
+
+  _idleCheck() {
+    if (!this.state.active) return;
+    const idleMs = Date.now() - (this.state.lastChunkAt || this.state.startedAt || Date.now());
+    if (idleMs >= this._idleTimeoutMs) {
+      console.log(`\u23F9 LIVE auto-stop: no chunks for ${(idleMs / 1000).toFixed(0)}s (watchdog)`);
+      this.stop();
+    }
   }
 
   stop() {
@@ -62,7 +84,12 @@ class LiveBroadcast {
     this.state.active = false;
     const duration = Date.now() - this.state.startedAt;
     this.state.startedAt = null;
+    this.state.lastChunkAt = null;
     this.state.clients.clear();
+    if (this._idleCheckInterval) {
+      clearInterval(this._idleCheckInterval);
+      this._idleCheckInterval = null;
+    }
     console.log(`\n\u23F9 LIVE ended \u2014 ${this.state.chunkCount} chunks, ${(duration / 1000).toFixed(0)}s`);
 
     // If recording was active, save the session
@@ -100,6 +127,7 @@ class LiveBroadcast {
     }
     this.state.clients.add(ws);
     this.state.chunkCount++;
+    this.state.lastChunkAt = Date.now();
 
     // Skip tiny chunks (WebSocket control frames or empty blobs)
     if (message.length < 100) return;
