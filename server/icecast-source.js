@@ -291,17 +291,42 @@ class IcecastSource {
 
   _streamFileToFfmpeg(absPath) {
     return new Promise((resolve) => {
-      if (!this._ffmpeg || !this._ffmpeg.stdin) return resolve();
+      if (!this._ffmpeg || !this._ffmpeg.stdin || this._ffmpeg.killed) return resolve();
+      const ff = this._ffmpeg;
       const r = fs.createReadStream(absPath);
       // pipe with end:false so the ffmpeg stdin stays open for the next file.
-      r.pipe(this._ffmpeg.stdin, { end: false });
+      r.pipe(ff.stdin, { end: false });
       let settled = false;
-      const finish = () => { if (!settled) { settled = true; resolve(); } };
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        try { r.unpipe(ff.stdin); } catch (_) {}
+        try { r.destroy(); } catch (_) {}
+        ff.removeListener("exit", onFfmpegExit);
+        if (ff.stdin) ff.stdin.removeListener("error", onStdinError);
+        resolve();
+      };
+      // Read-stream lifecycle events.
       r.on("end", finish);
+      r.on("close", finish);   // pipe destruction (ffmpeg dies, stdin closes)
       r.on("error", (e) => {
         console.warn(`[icecast-source] read ${absPath}: ${e.message}`);
         finish();
       });
+      // ffmpeg lifecycle: if the process exits or stdin errors mid-write,
+      // we'd hang forever waiting for "end". Resolve so the loop continues
+      // and the ffmpeg respawn handler can rebuild the source connection.
+      const onFfmpegExit = () => {
+        console.warn(`[icecast-source] ffmpeg exited during ${path.basename(absPath)}`);
+        finish();
+      };
+      const onStdinError = (e) => {
+        if (e.code === "EPIPE") return; // expected during shutdown
+        console.warn(`[icecast-source] stdin error during ${path.basename(absPath)}: ${e.message}`);
+        finish();
+      };
+      ff.once("exit", onFfmpegExit);
+      ff.stdin.on("error", onStdinError);
     });
   }
 
