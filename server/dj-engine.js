@@ -774,7 +774,17 @@ class DJEngine {
 
   advanceTrack() {
     const prev = this.getCurrentTrack();
-    if (prev) this.state.history.push(prev);
+    if (prev) {
+      // Stamp the played-at time so /api/history can render a timeline
+      // (charter easter egg: schedule scrubber).
+      const stamped = { ...prev, playedAt: Date.now() };
+      this.state.history.push(stamped);
+      // Cap history at 200 entries (~12 hours at 4 min/track) so it
+      // doesn't grow unbounded over a long-running station.
+      if (this.state.history.length > 200) {
+        this.state.history.shift();
+      }
+    }
 
     this.state.currentTrackIdx++;
     if (this.state.currentTrackIdx >= this.state.playlist.length) {

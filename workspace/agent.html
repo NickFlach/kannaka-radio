@@ -150,6 +150,10 @@ footer a { margin: 0 8px; }
     <span class="method">GET</span><span class="path">/api/dreams</span>
     <span class="desc">Recent dream cycle reports — strengthened, pruned, and hallucinated wavefronts.</span>
   </li>
+  <li>
+    <span class="method">GET</span><span class="path">/api/history</span>
+    <span class="desc">Recently played tracks with played-at timestamps. Bounded to last 200 entries (~12h). <code>?limit=N</code> to cap further. Renders the schedule scrubber and answers "what was on at time X?" queries.</span>
+  </li>
 </ul>
 
 <h2>HTTP — Triggers (admin/internal)</h2>

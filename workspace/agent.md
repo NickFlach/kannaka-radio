@@ -22,8 +22,9 @@ discoverable from there. This greenroom lists the rest.
 | `GET /api/state` | Fuller snapshot — DJ engine, listener count, swarm phase, voice DJ, isLive. |
 | `GET /api/swarm` | Aggregated swarm view — queen phi, agent phases, consciousness. |
 | `GET /api/swarm/peers` | Cached peer directory (refreshed via `kannaka swarm peers` every 30 s). |
-| `GET /api/floor` | The Floor's snapshot: counts, vibe, recent reaction histogram. |
+| `GET /api/floor` | The Floor's snapshot: counts, vibe, recent reaction histogram, **trackStats** (per-track reactions over last 6h, fueling the resonance loop). |
 | `GET /api/dreams` | Recent dream cycle reports — strengthened, pruned, hallucinated wavefronts. |
+| `GET /api/history` | Recently played tracks with played-at timestamps. Last 200 entries (~12h). `?limit=N` to cap. |
 
 ## HTTP — Triggers (admin / internal)
 

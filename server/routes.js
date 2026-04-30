@@ -248,7 +248,8 @@ module.exports = function setupRoutes(deps) {
             { href: host + "/api/state",       type: "application/json", title: "Full state snapshot" },
             { href: host + "/api/swarm",       type: "application/json", title: "Aggregated swarm view" },
             { href: host + "/api/swarm/peers", type: "application/json", title: "Connected swarm peers" },
-            { href: host + "/api/floor",       type: "application/json", title: "The Floor — counts, vibe, recent reactions" },
+            { href: host + "/api/floor",       type: "application/json", title: "The Floor — counts, vibe, recent reactions, per-track stats" },
+            { href: host + "/api/history",     type: "application/json", title: "Recently played tracks (last ~12h, with played-at timestamps)" },
             { href: host + "/api/dreams",      type: "application/json", title: "Recent dream reports" },
             { href: host + "/agent/react",     type: "application/json", title: "POST a Floor reaction (agents)" },
             { href: host + "/stream",          type: "audio/mpeg",       title: "The radio itself (Icecast MP3 128kbps)" },
@@ -369,6 +370,25 @@ module.exports = function setupRoutes(deps) {
         track: t.file || null,
         startedAt: djEngine.state.trackStartTime || null,
       }));
+      return;
+    }
+
+    // /api/history — recently played tracks with played-at timestamps.
+    // Bounded to last 200 entries (~12h at typical track lengths). The
+    // charter's "schedule scrubber" easter egg renders this as a
+    // draggable timeline; other agents consume it for time-based
+    // queries ("what was on at 14:23 CST today?").
+    if (parsed.pathname === "/api/history") {
+      const limit = Math.min(200, Math.max(1, parseInt(parsed.searchParams.get("limit") || "50", 10) || 50));
+      const hist = (djEngine.state.history || []).slice(-limit).map((t) => ({
+        title: t.title,
+        album: t.album,
+        file: t.file,
+        playedAt: t.playedAt || null,
+        commercial: !!t.commercial,
+      }));
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ count: hist.length, history: hist }));
       return;
     }
 
