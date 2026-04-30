@@ -68,10 +68,13 @@ These were proposed in the Charter but not landed in this ADR:
   get re-absorbed via `kannaka remember` with importance proportional
   to the crowd response. Effect: the medium learns what the room
   feels, not just what Nick or the radio fed it.
-- **Oration framing pulled from morning's resonance**: the noon /
-  midnight oration's `_compose()` already takes a recall query.
-  Tomorrow's pass can include the day's top reaction tracks as
-  context, so orations reference the room's actual energy.
+- ~~**Oration framing pulled from morning's resonance**~~ *(shipped
+  2026-04-30):* `_compose()` now folds the last-24h top reaction
+  tracks into the prompt as optional context — Kannaka may, if it
+  serves the speech, weave one of those tracks as a moment the room
+  and she shared. Best-effort wrapped: empty floor → identical to
+  pre-2026-04-30 behavior. Orations now have a path back to what the
+  listeners actually responded to.
 - **The Hush** (Charter easter egg): if 0 reactions for 60s during a
   peak track, the spectrum dims and "we're all listening" appears.
 - **Resonance Applause** (Charter easter egg): 70%+ 🪶 reactions in

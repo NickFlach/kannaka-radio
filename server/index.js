@@ -602,6 +602,7 @@ const peaceOration = new PeaceOration({
   voiceDJ,
   broadcast,
   getChannel: () => djEngine.state.channel,
+  getFloor: () => floor, // ADR-0008 deferred layer: orations reference today's resonance
   dataDir: require("path").join(BASE_DIR, "workspace"),
   rootDir: BASE_DIR,
   radioUrl: process.env.RADIO_PUBLIC_URL || "https://radio.ninja-portal.com",

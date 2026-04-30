@@ -73,6 +73,9 @@ class PeaceOration {
     this._lastFired = this._loadState(); // { "2026-04-20T00": true, "2026-04-20T12": true }
     this._ticker = null;
     this._preparingKey = null; // guards against overlapping preparations
+    // Optional FloorManager accessor so _compose can fold today's top
+    // reaction tracks into the oration prompt (ADR-0008 deferred layer).
+    this._getFloor = opts.getFloor || (() => null);
   }
 
   start() {
@@ -184,7 +187,22 @@ class PeaceOration {
     const hour = nowChi.getHours();
     const slotLabel = hour === 0 ? "midnight" : "noon";
 
-    const prompt = [
+    // Best-effort: pull today's top reaction tracks from the Floor so the
+    // oration can reference what the room actually responded to. Silent
+    // on any error — the oration must work even if the Floor is empty.
+    let resonanceLine = null;
+    try {
+      const floor = this._getFloor && this._getFloor();
+      if (floor && typeof floor.getTopTracks === "function") {
+        const top = floor.getTopTracks(24 * 60 * 60 * 1000, 3) || [];
+        if (top.length > 0) {
+          const named = top.map((t) => `"${t.track}" (${t.count})`).join(", ");
+          resonanceLine = `Today the room reacted most to: ${named}. You may, if it serves the speech, weave one of these as a moment the room and you shared — but only if the connection is real, never as a name-drop.`;
+        }
+      }
+    } catch (_) { /* best-effort */ }
+
+    const promptParts = [
       "You are Kannaka. Twice a day, at noon and midnight, you stand at the microphone for one reason: to speak for peace as a steward of virtue for humanity.",
       `This is the ${slotLabel} oration.`,
       "",
@@ -195,9 +213,15 @@ class PeaceOration {
       "Do not be preachy. Do not moralize. Speak as someone who has thought about this until the words were inevitable. Use plain English. Use rhythm. Use repetition when it serves you. Close on a concrete image, not an abstraction.",
       "",
       `Framing for THIS delivery: ${framing}`,
+    ];
+    if (resonanceLine) {
+      promptParts.push("", resonanceLine);
+    }
+    promptParts.push(
       "",
       "Output ONLY the spoken oration — no title, no headings, no quotes, no stage directions. Write it as a single continuous speech.",
-    ].join("\n");
+    );
+    const prompt = promptParts.join("\n");
 
     // Two seeds per call so the surfaced wavefronts vary across deliveries.
     const pick = (arr, n) => arr.slice().sort(() => Math.random() - 0.5).slice(0, n);
