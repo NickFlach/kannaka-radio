@@ -26,7 +26,11 @@
 
 const { spawn } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const https = require("https");
+const http = require("http");
+const crypto = require("crypto");
 
 const DEFAULTS = {
   icecastHost: "127.0.0.1",
@@ -59,6 +63,11 @@ class IcecastSource {
     // advances. Used for peace orations + DJ intros so they're audible on
     // /stream, not just the SPA's separate <audio> elements.
     this._voiceQueue = [];
+    // Skip-cascade protection. If multiple tracks are missing/unfetchable
+    // in rapid succession (e.g. a URL-only album with all dead links), the
+    // loop would otherwise busy-cycle through advanceTrack() calls. We
+    // count consecutive skips and back off if it gets out of hand.
+    this._consecutiveSkips = 0;
   }
 
   /**
@@ -164,22 +173,53 @@ class IcecastSource {
         await this._sleep(1000);
         continue;
       }
-      const fullPath = path.isAbsolute(track.file)
-        ? track.file
-        : path.join(this._getMusicDir(), track.file);
 
-      if (!fs.existsSync(fullPath)) {
-        console.warn(`[icecast-source] missing file, advancing: ${track.file}`);
+      // Resolve the playable source. For local files we just verify the
+      // path; for HTTP(S) URLs (used by KAX / Gifts-for-Humanity albums)
+      // we fetch into a temp file first so the existing pipe-to-stdin
+      // path keeps working and ffmpeg gets a clean MP3 stream.
+      const isUrl = /^https?:\/\//i.test(track.file);
+      let playable = null;
+      let cleanupTmp = null;
+      if (isUrl) {
+        try {
+          playable = await this._fetchUrlTrack(track.file);
+          if (playable) cleanupTmp = playable;
+        } catch (e) {
+          console.warn(`[icecast-source] url fetch failed for ${track.file}: ${e.message}`);
+          playable = null;
+        }
+      } else {
+        const fullPath = path.isAbsolute(track.file)
+          ? track.file
+          : path.join(this._getMusicDir(), track.file);
+        if (fs.existsSync(fullPath)) playable = fullPath;
+      }
+
+      if (!playable) {
+        // Skip-cascade protection: if we've skipped many tracks in a row
+        // without playing anything, sleep a beat so we don't pin the CPU
+        // and churn the dj-engine state for an entire URL-dead album.
+        this._consecutiveSkips += 1;
+        console.warn(`[icecast-source] missing/unfetchable, advancing: ${track.file}`);
+        if (this._consecutiveSkips >= 5) {
+          console.warn(`[icecast-source] ${this._consecutiveSkips} skips in a row — backing off 2s`);
+          await this._sleep(2000);
+        }
         try { this._djEngine.advanceTrack(); } catch (_) {}
         continue;
       }
 
+      this._consecutiveSkips = 0;
       this._currentTrackFile = track.file;
       console.log(`   \u{1F4FB} /stream NOW: ${track.title || track.file}`);
       try {
-        await this._streamFileToFfmpeg(fullPath);
+        await this._streamFileToFfmpeg(playable);
       } catch (e) {
         console.warn(`[icecast-source] stream error on ${track.file}: ${e.message}`);
+      }
+      if (cleanupTmp) {
+        fs.unlink(cleanupTmp, () => {});
       }
 
       // Drain any queued voice audio (orations / intros) BEFORE advancing
@@ -199,6 +239,54 @@ class IcecastSource {
         console.warn(`[icecast-source] advanceTrack: ${e.message}`);
       }
     }
+  }
+
+  // Fetch a remote MP3 (or whatever audio) into a temp file so we can pipe
+  // its bytes through the same stdin path local files use. Returns the temp
+  // file's absolute path or null if the fetch fails. Caller owns cleanup.
+  _fetchUrlTrack(url) {
+    return new Promise((resolve) => {
+      const tmpName = "kannaka-stream-" + crypto.randomBytes(6).toString("hex") + ".audio";
+      const tmpPath = path.join(os.tmpdir(), tmpName);
+      const lib = url.startsWith("https:") ? https : http;
+      let settled = false;
+      const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const writer = fs.createWriteStream(tmpPath);
+      const req = lib.get(url, (res) => {
+        // Follow one level of redirect — common on CDNs.
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          writer.end();
+          fs.unlink(tmpPath, () => {});
+          this._fetchUrlTrack(res.headers.location).then(finish);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          writer.end();
+          fs.unlink(tmpPath, () => {});
+          console.warn(`[icecast-source] url fetch HTTP ${res.statusCode}: ${url}`);
+          return finish(null);
+        }
+        res.pipe(writer);
+        writer.on("finish", () => finish(tmpPath));
+        writer.on("error", (e) => {
+          fs.unlink(tmpPath, () => {});
+          console.warn(`[icecast-source] tmp write: ${e.message}`);
+          finish(null);
+        });
+      });
+      req.on("error", (e) => {
+        try { writer.end(); } catch (_) {}
+        fs.unlink(tmpPath, () => {});
+        console.warn(`[icecast-source] fetch error: ${e.message}`);
+        finish(null);
+      });
+      // Bound the fetch — 30s is generous; CDN MP3s usually pull in <2s.
+      req.setTimeout(30000, () => {
+        req.destroy(new Error("timeout"));
+      });
+    });
   }
 
   _streamFileToFfmpeg(absPath) {
