@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/index.js",
     "start:legacy": "echo 'DEPRECATED: Use npm start instead' && node server.js",
-    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js"
+    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js && node test/icecast-source.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
