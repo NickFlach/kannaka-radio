@@ -576,6 +576,30 @@ class VoiceDJ {
     this._tracksSinceLastTalk = 0;
     this._nextTalkThreshold = this._randomTalkThreshold();
 
+    // Safety timer — if the normal release paths don't fire (TTS hang,
+    // unhandled exception, callback lost), force-release after 3 min so
+    // executeOration / future talk segments aren't permanently locked
+    // out. The 2026-04-30 midnight oration missed because _inTalkSegment
+    // got stuck and every retry hit "voiceDJ busy" for 18+ minutes.
+    const safetyMs = 180000;
+    const safetyTimer = setTimeout(() => {
+      if (this._inTalkSegment) {
+        console.warn('   [talk] SAFETY: _inTalkSegment held >180s — force-releasing');
+        this._inTalkSegment = false;
+        this._speaking = false;
+        if (this._talkSegmentTimer) {
+          clearTimeout(this._talkSegmentTimer);
+          this._talkSegmentTimer = null;
+        }
+        if (onDone) {
+          try { onDone(); } catch (_) { /* swallow */ }
+        }
+      }
+    }, safetyMs);
+    safetyTimer.unref?.();
+    // Track the timer so the normal release paths can clear it on success.
+    this._talkSafetyTimer = safetyTimer;
+
     // Update mood based on perception
     this._updateMood();
 
@@ -591,6 +615,7 @@ class VoiceDJ {
         if (err) {
           console.log(`   [talk] TTS failed, skipping talk segment`);
           this._inTalkSegment = false;
+          if (this._talkSafetyTimer) { clearTimeout(this._talkSafetyTimer); this._talkSafetyTimer = null; }
           if (onDone) onDone();
           return;
         }
@@ -617,6 +642,7 @@ class VoiceDJ {
         this._talkSegmentTimer = setTimeout(() => {
           this._inTalkSegment = false;
           this._talkSegmentTimer = null;
+          if (this._talkSafetyTimer) { clearTimeout(this._talkSafetyTimer); this._talkSafetyTimer = null; }
           console.log(`   \u{1F399} DJ talk segment ended`);
           if (onDone) onDone();
         }, estimatedDuration + 2000); // 2s grace after estimated audio end
@@ -624,6 +650,7 @@ class VoiceDJ {
     } catch (e) {
       console.warn(`   [talk] Error generating talk segment:`, e.message);
       this._inTalkSegment = false;
+      if (this._talkSafetyTimer) { clearTimeout(this._talkSafetyTimer); this._talkSafetyTimer = null; }
       if (onDone) onDone();
     }
   }
