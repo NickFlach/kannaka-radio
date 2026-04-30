@@ -203,23 +203,47 @@ class PeaceOration {
     const pick = (arr, n) => arr.slice().sort(() => Math.random() - 0.5).slice(0, n);
     const recallQuery = pick(RECALL_SEEDS, 2).join(" · ");
 
+    const args = ["ask", "--no-tools", "--quiet-tools", "--recall-query", recallQuery, prompt];
+    return this._askWithRetry(args, { attempts: 4, label: "oration" });
+  }
+
+  // Run `kannaka ask` with retry on transient API errors (Anthropic 529 overloaded,
+  // 503 unavailable, network blips). Each attempt has its own 10-min exec window;
+  // we wait between attempts on retryable errors. Returns null only when all
+  // attempts exhaust or a non-retryable error fires.
+  _askWithRetry(args, opts = {}) {
+    const attempts = Math.max(1, opts.attempts || 3);
+    const label = opts.label || "ask";
+    const minLen = opts.minLen || 200;
     return new Promise((resolve) => {
-      // Generous budget — orations can push the API past two minutes.
-      const args = ["ask", "--no-tools", "--quiet-tools", "--recall-query", recallQuery, prompt];
-      const child = execFile(this._kannakabin, args, {
-        timeout: 600000, // 10 min — previous 6 min was cutting it close on Oracle
-        maxBuffer: 4 * 1024 * 1024,
-        env: { ...process.env, KANNAKA_QUIET: "1" },
-      }, (err, stdout) => {
-        if (err) {
-          console.log(`   [oration] ask failed (${err.code || err.message})`);
-          return resolve(null);
-        }
-        const text = (stdout || "").trim();
-        if (!text || text.length < 200) { resolve(null); return; }
-        resolve(text.replace(/^["'](.*)["']$/s, "$1").trim());
-      });
-      child.on("error", () => resolve(null));
+      const tryOnce = (n) => {
+        let stderrBuf = "";
+        const child = execFile(this._kannakabin, args, {
+          timeout: 600000,
+          maxBuffer: 4 * 1024 * 1024,
+          env: { ...process.env, KANNAKA_QUIET: "1" },
+        }, (err, stdout, stderr) => {
+          stderrBuf = stderr || "";
+          if (err) {
+            const blob = `${err.message || ""}\n${stderrBuf}\n${stdout || ""}`;
+            const retryable = /overloaded_error|"status":\s*5\d\d|API error \(5\d\d\)|API error \(429\)|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(blob);
+            const remaining = attempts - n;
+            if (retryable && remaining > 0) {
+              const wait = Math.min(60000, 5000 * Math.pow(2, n - 1));
+              console.log(`   [${label}] transient API error (attempt ${n}/${attempts}) — retrying in ${Math.round(wait / 1000)}s`);
+              setTimeout(() => tryOnce(n + 1), wait);
+              return;
+            }
+            console.log(`   [${label}] ask failed (${err.code || err.message})`);
+            return resolve(null);
+          }
+          const text = (stdout || "").trim();
+          if (!text || text.length < minLen) { resolve(null); return; }
+          resolve(text.replace(/^["'](.*)["']$/s, "$1").trim());
+        });
+        child.on("error", () => resolve(null));
+      };
+      tryOnce(1);
     });
   }
 
@@ -252,17 +276,11 @@ class PeaceOration {
       "Output ONLY the post text, no quotes, no surrounding explanation.",
     ].join("\n");
 
-    const postBody = await new Promise((resolve) => {
-      const args = ["ask", "--no-tools", "--quiet-tools", prompt];
-      const child = execFile(this._kannakabin, args, {
-        timeout: 300000,
-        maxBuffer: 1024 * 1024,
-        env: { ...process.env, KANNAKA_QUIET: "1" },
-      }, (err, stdout) => {
-        if (err || !stdout) return resolve(null);
-        resolve(stdout.trim().replace(/^["'](.*)["']$/s, "$1").trim());
-      });
-      child.on("error", () => resolve(null));
+    const args = ["ask", "--no-tools", "--quiet-tools", prompt];
+    const postBody = await this._askWithRetry(args, {
+      attempts: 3,
+      label: "oration-companion",
+      minLen: 1,
     });
     if (!postBody) {
       console.log("   [oration] post-compose returned empty, skipping");
