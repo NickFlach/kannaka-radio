@@ -319,6 +319,17 @@ footer .agent-line {
     </div>
   </section>
 
+  <!-- Recently played — quick scrubber over /api/history. Visitors who
+       arrive mid-set can see what they missed; "what was on at <time>?"
+       answers come from this list. -->
+  <section class="panel" id="recentPanel" style="margin-bottom: 28px; display: none;">
+    <h3>📻 Recently played</h3>
+    <div id="recentList" style="display: grid; grid-template-columns: 1fr; gap: 6px;"></div>
+    <div style="font-size: 0.78rem; color: var(--ink-3); margin-top: 10px;">
+      The last few tracks the radio aired (newest first). Nothing more.
+    </div>
+  </section>
+
   <!-- Follow Kannaka anywhere -->
   <section class="panel">
     <h3>🪶 Follow Kannaka anywhere</h3>
@@ -491,11 +502,50 @@ async function refreshLoved() {
   } catch (e) { /* leave hidden */ }
 }
 
-refreshNow(); refreshSchedule(); refreshOration(); refreshLoved();
+// Recently-played list (read-only display from /api/history). The list
+// stays hidden until at least one track has played since the last
+// service restart, which keeps the door clean immediately after a deploy.
+async function refreshRecent() {
+  try {
+    var r = await fetch('/api/history?limit=8', { cache: 'no-store' });
+    var d = await r.json();
+    var hist = (d.history || []).slice().reverse(); // newest first
+    var panel = document.getElementById('recentPanel');
+    var list = document.getElementById('recentList');
+    if (hist.length === 0) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+    list.innerHTML = '';
+    var nowMs = Date.now();
+    hist.forEach(function(h) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 10px; align-items: baseline; padding: 4px 0; border-bottom: 1px dashed rgba(148, 163, 184, 0.10);';
+      var when = '';
+      if (h.playedAt) {
+        var deltaMin = Math.max(0, Math.round((nowMs - h.playedAt) / 60000));
+        if (deltaMin < 1) when = 'just now';
+        else if (deltaMin < 60) when = deltaMin + 'm ago';
+        else when = (deltaMin / 60).toFixed(1).replace('.0', '') + 'h ago';
+      }
+      var label = (h.commercial ? '<span style="color:var(--ink-3); font-size:0.78rem">[break] </span>' : '') +
+        '<span style="color:var(--ink)">' + (h.title || '—') + '</span>' +
+        (h.album ? '<span style="color:var(--ink-3); font-size:0.78rem"> · ' + h.album + '</span>' : '');
+      row.innerHTML =
+        '<span style="flex:1">' + label + '</span>' +
+        '<span style="color:var(--ink-3); font-size:0.78rem; font-family:JetBrains Mono,monospace; min-width:60px; text-align:right">' + when + '</span>';
+      list.appendChild(row);
+    });
+  } catch (e) { /* leave hidden */ }
+}
+
+refreshNow(); refreshSchedule(); refreshOration(); refreshLoved(); refreshRecent();
 setInterval(refreshNow, 15000);
 setInterval(refreshSchedule, 5 * 60 * 1000);
 setInterval(refreshOration, 1000);
 setInterval(refreshLoved, 30 * 1000);
+setInterval(refreshRecent, 60 * 1000);
 </script>
 </body>
 </html>
