@@ -307,6 +307,18 @@ footer .agent-line {
     </div>
   </section>
 
+  <!-- What the room loved today (Phase 3 of ADR-0006) — only shown when
+       the Floor has reactions in the last 6h. The loop is visible from
+       the Door so the resonance is legible even before stepping inside. -->
+  <section class="panel" id="lovedPanel" style="margin-bottom: 28px; display: none;">
+    <h3>🔥 What the room loved today</h3>
+    <div id="lovedList" style="display: grid; grid-template-columns: 1fr; gap: 8px;"></div>
+    <div style="font-size: 0.78rem; color: var(--ink-3); margin-top: 10px;">
+      Tracks listeners reacted to most in the last 6 hours. These bubble
+      forward in tonight's set. Step inside <a href="/player">/player</a> to react.
+    </div>
+  </section>
+
   <!-- Follow Kannaka anywhere -->
   <section class="panel">
     <h3>🪶 Follow Kannaka anywhere</h3>
@@ -447,10 +459,43 @@ function refreshOration() {
     String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
 }
 
-refreshNow(); refreshSchedule(); refreshOration();
+// Phase 3 — what the room loved (read-only display from /api/floor).
+async function refreshLoved() {
+  try {
+    var r = await fetch('/api/floor', { cache: 'no-store' });
+    var d = await r.json();
+    var stats = d.trackStats || {};
+    var entries = Object.keys(stats).map(function(k) {
+      return { track: k, count: stats[k].count || 0, byEmoji: stats[k].byEmoji || {} };
+    }).sort(function(a, b) { return b.count - a.count; }).slice(0, 5);
+    var panel = document.getElementById('lovedPanel');
+    var list = document.getElementById('lovedList');
+    if (entries.length === 0) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+    list.innerHTML = '';
+    entries.forEach(function(e, i) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 10px; align-items: center; padding: 6px 0;';
+      var emojis = Object.keys(e.byEmoji).slice(0, 5).map(function(k) {
+        return k + (e.byEmoji[k] > 1 ? '×' + e.byEmoji[k] : '');
+      }).join(' ');
+      row.innerHTML =
+        '<span style="font-family:JetBrains Mono,monospace;color:var(--gold);min-width:20px">' + (i+1) + '.</span>' +
+        '<span style="flex:1;color:var(--ink)">' + e.track + '</span>' +
+        '<span style="font-size:0.85rem;color:var(--ink-3)">' + emojis + '</span>';
+      list.appendChild(row);
+    });
+  } catch (e) { /* leave hidden */ }
+}
+
+refreshNow(); refreshSchedule(); refreshOration(); refreshLoved();
 setInterval(refreshNow, 15000);
 setInterval(refreshSchedule, 5 * 60 * 1000);
 setInterval(refreshOration, 1000);
+setInterval(refreshLoved, 30 * 1000);
 </script>
 </body>
 </html>
