@@ -442,9 +442,17 @@ wss.on('connection', (ws) => {
   // Send listener count on connect
   broadcastListenerCount();
 
-  // Handle incoming messages
-  ws.on('message', (message) => {
-    if (Buffer.isBuffer(message)) {
+  // Handle incoming messages.
+  //
+  // ws v8 passes ALL frames as Buffer regardless of opcode — Buffer.isBuffer
+  // is always true here, so the previous `if (Buffer.isBuffer)` check was
+  // routing every text JSON message into live.handleChunk. That auto-started
+  // live mode on every text frame (the chunkCount > 0 stuck-isLive pattern
+  // we saw on 2026-04-30 + 2026-05-01) and silently dropped floor_join,
+  // floor_react, and any WebRTC text signaling. Use the isBinary flag the
+  // listener actually receives to distinguish frame types.
+  ws.on('message', (message, isBinary) => {
+    if (isBinary) {
       live.handleChunk(ws, message);
       return;
     }
