@@ -462,7 +462,11 @@ class VoiceDJ {
     if (!this._enabled || this._isLive() || this._inTalkSegment || this._speaking) {
       return false;
     }
-    if (this._getChannel() !== 'dj') return false;
+    // Orations are stewardship — they fire on any channel. The 2026-05-01
+    // midnight slot composed successfully (5x retry on a busy ask) but
+    // executeOration silently rejected because channel='music'. Voice DJ
+    // *intros* stay channel-gated; orations are the once-or-twice-daily
+    // exception. See peace-oration.js _tick for the matching change.
 
     this._inTalkSegment = true;
     this._speaking = true;

@@ -73,6 +73,10 @@ class PeaceOration {
     this._lastFired = this._loadState(); // { "2026-04-20T00": true, "2026-04-20T12": true }
     this._ticker = null;
     this._preparingKey = null; // guards against overlapping preparations
+    // Per-slot compose cache — see _tick. Avoids burning a fresh kannaka
+    // ask on every retry when _say keeps returning false.
+    this._composed = null;
+    this._composedFor = null;
     // Optional FloorManager accessor so _compose can fold today's top
     // reaction tracks into the oration prompt (ADR-0008 deferred layer).
     this._getFloor = opts.getFloor || (() => null);
@@ -143,17 +147,31 @@ class PeaceOration {
     const key = this._keyFor(chi, hour);
     if (this._lastFired[key]) return;      // already done today
 
+    // Reuse the already-composed text for this slot if we have one. The
+    // 2026-05-01 midnight slot composed five times (≈15 min of kannaka
+    // ask each) because executeOration kept rejecting. Compose is the
+    // expensive half; caching it inside the slot keeps retries cheap.
+    if (this._composedFor !== key) this._composed = null;
+
     this._preparingKey = key;
-    console.log(`\uD83D\uDD54 Peace oration slot reached: ${key} — composing...`);
-    this._compose(key).then((text) => {
+    const cachedText = this._composed;
+    const composePromise = cachedText
+      ? Promise.resolve(cachedText)
+      : (console.log(`\uD83D\uDD54 Peace oration slot reached: ${key} — composing...`),
+         this._compose(key));
+    composePromise.then((text) => {
       if (!text) {
         console.log(`   [oration] compose failed or empty — will retry next tick`);
         this._preparingKey = null;
         return;
       }
+      this._composed = text;
+      this._composedFor = key;
       const ok = this._say(text);
       if (ok) {
         this._lastFired[key] = true;
+        this._composed = null; // clear cache so next slot starts fresh
+        this._composedFor = null;
         this._saveState();
         // Fire-and-forget: post a companion teaser to Bluesky while the
         // spoken oration plays on-air. Doesn't block; failures are logged
