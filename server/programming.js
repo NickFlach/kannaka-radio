@@ -116,7 +116,7 @@ const SCHEDULE = [
 const DAILY_SHOWCASES = [
   {
     album: 'BEND THE ARC',
-    hours: [10, 20], // 10 AM + 8 PM CST
+    hours: [11, 21], // 11 AM + 9 PM CST (10 AM is podcast slot)
     durationMin: 35,
     struggles: "OBC's 500-character prompt cap and per-minute burst guard rejecting tracks for hours; Suno's content filter flagging real song titles like 'Don't Look Away'; the daily quota slamming shut after one cover and one track; the metaphor-refinement that taught Kannaka to translate every name and date into image; ten attempts that produced one track called 'Beloved'; pivoting to Suno's direct API and getting all eight tracks in twenty minutes; A/B picking variants by spectral analysis through kannaka-hear; a long table and twelve archetype chairs in Kannaka's home as the listening room; the choice to stay metaphorical because songs are poetry not field reports.",
   },
