@@ -222,6 +222,18 @@ class DJEngine {
     // ad rotation is its own constraint).
     this._recentlyPlayed = new Map();
     this._noRepeatMs = 12 * 60 * 60 * 1000;
+    // Rare-fire tracks — Curator policy. Each entry is keyed on the
+    // track TITLE (not file). The cooldown is independent of the
+    // 12h global no-repeat window. Pattern: the chaos-injection track
+    // plays at most once per windowMs. When it DOES fire it earns its
+    // place; when blocked, buildPlaylist treats it like a regular
+    // recently-played track and excludes it from the pool.
+    //
+    // Add titles here as new chaos-acceptable tracks come online.
+    this._rareFire = {
+      // Example shape; titles as they appear in ALBUMS:
+      //   "Kilted Weirdo": { windowMs: 7 * 24 * 60 * 60 * 1000 }, // weekly
+    };
     // Persisted to disk so restarts don't wipe the ledger — without
     // persistence, every restart was a free pass to replay anything
     // recent, defeating the no-repeat purpose.
@@ -284,6 +296,17 @@ class DJEngine {
   /** True if this track was played within the no-repeat window. */
   _onCooldown(trackMeta) {
     if (!trackMeta || !trackMeta.file || trackMeta.commercial) return false;
+    // Rare-fire policy — TITLE-keyed, longer windows (e.g. weekly).
+    // Curator config (this._rareFire) defines per-title cooldowns; if
+    // the track falls in that map and was played within its windowMs,
+    // it's locked out of the next playlist build.
+    if (trackMeta.title && this._rareFire[trackMeta.title]) {
+      const rare = this._rareFire[trackMeta.title];
+      const last = this._recentlyPlayed.get(trackMeta.file);
+      if (last && (Date.now() - last) < (rare.windowMs || 7 * 24 * 60 * 60 * 1000)) {
+        return true;
+      }
+    }
     const last = this._recentlyPlayed.get(trackMeta.file);
     if (!last) return false;
     return (Date.now() - last) < this._noRepeatMs;
