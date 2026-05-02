@@ -406,7 +406,11 @@ class PeaceOration {
               setTimeout(() => tryOnce(n + 1), wait);
               return;
             }
-            console.log(`   [${label}] ask failed (${err.code || err.message})`);
+            // Surface the actual stderr — execFile's err.message is just
+            // "Command failed: <cmdline>" which masks the real cause
+            // (content filter, JSON parse error in kannaka ask, OOM, etc).
+            const stderrSnippet = stderrBuf.trim().slice(-400) || "(no stderr)";
+            console.log(`   [${label}] ask failed (code=${err.code || "?"}) stderr: ${stderrSnippet}`);
             return resolve(null);
           }
           const text = (stdout || "").trim();
