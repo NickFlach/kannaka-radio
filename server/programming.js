@@ -356,8 +356,21 @@ class ProgrammingSchedule {
     const podcastStatus = this._getPodcastStatus();
     if (podcastStatus && podcastStatus.podcastPlaying) return;
 
-    // Don't interfere if manual override is active
-    if (this._override && Date.now() < this._override.until) return;
+    // Override self-heal: if a manual override is active but something
+    // else has swapped the album out from under it (channel toggle,
+    // mixed-set rotation, manual /api/album call), reload the override
+    // album. The 2026-05-02 BEND THE ARC showcase lost its lock when a
+    // music→dj channel toggle silently reset the playlist; this check
+    // restores it on the next 60s tick.
+    if (this._override && Date.now() < this._override.until) {
+      if (this._djEngine.state.channel === 'dj' &&
+          this._djEngine.state.currentAlbum !== this._override.album) {
+        console.log(`[programming] Override self-heal: restoring ${this._override.album} (was ${this._djEngine.state.currentAlbum})`);
+        this._djEngine.loadAlbum(this._override.album);
+        this._broadcastState();
+      }
+      return;
+    }
 
     // Only manage DJ channel
     if (this._djEngine.state.channel !== 'dj') return;
