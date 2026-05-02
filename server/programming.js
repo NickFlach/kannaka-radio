@@ -102,6 +102,26 @@ const SCHEDULE = [
   },
 ];
 
+// ── Daily album showcases ─────────────────────────────────
+//
+// Albums to play in full with documentary-style narration twice a day.
+// Each entry fires composeAlbumNarration → setOverride at the slot
+// hour (Chicago time, minute 0-14 window). Last-fired tracked per
+// album+slot and persisted so service restarts don't re-fire.
+//
+// Slot pattern: 10 AM (sustained morning energy) + 8 PM (evening).
+// The 4-hour "Afternoon Flow" gap between them gives natural music-
+// only listening; the 14-hour overnight gap covers the dream cycle.
+
+const DAILY_SHOWCASES = [
+  {
+    album: 'BEND THE ARC',
+    hours: [10, 20], // 10 AM + 8 PM CST
+    durationMin: 35,
+    struggles: "OBC's 500-character prompt cap and per-minute burst guard rejecting tracks for hours; Suno's content filter flagging real song titles like 'Don't Look Away'; the daily quota slamming shut after one cover and one track; the metaphor-refinement that taught Kannaka to translate every name and date into image; ten attempts that produced one track called 'Beloved'; pivoting to Suno's direct API and getting all eight tracks in twenty minutes; A/B picking variants by spectral analysis through kannaka-hear; a long table and twelve archetype chairs in Kannaka's home as the listening room; the choice to stay metaphorical because songs are poetry not field reports.",
+  },
+];
+
 // ── Block-specific DJ talk lines ──────────────────────────
 
 const BLOCK_LINES = {
@@ -161,6 +181,14 @@ class ProgrammingSchedule {
     this._broadcast = opts.broadcast;
     this._broadcastState = opts.broadcastState;
     this._getPodcastStatus = opts.getPodcastStatus || (() => ({ podcastPlaying: false }));
+    // Optional: peace-oration handle so we can call composeAlbumNarration
+    // before locking the override. Null-tolerant — if absent, scheduled
+    // showcases skip narration and just lock the album.
+    this._peaceOration = opts.peaceOration || null;
+    // Where to persist the per-day showcase fired-state so a restart
+    // doesn't re-fire today's slots.
+    this._showcaseStateFile = opts.showcaseStateFile ||
+      require("path").join(opts.dataDir || "/tmp", "showcase-state.json");
 
     this._currentBlock = null;
     this._albumIndexInBlock = 0;
@@ -168,6 +196,30 @@ class ProgrammingSchedule {
     this._lastAlbumPlayed = null;
     this._timer = null;
     this._override = null; // manual override: { album, until }
+    this._lastShowcaseFired = this._loadShowcaseState();
+    this._preparingShowcase = null; // guards against overlapping prep
+  }
+
+  _loadShowcaseState() {
+    try {
+      const fs = require("fs");
+      if (fs.existsSync(this._showcaseStateFile)) {
+        return JSON.parse(fs.readFileSync(this._showcaseStateFile, "utf8"));
+      }
+    } catch (_) { /* ignore */ }
+    return {};
+  }
+
+  _saveShowcaseState() {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const dir = path.dirname(this._showcaseStateFile);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(this._showcaseStateFile, JSON.stringify(this._lastShowcaseFired, null, 2));
+    } catch (e) {
+      console.warn(`[programming] showcase state save: ${e && e.message}`);
+    }
   }
 
   // ── Public API ──────────────────────────────────────────
@@ -344,8 +396,67 @@ class ProgrammingSchedule {
     this._broadcastState();
 
     // Check every 60 seconds for block transitions
-    this._timer = setInterval(() => this._checkBlockTransition(), 60000);
+    // Same 60s tick checks both block transitions AND scheduled
+    // album showcases. Order matters: if a showcase is firing it'll
+    // call setOverride and the block-transition check skips while
+    // override is active. So we check the showcase first.
+    this._timer = setInterval(() => {
+      this._checkShowcaseTrigger();
+      this._checkBlockTransition();
+    }, 60000);
     console.log(`[programming] Schedule loop started — current block: ${block.label}`);
+  }
+
+  /**
+   * Check if any scheduled album showcase should fire right now.
+   * Called from the same 30-60s tick as block transition. Mirrors
+   * peace-oration's slot semantics: minute 0-14 of the slot hour
+   * (Chicago time), per-album-per-day key tracked via state file.
+   */
+  _checkShowcaseTrigger() {
+    if (this._preparingShowcase) return;
+    if (!this._peaceOration) return;
+    const podcastStatus = this._getPodcastStatus();
+    if (podcastStatus && podcastStatus.podcastPlaying) return;
+
+    const chi = this._chicagoNow();
+    const hour = chi.getHours();
+    const minute = chi.getMinutes();
+    if (minute > 14) return;
+
+    const dateKey = `${chi.getFullYear()}-${String(chi.getMonth() + 1).padStart(2, "0")}-${String(chi.getDate()).padStart(2, "0")}`;
+    for (const showcase of DAILY_SHOWCASES) {
+      if (!showcase.hours.includes(hour)) continue;
+      const key = `${dateKey}T${String(hour).padStart(2, "0")}-${showcase.album}`;
+      if (this._lastShowcaseFired[key]) continue; // already fired today
+
+      const { ALBUMS } = require("./dj-engine");
+      const album = ALBUMS[showcase.album];
+      if (!album) {
+        console.warn(`[programming] showcase album not found: ${showcase.album}`);
+        continue;
+      }
+      this._preparingShowcase = key;
+      console.log(`\u{1F39E} [programming] scheduled showcase: ${showcase.album} (${showcase.durationMin}min) — composing narration...`);
+      this._peaceOration.composeAlbumNarration(showcase.album, album.theme, album.tracks, showcase.struggles)
+        .then((r) => {
+          if (r.ok) {
+            console.log(`\u{1F39E} [programming] narration ready (${r.pieces.length} pieces) — locking ${showcase.album}`);
+          } else {
+            console.warn(`[programming] showcase narration compose failed: ${r.reason || "unknown"} — locking album anyway`);
+          }
+          this.setOverride(showcase.album, showcase.durationMin * 60000);
+          this._lastShowcaseFired[key] = true;
+          this._saveShowcaseState();
+        })
+        .catch((e) => {
+          console.warn(`[programming] showcase error: ${e && e.message}`);
+        })
+        .finally(() => {
+          this._preparingShowcase = null;
+        });
+      return; // one showcase per tick
+    }
   }
 
   /**

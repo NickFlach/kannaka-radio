@@ -591,6 +591,11 @@ const programming = new ProgrammingSchedule({
   broadcast,
   broadcastState,
   getPodcastStatus: () => podcastScheduler.getStatus(),
+  // peaceOration is constructed below; pass a getter so the showcase
+  // trigger resolves it lazily at tick time (60s+ later).
+  peaceOration: { composeAlbumNarration: (...args) => peaceOration.composeAlbumNarration(...args) },
+  dataDir: require("path").join(BASE_DIR, "workspace"),
+  showcaseStateFile: require("path").join(BASE_DIR, "workspace", "showcase-state.json"),
 });
 
 // Wire programming into deps so routes can access it
