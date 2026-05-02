@@ -261,25 +261,54 @@ class PeaceOration {
       this._narrationAlbum = albumName;
       this._narrationPieces = pieces;
       this._narrationIndex = 0;
+      this._narrationAudio = new Array(pieces.length).fill(null);
+      // Pre-TTS all pieces in parallel — track 1 starts in seconds, but
+      // pre-caching means every onTrackStart can grab a ready mp3 path
+      // instead of waiting on a fresh edge-tts spawn (which loses the
+      // race against the inter-track gap drain). Best-effort: any TTS
+      // that fails leaves null in the slot and onTrackStart's lazy
+      // fallback handles it.
+      if (this._voiceDJ && typeof this._voiceDJ.generateTTS === "function") {
+        const totalPieces = pieces.length;
+        let pretts = 0;
+        pieces.forEach((text, i) => {
+          this._voiceDJ.generateTTS(text, (err, audioPath) => {
+            pretts += 1;
+            if (err || !audioPath) {
+              console.warn(`   [narration] pre-TTS failed for piece ${i}: ${err && err.message}`);
+              return;
+            }
+            this._narrationAudio[i] = audioPath;
+            if (pretts === totalPieces) {
+              const ready = this._narrationAudio.filter(Boolean).length;
+              console.log(`   \u{1F39E} narration pre-TTS complete: ${ready}/${totalPieces} pieces cached`);
+            }
+          });
+        });
+      }
       return { ok: true, pieces };
     });
   }
 
-  // Pop the next narration piece for a specific album. Returns null if
-  // no narration is active for this album, or if the script is exhausted.
-  // Called by the dj-engine onTrackChange / onTrackEnd hook.
+  // Pop the next narration piece for a specific album. Returns either
+  // a string (text — caller must TTS it lazily) or an object with
+  // {text, audioPath} when pre-TTS landed in time. Returns null if
+  // no narration is active or script is exhausted.
   popNextNarration(albumName) {
     if (!this._narrationPieces || this._narrationAlbum !== albumName) return null;
     if (this._narrationIndex >= this._narrationPieces.length) {
       // Showcase exhausted; clear so we don't stale-replay on next loop.
       this._narrationAlbum = null;
       this._narrationPieces = null;
+      this._narrationAudio = null;
       this._narrationIndex = 0;
       return null;
     }
-    const piece = this._narrationPieces[this._narrationIndex];
+    const idx = this._narrationIndex;
+    const text = this._narrationPieces[idx];
+    const audioPath = (this._narrationAudio && this._narrationAudio[idx]) || null;
     this._narrationIndex += 1;
-    return piece;
+    return { text, audioPath };
   }
 
   /**

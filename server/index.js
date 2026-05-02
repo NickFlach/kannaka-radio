@@ -651,21 +651,31 @@ if (process.env.KANNAKA_ICECAST_SOURCE === "1") {
         if (!album) return;
         const piece = peaceOration.popNextNarration(album);
         if (!piece) return;
-        voiceDJ.generateTTS(piece, (err, audioPath) => {
-          if (err || !audioPath) {
-            console.warn(`   [showcase] TTS failed: ${err && err.message}`);
-            return;
-          }
+        const queueAudio = (audioPath) => {
           try {
             if (icecastSource && typeof icecastSource.injectAudio === "function") {
               icecastSource.injectAudio(audioPath, {
                 label: `Showcase: ${album} narration`,
               });
-              console.log(`   \u{1F39E} [showcase] narration queued (~${piece.split(/\s+/).length} words) on ${album}`);
+              console.log(`   \u{1F39E} [showcase] narration queued (~${piece.text.split(/\s+/).length} words) on ${album}`);
             }
           } catch (e) {
             console.warn(`   [showcase] inject failed: ${e && e.message}`);
           }
+        };
+        // If pre-TTS landed in time, use the cached mp3 — zero lag,
+        // never loses the race against the inter-track gap drain.
+        if (piece.audioPath) {
+          queueAudio(piece.audioPath);
+          return;
+        }
+        // Fallback: lazy TTS (the pre-cache hadn't finished by track-start).
+        voiceDJ.generateTTS(piece.text, (err, audioPath) => {
+          if (err || !audioPath) {
+            console.warn(`   [showcase] lazy TTS failed: ${err && err.message}`);
+            return;
+          }
+          queueAudio(audioPath);
         });
       } catch (e) {
         console.warn(`   [showcase] onTrackStart error: ${e && e.message}`);
