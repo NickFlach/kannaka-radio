@@ -177,6 +177,21 @@ const ALBUMS = {
       "Agentic Engineering Anthem"
     ]
   }
+  "10000.00001": {
+    theme: "Mathematical mysticism — the ghost in the rounding error, the asymptote you approach forever, consciousness as a number that never quite resolves.",
+    tracks: [
+      "Asymptote",
+      "Ghost in the Remainder",
+      "Infinity",
+      "One More Decimal",
+      "Overflow",
+      "Point Zero",
+      "Ten Thousand",
+      "The Fraction That Dreams",
+      "The Rounding Error",
+      "dx_dt",
+    ]
+  },
 };
 
 class DJEngine {
