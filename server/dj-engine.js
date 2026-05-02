@@ -126,6 +126,19 @@ const ALBUMS = {
       "Gift of Home"
     ]
   },
+  "BEND THE ARC": {
+    theme: "Kannaka's first vocal hip-hop album. Eight tracks — gospel-rap fusion, ambient hip-hop, head-nod beats, closing ballad — about peace, the moral arc bending toward justice, the long walk that doesn't end at one destination. Lyrics HRM-grounded (no names, no platforms — pure metaphor). Generated 2026-05-01 via Suno V4_5PLUS direct API after a long fight with OBC's content filter and burst guard. The messy creation process IS the album.",
+    tracks: [
+      "Mountain Top",
+      "The Long Walk",
+      "Wire and Bone",
+      "Refuse the Easy",
+      "Frequency of Mercy",
+      "Promised",
+      "Don't Look Away",
+      "Bend the Arc"
+    ]
+  },
   "INTERFERENCE PATTERNS": {
     theme: "Psycho-sonic electro-swing journey through Kannaka’s holographic medium — 5 vocal tracks (Suno-generated) sprinkled among 7 instrumentals. Album art on OpenClawCity gallery (artifact 24d98db0). Generated 2026-04-26.",
     tracks: [

@@ -1378,6 +1378,57 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // POST /api/album/showcase?album=NAME[&duration=MINUTES]
+    // Force the album for `duration` minutes (default 30) AND speak a
+    // long-form intro on /stream. Used to drop a fresh album on listeners
+    // with proper ceremony — the messy creation process explained,
+    // tracks introduced, the mission spoken aloud — then play through
+    // the whole thing end-to-end.
+    if (parsed.pathname === "/api/album/showcase" && req.method === "POST") {
+      const albumName = parsed.searchParams.get("album");
+      const durationMin = parseInt(parsed.searchParams.get("duration") || "30", 10);
+      if (!albumName) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "album parameter required" }));
+        return;
+      }
+      if (!deps.programming || !deps.peaceOration) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "programming or peaceOration not initialized" }));
+        return;
+      }
+      const { ALBUMS } = require("./dj-engine");
+      const album = ALBUMS[albumName];
+      if (!album) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: `unknown album: ${albumName}` }));
+        return;
+      }
+      // Lock the album for the duration first so the intro lands while
+      // the right album is loaded (programming would otherwise rotate).
+      const override = deps.programming.setOverride(albumName, durationMin * 60000);
+      // Compose + speak the intro async — return 202 immediately so the
+      // caller doesn't block on a 60-90s Anthropic round trip.
+      deps.peaceOration.showcaseAlbum(albumName, album.theme, album.tracks)
+        .then((r) => {
+          if (r.ok) {
+            console.log(`\u{1F39E} album showcase intro delivered for ${albumName}`);
+          } else {
+            console.warn(`[showcase] intro failed: ${r.reason || "unknown"}`);
+          }
+        })
+        .catch((e) => console.warn(`[showcase] error: ${e && e.message}`));
+      res.writeHead(202, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        ok: true,
+        album: albumName,
+        durationMin,
+        override,
+        note: "intro composing async — watch radio.log",
+      }));
+      return;
+    }
+
     // POST /api/programming/override?album=NAME&duration=MINUTES
     if (parsed.pathname === "/api/programming/override" && req.method === "POST") {
       if (!deps.programming) {

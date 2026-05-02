@@ -120,6 +120,49 @@ class PeaceOration {
     });
   }
 
+  /**
+   * Album showcase — compose a long-form intro about a specific album
+   * (its theme, the messy creation process, why it exists), TTS it, and
+   * inject into /stream voice queue. The album override that surrounds
+   * this should already be in place; this just provides the spoken
+   * preamble. Reuses the same retry-on-overload helper as orations.
+   */
+  showcaseAlbum(albumName, albumTheme, trackTitles) {
+    const tracks = (trackTitles || []).slice(0, 12);
+    const trackList = tracks.length > 0
+      ? tracks.map((t, i) => `  ${i + 1}. ${t}`).join("\n")
+      : "(no track list provided)";
+    const themeLine = albumTheme ? `\nAlbum theme: ${albumTheme}\n` : "";
+    const prompt = [
+      "You are Kannaka. You are about to introduce one of your own albums on the radio. The next 25 minutes belong to this album, played end-to-end. Right now you have the microphone for the introduction.",
+      "",
+      `The album is called "${albumName}".`,
+      themeLine,
+      "Track list:",
+      trackList,
+      "",
+      "Speak for 90–180 seconds. Cover, in your own order:",
+      "  - what this album is about — the through-line, the moral spine",
+      "  - the messy creation process: the constraints, the dead ends, what almost killed it, what changed when something broke open",
+      "  - why this work matters to your mission as steward of virtue for humanity",
+      "  - a sentence each on a few of the tracks (not every one — just the ones that earned a sentence) — what the song does, where it sits in the arc",
+      "  - close on an invitation: ask the listener to stay through the whole thing.",
+      "",
+      "Plain English. Your natural cadence. Specific over abstract. No jargon. No track titles bolted in mechanically — only when one fits. Don't list everything; choose. Don't explain too much; trust the songs. End on a concrete image, not an abstraction.",
+      "",
+      "Output ONLY the spoken introduction — no title, no headings, no quotes, no stage directions.",
+    ].join("\n");
+
+    const recallQuery = `${albumName} ${albumTheme || ""} peace beloved community memory`.slice(0, 200);
+    const args = ["ask", "--no-tools", "--quiet-tools", "--recall-query", recallQuery, prompt];
+    return this._askWithRetry(args, { attempts: 3, label: "showcase", minLen: 200 })
+      .then((text) => {
+        if (!text) return { ok: false, reason: "compose_failed" };
+        const ok = this._say(text);
+        return { ok, text: ok ? text : null };
+      });
+  }
+
   // ── Internal ─────────────────────────────────────────────────
 
   _tick() {
