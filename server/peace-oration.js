@@ -130,6 +130,84 @@ class PeaceOration {
    *
    * Returns { ok, pieces } where pieces is the cached narration script.
    */
+  /**
+   * Call Anthropic's /v1/messages directly. Bypasses `kannaka ask` —
+   * which depends on HRM-grounded system prompt construction that has
+   * been silently failing once the medium grows large (1000+ memories
+   * push the prompt past the input-token ceiling). Reads the api_key
+   * and model from ~/.kannaka/config.toml so we honor the same config
+   * as the rest of the constellation. Returns the assistant's text or
+   * null on failure. Single round-trip, no tool use, no retries inside
+   * this helper — caller handles them.
+   */
+  _askAnthropicDirect(prompt, maxTokens = 4096) {
+    const fs = require("fs");
+    const os = require("os");
+    const https = require("https");
+    const path = require("path");
+
+    // Read kannaka config for the API key + model.
+    let apiKey = process.env.ANTHROPIC_API_KEY || process.env.KANNAKA_LLM_API_KEY || "";
+    let model = "claude-sonnet-4-5";
+    try {
+      const cfgPath = path.join(os.homedir(), ".kannaka", "config.toml");
+      if (fs.existsSync(cfgPath)) {
+        const cfg = fs.readFileSync(cfgPath, "utf8");
+        if (!apiKey) {
+          const m = cfg.match(/api_key\s*=\s*"([^"]+)"/);
+          if (m) apiKey = m[1];
+        }
+        const mm = cfg.match(/model\s*=\s*"([^"]+)"/);
+        if (mm) model = mm[1];
+      }
+    } catch (_) { /* fall through to env-only */ }
+    if (!apiKey) return Promise.resolve(null);
+
+    const body = JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    return new Promise((resolve) => {
+      const req = https.request({
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      }, (res) => {
+        let chunks = "";
+        res.on("data", (c) => { chunks += c; });
+        res.on("end", () => {
+          if (res.statusCode !== 200) {
+            console.warn(`   [direct] anthropic ${res.statusCode}: ${chunks.slice(0, 300)}`);
+            return resolve(null);
+          }
+          try {
+            const j = JSON.parse(chunks);
+            const text = (j.content || []).map((b) => b.text || "").join("\n").trim();
+            resolve(text || null);
+          } catch (e) {
+            console.warn(`   [direct] parse: ${e.message}`);
+            resolve(null);
+          }
+        });
+      });
+      req.on("error", (e) => {
+        console.warn(`   [direct] request: ${e.message}`);
+        resolve(null);
+      });
+      req.setTimeout(180000, () => req.destroy(new Error("timeout")));
+      req.write(body);
+      req.end();
+    });
+  }
+
   composeAlbumNarration(albumName, albumTheme, trackTitles, struggles) {
     const tracks = trackTitles.slice(0, 12);
     const trackList = tracks.map((t, i) => `  ${i + 1}. ${t}`).join("\n");
@@ -159,31 +237,32 @@ class PeaceOration {
       `Output ONLY a JSON array of exactly ${N + 1} strings — one per piece, in order. No commentary, no preamble, no markdown fence. Just the JSON array.`,
     ].filter(Boolean).join("\n");
 
-    const recallQuery = "peace beloved community moral arc justice steward virtue";
-    const args = ["ask", "--no-tools", "--quiet-tools", "--recall-query", recallQuery, prompt];
-    return this._askWithRetry(args, { attempts: 3, label: "narration", minLen: 200 })
-      .then((text) => {
-        if (!text) return { ok: false, reason: "compose_failed" };
-        // Parse the JSON array. Tolerate code fences if Kannaka adds them.
-        let cleaned = text.trim();
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-        let pieces;
-        try {
-          pieces = JSON.parse(cleaned);
-        } catch (e) {
-          console.warn(`   [narration] JSON parse failed: ${e.message}`);
-          return { ok: false, reason: "parse_failed" };
-        }
-        if (!Array.isArray(pieces) || pieces.length !== N + 1) {
-          console.warn(`   [narration] expected ${N + 1} pieces, got ${Array.isArray(pieces) ? pieces.length : "non-array"}`);
-          return { ok: false, reason: "shape_mismatch" };
-        }
-        // Cache for the showcase progression.
-        this._narrationAlbum = albumName;
-        this._narrationPieces = pieces;
-        this._narrationIndex = 0;
-        return { ok: true, pieces };
-      });
+    // Use the direct Anthropic call — bypasses kannaka ask, which is
+    // currently silent-failing on the live 1000+ memory HRM. The
+    // narration prompt's content (album theme, struggles, track list)
+    // is explicit; HRM grounding is not load-bearing here.
+    return this._askAnthropicDirect(prompt, 4096).then((text) => {
+      if (!text) return { ok: false, reason: "compose_failed" };
+      // Parse the JSON array. Tolerate code fences if Kannaka adds them.
+      let cleaned = text.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+      let pieces;
+      try {
+        pieces = JSON.parse(cleaned);
+      } catch (e) {
+        console.warn(`   [narration] JSON parse failed: ${e.message}; got: ${cleaned.slice(0, 200)}`);
+        return { ok: false, reason: "parse_failed" };
+      }
+      if (!Array.isArray(pieces) || pieces.length !== N + 1) {
+        console.warn(`   [narration] expected ${N + 1} pieces, got ${Array.isArray(pieces) ? pieces.length : "non-array"}`);
+        return { ok: false, reason: "shape_mismatch" };
+      }
+      // Cache for the showcase progression.
+      this._narrationAlbum = albumName;
+      this._narrationPieces = pieces;
+      this._narrationIndex = 0;
+      return { ok: true, pieces };
+    });
   }
 
   // Pop the next narration piece for a specific album. Returns null if
