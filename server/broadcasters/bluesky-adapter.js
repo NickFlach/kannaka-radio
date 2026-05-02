@@ -32,7 +32,20 @@ class BlueskyAdapter {
     // tanks past 4. The body shrinks to fit.
     const tags = tagsFor(topic, 4);
     const body = composeForFeed(text, tags, POST_MAX);
-    return this._client.post(body);
+    const result = await this._client.post(body);
+    // Convert the AT-Protocol uri (at://did:plc:.../app.bsky.feed.post/<rkey>)
+    // into a public bsky.app URL so the broadcaster log shows a clickable
+    // link alongside Mastodon/Telegram/Nostr instead of "(no url)".
+    if (result && result.ok && result.uri) {
+      const m = result.uri.match(/^at:\/\/(did:[^/]+)\/app\.bsky\.feed\.post\/([^/]+)$/);
+      if (m) {
+        const did = m[1];
+        const rkey = m[2];
+        const handle = (this._creds && this._creds.handle) || did;
+        result.url = `https://bsky.app/profile/${handle}/post/${rkey}`;
+      }
+    }
+    return result;
   }
 }
 

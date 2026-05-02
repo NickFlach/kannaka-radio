@@ -657,7 +657,23 @@ class DJEngine {
       pool = fresh;
       mode = 'filtered';
     } else {
-      pool = trackMetas;
+      // Pool too small — fall back to the full album, but sort
+      // oldest-played-first AND drop the most-recent N so the shuffle
+      // can't re-pick a track we played minutes ago. The 2026-05-02
+      // bug: Communication #1 played at 12:13 and again at 12:28 because
+      // fallback shuffle re-grabbed it from "all 12 tracks".
+      const sorted = [...trackMetas].sort((a, b) => {
+        const tA = this._recentlyPlayed.get(a.file) || 0;
+        const tB = this._recentlyPlayed.get(b.file) || 0;
+        return tA - tB; // oldest (or never-played) first
+      });
+      // Drop the 2 most-recent — they're at the tail after sort.
+      // For a 13-track album with 11 recents, this leaves 11 for shuffle
+      // (the 2 freshest from the recent list aren't allowed to come back
+      // immediately). For a 3-track album hitting fallback we'd keep 1
+      // — better one repeating track than the just-played one cycling.
+      const dropCount = Math.min(2, sorted.length - 1);
+      pool = dropCount > 0 ? sorted.slice(0, sorted.length - dropCount) : sorted;
       mode = (fresh.length === 0) ? 'all-recent' : 'pool-too-small';
     }
     const skipped = trackMetas.length - fresh.length;
