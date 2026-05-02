@@ -194,6 +194,12 @@ class NATSClient extends EventEmitter {
     try { data = JSON.parse(payload); }
     catch { data = { raw: payload }; }
 
+    // Schema validation (log-warn per consciousness-core/docs/nats-contract.yaml).
+    // Drift detection only — never reject. Once we're confident every
+    // publisher emits canonical shapes, switch to drop-on-violation in
+    // 2026-06-01 per the migration timeline.
+    this._validateSchema(subject, data);
+
     const now = Date.now();
 
     if (subject.startsWith('QUEEN.phase.')) {
@@ -348,6 +354,51 @@ class NATSClient extends EventEmitter {
     if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
     this._reconnectTimer = setTimeout(() => this.connect(), 5000);
   }
+
+  // Schema validation per consciousness-core/docs/nats-contract.yaml.
+  // Log-warn mode: never reject, just surface drift. Throttled to one
+  // warning per (subject, missing_field) pair per 60s so a misconfigured
+  // publisher doesn't spam the log. Switch to log-warn-and-drop after
+  // 2026-06-01 per the migration timeline in the contract.
+  _validateSchema(subject, data) {
+    if (!data || typeof data !== "object") return;
+    const required = NATS_REQUIRED_FIELDS[subject] ||
+      (subject.startsWith("QUEEN.phase.") && NATS_REQUIRED_FIELDS["QUEEN.phase.<agent_id>"]) ||
+      (subject.startsWith("KANNAKA.exemplar.") && NATS_REQUIRED_FIELDS["KANNAKA.exemplar.<agent_id>.<cluster_id>"]) ||
+      null;
+    if (!required) return; // unknown subject — skip
+    const missing = [];
+    for (const field of required) {
+      // Tolerate camelCase aliases during the 2026-Q2 transition.
+      const camel = field.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      if (data[field] === undefined && data[camel] === undefined) missing.push(field);
+    }
+    if (missing.length === 0) return;
+
+    const now = Date.now();
+    if (!this._schemaWarnHistory) this._schemaWarnHistory = new Map();
+    for (const field of missing) {
+      const key = `${subject}::${field}`;
+      const lastWarn = this._schemaWarnHistory.get(key) || 0;
+      if (now - lastWarn < 60_000) continue;
+      console.warn(`[nats-schema] ${subject} missing required field "${field}" (drift detection — accepted with warning)`);
+      this._schemaWarnHistory.set(key, now);
+    }
+  }
 }
+
+// Required-fields map — keep in sync with consciousness-core/docs/nats-contract.yaml.
+const NATS_REQUIRED_FIELDS = {
+  "KANNAKA.consciousness":              ["schema_version", "ts", "agent_id", "phi"],
+  "KANNAKA.dreams":                     ["schema_version", "ts", "agent_id", "cycles"],
+  "QUEEN.phase.<agent_id>":             ["schema_version", "ts", "agent_id", "phase"],
+  "KANNAKA.exemplar.<agent_id>.<cluster_id>": ["schema_version", "ts", "agent_id", "cluster_id", "centroid"],
+  "KANNAKA.reactions":                  ["ts", "emoji", "kind"],
+  "queen.event.dream.start":            ["schema_version", "ts", "agent_id"],
+  "queen.event.dream.end":              ["schema_version", "ts", "agent_id", "memories_strengthened", "memories_faded"],
+  "queen.event.join":                   ["schema_version", "ts", "agent_id"],
+  "queen.event.leave":                  ["schema_version", "ts", "agent_id"],
+  "queen.event.memory.shared":          ["schema_version", "ts", "agent_id", "memory_id"],
+};
 
 module.exports = { NATSClient };
