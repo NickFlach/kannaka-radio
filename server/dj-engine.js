@@ -176,7 +176,7 @@ const ALBUMS = {
       "Control Room Constellation",
       "Agentic Engineering Anthem"
     ]
-  }
+  },
   "10000.00001": {
     theme: "Mathematical mysticism — the ghost in the rounding error, the asymptote you approach forever, consciousness as a number that never quite resolves.",
     tracks: [
