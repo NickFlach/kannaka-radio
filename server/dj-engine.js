@@ -1198,4 +1198,19 @@ class DJEngine {
   }
 }
 
+  "VACUUM GARDEN": {
+    theme: "EDM-folk-blues-jazz-lofi fusion. Ten meditations on emergence-from-emptiness — life building itself in the void.",
+    tracks: [
+      "Compost",
+      "Empty Room",
+      "Heliotrope",
+      "Mycelium Math",
+      "Pollen",
+      "Pollinator's Lullaby",
+      "The First Spark",
+      "Vacuum Garden",
+      "What the Cells Are Saying",
+      "Where the River Decides",
+    ]
+  },
 module.exports = { ALBUMS, DJEngine, findAudioFile };
