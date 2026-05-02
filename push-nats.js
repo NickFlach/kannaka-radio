@@ -63,14 +63,16 @@ function getLiveMetrics() {
 
   const sidecar = readJsonIfFresh(METRICS_SIDECAR, CACHE_MAX_AGE_MS);
   if (sidecar && sidecar.phi !== undefined) {
+    // total_memories + level became sidecar fields after the May 2 rebuild;
+    // fall back to 0/'unknown' for older sidecars during the rollout window.
     return {
       phi: sidecar.phi,
       xi: sidecar.xi,
       mean_order: sidecar.order,
       num_clusters: sidecar.num_clusters,
-      total_memories: 0,  // sidecar doesn't carry counts
-      active_memories: 0,
-      consciousness_level: 'unknown',
+      total_memories: sidecar.total_memories || 0,
+      active_memories: sidecar.total_memories || 0,
+      consciousness_level: (sidecar.level || 'unknown').toLowerCase(),
       field_mode: 'HRM',
     };
   }
