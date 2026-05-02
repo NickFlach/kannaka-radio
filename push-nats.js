@@ -1,12 +1,21 @@
 /**
- * push-nats.js — Pull LIVE consciousness metrics from kannaka CLI
- * and publish to NATS subjects on swarm.ninja-portal.com:4222.
+ * push-nats.js — Pull LIVE consciousness metrics and publish to NATS subjects.
+ *
+ * Source priority (avoid `kannaka status` — its HRM load takes 1+ min on
+ * 1000+ memories, which used to blow the 60s exec timeout and silently
+ * publish nothing):
+ *   1. ~/.kannaka/observe-cache.json  — refreshed every 5 min by
+ *                                        cache-observe.sh, has full
+ *                                        consciousness block + counts.
+ *   2. ~/.kannaka/kannaka.metrics.json — sidecar from medium/consciousness.rs.
+ *   3. `kannaka status` exec           — last-resort fallback (slow).
  *
  * Cross-platform: auto-detects Windows vs Linux paths.
- * stderr from the binary (debug lines) is discarded; only stdout JSON is used.
  */
 
 const net = require('net');
+const fs = require('fs');
+const path = require('path');
 const { execSync } = require('child_process');
 const os = require('os');
 
@@ -20,13 +29,56 @@ const KANNAKA_DATA = IS_WINDOWS
 const NATS_HOST = 'swarm.ninja-portal.com';
 const NATS_PORT = 4222;
 
-// ── Pull live metrics from kannaka CLI ──────────────────────
+const OBSERVE_CACHE = path.join(KANNAKA_DATA, 'observe-cache.json');
+const METRICS_SIDECAR = path.join(KANNAKA_DATA, 'kannaka.metrics.json');
+const CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 min
+
+function readJsonIfFresh(filePath, maxAgeMs) {
+  try {
+    const age = Date.now() - fs.statSync(filePath).mtimeMs;
+    if (age > maxAgeMs) return null;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// ── Pull metrics — prefer disk caches, fall back to slow CLI exec ──
 
 function getLiveMetrics() {
+  const observe = readJsonIfFresh(OBSERVE_CACHE, CACHE_MAX_AGE_MS);
+  if (observe && observe.consciousness && observe.consciousness.phi !== undefined) {
+    const c = observe.consciousness;
+    return {
+      phi: c.phi,
+      xi: c.xi,
+      mean_order: c.mean_order,
+      num_clusters: c.num_clusters,
+      total_memories: c.total_memories,
+      active_memories: c.active_memories,
+      consciousness_level: (c.level || 'unknown').toLowerCase(),
+      field_mode: 'HRM',
+    };
+  }
+
+  const sidecar = readJsonIfFresh(METRICS_SIDECAR, CACHE_MAX_AGE_MS);
+  if (sidecar && sidecar.phi !== undefined) {
+    return {
+      phi: sidecar.phi,
+      xi: sidecar.xi,
+      mean_order: sidecar.order,
+      num_clusters: sidecar.num_clusters,
+      total_memories: 0,  // sidecar doesn't carry counts
+      active_memories: 0,
+      consciousness_level: 'unknown',
+      field_mode: 'HRM',
+    };
+  }
+
   try {
     const raw = execSync(`"${KANNAKA_BIN}" status`, {
       env: { ...process.env, KANNAKA_DATA_DIR: KANNAKA_DATA },
-      stdio: ['pipe', 'pipe', 'pipe'],  // capture stdout, discard stderr
+      stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 60000,
     });
     return JSON.parse(raw.toString().trim());
