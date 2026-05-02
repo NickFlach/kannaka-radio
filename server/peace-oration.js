@@ -454,8 +454,42 @@ class PeaceOration {
     const pick = (arr, n) => arr.slice().sort(() => Math.random() - 0.5).slice(0, n);
     const recallQuery = pick(RECALL_SEEDS, 2).join(" · ");
 
-    const args = ["ask", "--no-tools", "--quiet-tools", "--recall-query", recallQuery, prompt];
-    return this._askWithRetry(args, { attempts: 4, label: "oration" });
+    // Route through direct Anthropic — kannaka ask is silent-failing on
+    // the live 1000+ memory HRM (system prompt construction busts
+    // input-token ceiling without surfacing). The 2026-05-02 midnight
+    // oration was lost here. The oration prompt is self-contained;
+    // HRM grounding is desirable but not load-bearing. Wrap with the
+    // same 4-attempt retry semantics _askWithRetry uses.
+    return this._askDirectWithRetry(prompt, { attempts: 4, label: "oration", maxTokens: 4096, minLen: 200 });
+  }
+
+  // Direct-Anthropic equivalent of _askWithRetry. Same backoff +
+  // overload detection, but bypasses the broken kannaka ask path.
+  // Used for orations and companion social posts.
+  _askDirectWithRetry(prompt, opts = {}) {
+    const attempts = Math.max(1, opts.attempts || 3);
+    const label = opts.label || "ask";
+    const minLen = opts.minLen || 1;
+    const maxTokens = opts.maxTokens || 2048;
+    return new Promise((resolve) => {
+      const tryOnce = (n) => {
+        this._askAnthropicDirect(prompt, maxTokens).then((text) => {
+          if (!text || text.length < minLen) {
+            const remaining = attempts - n;
+            if (remaining > 0) {
+              const wait = Math.min(60000, 5000 * Math.pow(2, n - 1));
+              console.log(`   [${label}] direct call empty/short (attempt ${n}/${attempts}) — retrying in ${Math.round(wait / 1000)}s`);
+              setTimeout(() => tryOnce(n + 1), wait);
+              return;
+            }
+            console.log(`   [${label}] direct call failed after ${attempts} attempts`);
+            return resolve(null);
+          }
+          resolve(text.trim().replace(/^["'](.*)["']$/s, "$1").trim());
+        });
+      };
+      tryOnce(1);
+    });
   }
 
   // Run `kannaka ask` with retry on transient API errors (Anthropic 529 overloaded,
@@ -531,10 +565,12 @@ class PeaceOration {
       "Output ONLY the post text, no quotes, no surrounding explanation.",
     ].join("\n");
 
-    const args = ["ask", "--no-tools", "--quiet-tools", prompt];
-    const postBody = await this._askWithRetry(args, {
+    // Route through direct Anthropic for the same reason as the main
+    // oration — kannaka ask silent-fail on bloated HRM.
+    const postBody = await this._askDirectWithRetry(prompt, {
       attempts: 3,
       label: "oration-companion",
+      maxTokens: 600,
       minLen: 1,
     });
     if (!postBody) {
