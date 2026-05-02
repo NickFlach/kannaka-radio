@@ -307,9 +307,13 @@ class ProgrammingSchedule {
 
     this._tracksSinceAlbumSwitch++;
 
-    // Mixed-set logic: after 3+ tracks from the same album,
-    // 20% chance to switch to a different album in the block's rotation
-    if (this._tracksSinceAlbumSwitch >= 3 && Math.random() < 0.2) {
+    // Even rotation: after 3 tracks from the same album, deterministically
+    // switch to the next album in the block's rotation. The previous
+    // version used "20% chance after 3 tracks" which RNG-stalled hard —
+    // 4 albums absorbed 17 of 20 plays in the latest history while 10
+    // other albums got nothing. Curator panel surfaced this clearly.
+    // Determinism here means every album gets roughly equal airtime.
+    if (this._tracksSinceAlbumSwitch >= 3) {
       this._switchAlbumInBlock(block);
     }
   }
@@ -321,7 +325,10 @@ class ProgrammingSchedule {
   _transitionToBlock(newBlock) {
     const previousBlock = this._currentBlock;
     this._currentBlock = newBlock;
-    this._albumIndexInBlock = 0;
+    // Don't reset _albumIndexInBlock to 0 — that means every block
+    // boundary restarts at block.albums[0], which over a day starves
+    // the later entries. Let the index keep climbing; pickAlbumForBlock
+    // mods it against the new block's album-list length.
     this._tracksSinceAlbumSwitch = 0;
 
     const album = this.pickAlbumForBlock(newBlock);
