@@ -633,23 +633,35 @@ if (process.env.KANNAKA_ICECAST_SOURCE === "1") {
       // The metadata is already pushed via onTrackChange when the next
       // track loads; this hook exists for future use (analytics, etc.)
     },
-    // Album-showcase narration hook. When a track starts streaming, ask
-    // peaceOration if there's a narration piece queued for the current
-    // album. If yes, run executeOration (TTS + injectAudio) — the voice
-    // file lands in icecast-source's voiceQueue and drains in the gap
-    // BETWEEN this track and the next. Best-effort: if voiceDJ is busy
-    // (peace oration actually in flight), the piece is silently skipped
-    // — better a missed bridge than a stuck talk lock.
+    // Album-showcase narration hook. Bypasses executeOration's talk
+    // lock (which collides with regular DJ track-intros). Calls
+    // generateTTS directly — pure function, no lock — then injects
+    // the resulting mp3 into icecast-source's voiceQueue. Drains in
+    // the gap BETWEEN this track and the next. Both the regular DJ
+    // intro and the showcase narration can coexist in the queue;
+    // listeners hear them in order with no contention.
     onTrackStart: (track) => {
       try {
         const album = djEngine.state.currentAlbum;
         if (!album) return;
         const piece = peaceOration.popNextNarration(album);
         if (!piece) return;
-        const ok = voiceDJ.executeOration(piece, () => {});
-        if (!ok) {
-          console.warn(`   [showcase] narration deferred — voiceDJ busy on "${track.title || track.file}"`);
-        }
+        voiceDJ.generateTTS(piece, (err, audioPath) => {
+          if (err || !audioPath) {
+            console.warn(`   [showcase] TTS failed: ${err && err.message}`);
+            return;
+          }
+          try {
+            if (icecastSource && typeof icecastSource.injectAudio === "function") {
+              icecastSource.injectAudio(audioPath, {
+                label: `Showcase: ${album} narration`,
+              });
+              console.log(`   \u{1F39E} [showcase] narration queued (~${piece.split(/\s+/).length} words) on ${album}`);
+            }
+          } catch (e) {
+            console.warn(`   [showcase] inject failed: ${e && e.message}`);
+          }
+        });
       } catch (e) {
         console.warn(`   [showcase] onTrackStart error: ${e && e.message}`);
       }
