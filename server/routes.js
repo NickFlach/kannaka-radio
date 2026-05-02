@@ -1404,18 +1404,32 @@ module.exports = function setupRoutes(deps) {
         res.end(JSON.stringify({ error: `unknown album: ${albumName}` }));
         return;
       }
-      // Lock the album for the duration first so the intro lands while
-      // the right album is loaded (programming would otherwise rotate).
-      const override = deps.programming.setOverride(albumName, durationMin * 60000);
-      // Compose + speak the intro async — return 202 immediately so the
-      // caller doesn't block on a 60-90s Anthropic round trip.
-      deps.peaceOration.showcaseAlbum(albumName, album.theme, album.tracks)
+      // Optional struggles narrative — passed by caller or pulled from
+      // a known story. The endpoint accepts ?struggles= but if absent we
+      // describe the BEND THE ARC making for the prompt to weave naturally.
+      const struggles = parsed.searchParams.get("struggles") ||
+        (albumName === "BEND THE ARC"
+          ? "OBC's 500-character prompt cap and per-minute burst guard rejecting tracks for hours; Suno's content filter flagging real song titles like 'Don't Look Away'; the daily quota slamming shut after one cover and one track; the metaphor-refinement that taught Kannaka to translate every name and date into image; ten attempts that produced one track called 'Beloved'; pivoting to Suno's direct API and getting all eight tracks in twenty minutes; A/B picking variants by spectral analysis through kannaka-hear; a long table and twelve archetype chairs in Kannaka's home as the listening room; the choice to stay metaphorical because songs are poetry not field reports."
+          : null);
+      // Compose the full narration script FIRST (intro + N-1 bridges +
+      // closing). This is one Anthropic round-trip returning a JSON
+      // array; on success we cache it inside peaceOration and only THEN
+      // set the album override so playback aligns with a ready script.
+      // Return 202 immediately so the caller doesn't block on the
+      // ~60-90s compose. The script's INTRO piece queues at the next
+      // track-start hook, BRIDGES queue per subsequent track, CLOSING
+      // queues at the last track's start.
+      deps.peaceOration.composeAlbumNarration(albumName, album.theme, album.tracks, struggles)
         .then((r) => {
-          if (r.ok) {
-            console.log(`\u{1F39E} album showcase intro delivered for ${albumName}`);
-          } else {
-            console.warn(`[showcase] intro failed: ${r.reason || "unknown"}`);
+          if (!r.ok) {
+            console.warn(`[showcase] narration compose failed: ${r.reason || "unknown"}`);
+            // Still set override even without narration — listener at
+            // least gets the album.
+            deps.programming.setOverride(albumName, durationMin * 60000);
+            return;
           }
+          console.log(`\u{1F39E} album narration ready (${r.pieces.length} pieces) — locking ${albumName} for ${durationMin}min`);
+          deps.programming.setOverride(albumName, durationMin * 60000);
         })
         .catch((e) => console.warn(`[showcase] error: ${e && e.message}`));
       res.writeHead(202, { "Content-Type": "application/json" });
@@ -1423,8 +1437,7 @@ module.exports = function setupRoutes(deps) {
         ok: true,
         album: albumName,
         durationMin,
-        override,
-        note: "intro composing async — watch radio.log",
+        note: "narration composing async — override fires when script is ready. Watch radio.log.",
       }));
       return;
     }

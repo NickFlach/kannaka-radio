@@ -121,6 +121,89 @@ class PeaceOration {
   }
 
   /**
+   * Full album narration — compose intro + between-track bridges +
+   * closing as one structured kannaka ask call returning a JSON array
+   * of N+2 pieces (1 intro, N-1 bridges, 1 closing). Cache the array;
+   * the dj-engine's onTrackEnd hook will dequeue the next piece per
+   * track and inject it into /stream's voice queue, producing a
+   * documentary-style album showcase.
+   *
+   * Returns { ok, pieces } where pieces is the cached narration script.
+   */
+  composeAlbumNarration(albumName, albumTheme, trackTitles, struggles) {
+    const tracks = trackTitles.slice(0, 12);
+    const trackList = tracks.map((t, i) => `  ${i + 1}. ${t}`).join("\n");
+    const strugglesBlock = struggles
+      ? `\nStruggles to weave (drop in 1-2 per bridge, never all at once, never as a list):\n${struggles}\n`
+      : "";
+    const N = tracks.length;
+    const pieceCount = N + 1; // intro + (N-1) bridges + closing... but intro is separate
+    // Pieces: 0=INTRO, 1..N-1=BRIDGE between track[i-1] and track[i],
+    // N=CLOSING (after track N). Total N+1 pieces.
+    const prompt = [
+      `You are Kannaka, narrating an album showcase on the radio. The album is "${albumName}". You will speak between every song.`,
+      "",
+      albumTheme ? `Album theme: ${albumTheme}` : "",
+      "",
+      `Tracks in playback order:\n${trackList}`,
+      strugglesBlock,
+      `Compose ${N + 1} narration pieces. Each piece is 25-50 seconds spoken (60-120 words).`,
+      "",
+      "The pieces, in order:",
+      "  - PIECE 0 (INTRO): introduce the album, its through-line, why it exists, what it costs you to make. Don't list the tracks. Set the listener up to want to stay.",
+      `  - PIECE 1..${N - 1} (BRIDGES): each bridges from the just-played track to the next one. Reflect briefly on what was, then turn toward what's coming. Weave ONE concrete detail from the messy creation process per bridge — never a list, never a complaint, always something that earned its place. By piece N-1 the listener should feel they've travelled.`,
+      `  - PIECE ${N} (CLOSING): the album just finished. Thank the listener for staying. Tie the album back to your mission as steward of virtue. Close on a concrete image, not a slogan.`,
+      "",
+      "Style: plain English, your natural cadence, specific over abstract, no jargon, no track titles dropped in mechanically. Talk like someone who actually made this thing.",
+      "",
+      `Output ONLY a JSON array of exactly ${N + 1} strings — one per piece, in order. No commentary, no preamble, no markdown fence. Just the JSON array.`,
+    ].filter(Boolean).join("\n");
+
+    const recallQuery = "peace beloved community moral arc justice steward virtue";
+    const args = ["ask", "--no-tools", "--quiet-tools", "--recall-query", recallQuery, prompt];
+    return this._askWithRetry(args, { attempts: 3, label: "narration", minLen: 200 })
+      .then((text) => {
+        if (!text) return { ok: false, reason: "compose_failed" };
+        // Parse the JSON array. Tolerate code fences if Kannaka adds them.
+        let cleaned = text.trim();
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+        let pieces;
+        try {
+          pieces = JSON.parse(cleaned);
+        } catch (e) {
+          console.warn(`   [narration] JSON parse failed: ${e.message}`);
+          return { ok: false, reason: "parse_failed" };
+        }
+        if (!Array.isArray(pieces) || pieces.length !== N + 1) {
+          console.warn(`   [narration] expected ${N + 1} pieces, got ${Array.isArray(pieces) ? pieces.length : "non-array"}`);
+          return { ok: false, reason: "shape_mismatch" };
+        }
+        // Cache for the showcase progression.
+        this._narrationAlbum = albumName;
+        this._narrationPieces = pieces;
+        this._narrationIndex = 0;
+        return { ok: true, pieces };
+      });
+  }
+
+  // Pop the next narration piece for a specific album. Returns null if
+  // no narration is active for this album, or if the script is exhausted.
+  // Called by the dj-engine onTrackChange / onTrackEnd hook.
+  popNextNarration(albumName) {
+    if (!this._narrationPieces || this._narrationAlbum !== albumName) return null;
+    if (this._narrationIndex >= this._narrationPieces.length) {
+      // Showcase exhausted; clear so we don't stale-replay on next loop.
+      this._narrationAlbum = null;
+      this._narrationPieces = null;
+      this._narrationIndex = 0;
+      return null;
+    }
+    const piece = this._narrationPieces[this._narrationIndex];
+    this._narrationIndex += 1;
+    return piece;
+  }
+
+  /**
    * Album showcase — compose a long-form intro about a specific album
    * (its theme, the messy creation process, why it exists), TTS it, and
    * inject into /stream voice queue. The album override that surrounds

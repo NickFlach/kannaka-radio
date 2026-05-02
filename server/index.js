@@ -633,6 +633,27 @@ if (process.env.KANNAKA_ICECAST_SOURCE === "1") {
       // The metadata is already pushed via onTrackChange when the next
       // track loads; this hook exists for future use (analytics, etc.)
     },
+    // Album-showcase narration hook. When a track starts streaming, ask
+    // peaceOration if there's a narration piece queued for the current
+    // album. If yes, run executeOration (TTS + injectAudio) — the voice
+    // file lands in icecast-source's voiceQueue and drains in the gap
+    // BETWEEN this track and the next. Best-effort: if voiceDJ is busy
+    // (peace oration actually in flight), the piece is silently skipped
+    // — better a missed bridge than a stuck talk lock.
+    onTrackStart: (track) => {
+      try {
+        const album = djEngine.state.currentAlbum;
+        if (!album) return;
+        const piece = peaceOration.popNextNarration(album);
+        if (!piece) return;
+        const ok = voiceDJ.executeOration(piece, () => {});
+        if (!ok) {
+          console.warn(`   [showcase] narration deferred — voiceDJ busy on "${track.title || track.file}"`);
+        }
+      } catch (e) {
+        console.warn(`   [showcase] onTrackStart error: ${e && e.message}`);
+      }
+    },
   });
   icecastSource.start();
   console.log("\u{1F4FB} icecast-source: ENABLED on /stream");

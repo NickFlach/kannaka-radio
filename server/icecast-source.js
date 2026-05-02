@@ -53,6 +53,7 @@ class IcecastSource {
     this._djEngine = opts.djEngine;
     this._getMusicDir = opts.getMusicDir;
     this._onTrackEnd = opts.onTrackEnd || (() => {});
+    this._onTrackStart = opts.onTrackStart || (() => {});
     this._cfg = Object.assign({}, DEFAULTS);
     this._ffmpeg = null;
     this._running = false;
@@ -213,6 +214,10 @@ class IcecastSource {
       this._consecutiveSkips = 0;
       this._currentTrackFile = track.file;
       console.log(`   \u{1F4FB} /stream NOW: ${track.title || track.file}`);
+      // Hook fires when a track starts streaming — gives album showcase
+      // narration time to compose+TTS+queue voice that drains AFTER this
+      // track ends (in the gap before the next track starts).
+      try { this._onTrackStart(track); } catch (_) {}
       try {
         await this._streamFileToFfmpeg(playable);
       } catch (e) {
