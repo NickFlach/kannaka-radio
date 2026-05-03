@@ -1,0 +1,16 @@
+#!/bin/bash
+# Kannaka Radio launcher with NATS auth + Icecast source enabled.
+set -e
+cd /home/opc/kannaka-radio
+
+# Load NATS credentials so the radio's internal NATS subscriptions
+# (KANNAKA.agents, queen.event.*) work — anon doesn't have those.
+if [ -f /home/opc/.kannaka-nats.env ]; then
+  set -a; . /home/opc/.kannaka-nats.env; set +a
+fi
+
+if [ -f /home/opc/.kannaka-obc.env ]; then
+  set -a; . /home/opc/.kannaka-obc.env; set +a
+fi
+export KANNAKA_ICECAST_SOURCE=1
+exec node server/index.js --port 8888

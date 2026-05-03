@@ -1,0 +1,7 @@
+#!/bin/bash
+# Cron wrapper: source NATS creds before pushing metrics.
+set -a
+. /home/opc/.kannaka-nats.env 2>/dev/null
+set +a
+cd /home/opc/kannaka-radio
+exec /usr/bin/node push-nats.js

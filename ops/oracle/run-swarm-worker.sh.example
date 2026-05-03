@@ -1,0 +1,8 @@
+#!/bin/bash
+# Kannaka swarm worker — pulls KANNAKA.work.<kind> tasks from JetStream
+# queue groups (ADR-0026 Phase 4). Companion to kannaka-swarm-serve.
+export KANNAKA_DATA_DIR=/home/opc/.kannaka
+export KANNAKA_NATS_URL=nats://127.0.0.1:4222
+set -a; . /home/opc/.kannaka-nats.env; set +a
+export KANNAKA_QUIET=1
+exec /home/opc/kannaka-memory/target/release/kannaka swarm worker   --kinds ask   --queue-group kannaka_workers

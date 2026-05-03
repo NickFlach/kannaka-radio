@@ -1,0 +1,9 @@
+#!/bin/bash
+# Kannaka swarm serve — listens for KANNAKA.ask.<agent_id> + KANNAKA.ask.broadcast
+# (ADR-0026 Phase 1). Runs alongside the existing kannaka-memory.service which
+# does swarm join + listen.
+export KANNAKA_DATA_DIR=/home/opc/.kannaka
+export KANNAKA_NATS_URL=nats://127.0.0.1:4222
+set -a; . /home/opc/.kannaka-nats.env; set +a
+export KANNAKA_QUIET=1
+exec /home/opc/kannaka-memory/target/release/kannaka swarm serve   --agent-id kannaka-prime   --threshold 0.3
