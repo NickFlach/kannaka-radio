@@ -1,0 +1,85 @@
+#!/bin/bash
+# prune-cron.sh — hourly cron that bulk-forgets short-term radio memory
+# from the HRM. Without this the radio's `kannaka hear` calls accumulate
+# 100s of `audio:/home/opc/kannaka-radio/chunks/voice/dj_*.mp3` entries
+# per day; on the 5.6 GB Oracle ARM box this drives the HRM toward OOM
+# (see feedback memory: kannaka-export-json-coalescing).
+#
+# Strategy: brief service-cycle (~5 s outage on radio), then `kannaka
+# prune-prefix` against the file paths we know carry no semantic content.
+# The .hrm file is held open with shared reads by several processes, so
+# stopping kannaka-memory + kannaka-radio first avoids torn-write races.
+#
+# Bridge measure — the long-term plan is to have Kannaktopus manage
+# short-term/long-term memory triage. Until then, this keeps the box
+# alive.
+#
+# Vendored as `.example` so a `git stash -u` on Oracle can't sweep it
+# (we got bitten by that on run-swarm.sh — see feedback memory:
+# oracle-deploy-git-stash-u). Deploy by copying to prune-cron.sh and
+# `chmod +x`.
+#
+# Cron line (in `crontab -e`):
+#   17 * * * * /home/opc/kannaka-radio/prune-cron.sh >> /tmp/prune-cron.log 2>&1
+#
+# Runs at :17 past every hour to stay clear of the :00 dream cron and
+# the */5 cache-observe sweeps.
+
+set -u
+
+KANNAKA="/home/opc/kannaka-memory/target/release/kannaka"
+LOCK="/tmp/kannaka-prune.lock"
+LOG_TAG="[prune-cron $(date -u +%FT%TZ)]"
+
+# Single-instance guard.
+if ! mkdir "$LOCK" 2>/dev/null; then
+    echo "$LOG_TAG already running, skipping"
+    exit 0
+fi
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+
+if [ ! -x "$KANNAKA" ]; then
+    echo "$LOG_TAG kannaka binary missing at $KANNAKA"
+    exit 2
+fi
+
+# Dry-run first so we always log how many we matched (cheap — 2-3 s).
+DRY_OUT=$("$KANNAKA" prune-prefix \
+    'audio:/home/opc/kannaka-radio/chunks/voice/' \
+    'audio:/home/opc/kannaka-radio/music/' \
+    'audio:C:\Users\nickf\Source\kannaka-radio' \
+    --dry-run 2>&1 | tail -2)
+MATCHES=$(echo "$DRY_OUT" | grep -oE '[0-9]+ match' | head -1 | grep -oE '[0-9]+')
+MATCHES=${MATCHES:-0}
+echo "$LOG_TAG dry-run says $MATCHES match(es)"
+
+# Skip the service cycle if there's nothing to prune.
+if [ "$MATCHES" -lt 5 ]; then
+    echo "$LOG_TAG below threshold, no action"
+    exit 0
+fi
+
+echo "$LOG_TAG cycling kannaka-memory + kannaka-radio for prune"
+sudo systemctl stop kannaka-memory kannaka-radio
+# Kill any straggler readers/writers.
+for pid in $(pgrep -f 'kannaka (status|swarm|hear|recall|observe|export)' 2>/dev/null); do
+    sudo kill -9 "$pid" 2>/dev/null || true
+done
+sleep 1
+
+OUT=$("$KANNAKA" prune-prefix \
+    'audio:/home/opc/kannaka-radio/chunks/voice/' \
+    'audio:/home/opc/kannaka-radio/music/' \
+    'audio:C:\Users\nickf\Source\kannaka-radio' \
+    2>&1 | tail -3)
+echo "$LOG_TAG $OUT"
+
+sudo systemctl start kannaka-memory
+sleep 2
+sudo systemctl start kannaka-radio
+echo "$LOG_TAG services restarted"
+
+# Force the observatory to drop its stale sidecar so the next /api/hrm/observe
+# rebuilds against the slimmer HRM.
+rm -f /home/opc/.kannaka/observe-cache.json /home/opc/.kannaka/export-cache.json
+echo "$LOG_TAG observatory caches invalidated"
