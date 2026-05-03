@@ -281,6 +281,12 @@ const floor = new FloorManager({
   broadcast,
   nats,
   getCurrentTrack: () => djEngine.getCurrentTrack(),
+  // Bridge swarm presence (NATS QUEEN.phase publishers) into the floor
+  // count so kannaka-prime, kannaktopus-01, and any other arm shows up
+  // as an agent in the room widget — even if they never open a WS to
+  // /player. WS-joined agents are deduped against this set by id, so
+  // an agent that does both (publishes phase AND ws-joins) is counted once.
+  getSwarmAgents: () => Object.keys(nats?.swarmState?.agents || {}),
 });
 // Phase 3 — close the loop. dj-engine pulls floor stats during playlist
 // rebuild to soft-bump tracks the room reacted to. voice-dj reads them

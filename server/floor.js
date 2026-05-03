@@ -41,6 +41,13 @@ class FloorManager {
     this._broadcast = opts.broadcast;
     this._nats = opts.nats || null;
     this._getCurrentTrack = opts.getCurrentTrack || (() => null);
+    // Optional bridge into the NATS swarm: if provided, returns the list of
+    // agent ids currently publishing QUEEN.phase. The floor count merges
+    // these with WS-joined agents (deduped by id) so an agent that's
+    // present in the swarm without a Floor WS still shows up in the
+    // "N humans · M agents" widget. Without this, kannaka-prime (the
+    // radio's own agent) is invisible on the floor it hosts.
+    this._getSwarmAgents = opts.getSwarmAgents || null;
 
     /** @type {Map<WebSocket, {id: string, kind: 'human'|'agent', joinedAt: number}>} */
     this._clients = new Map();
@@ -49,6 +56,12 @@ class FloorManager {
 
     this._vibeTimer = setInterval(() => this._tickVibe(), VIBE_TICK_MS);
     if (this._vibeTimer.unref) this._vibeTimer.unref();
+    // Re-broadcast presence whenever the swarm-side agent set changes,
+    // so the player widget reflects swarm joins/leaves without needing
+    // a WS event from the agent itself.
+    this._lastSwarmCount = -1;
+    this._swarmPollTimer = setInterval(() => this._maybeBroadcastPresence(), 5000);
+    if (this._swarmPollTimer.unref) this._swarmPollTimer.unref();
   }
 
   // ── Lifecycle ─────────────────────────────────────────────
@@ -168,11 +181,32 @@ class FloorManager {
   }
 
   _counts() {
-    let humans = 0, agents = 0;
+    let humans = 0;
+    const wsAgentIds = new Set();
     for (const c of this._clients.values()) {
-      if (c.kind === "agent") agents++; else humans++;
+      if (c.kind === "agent") wsAgentIds.add(c.id); else humans++;
     }
+    // Merge in swarm-only agents (NATS QUEEN.phase publishers without a
+    // Floor WS connection). Deduped by id so an agent that both publishes
+    // phase AND opens a WS counts once.
+    const allAgentIds = new Set(wsAgentIds);
+    if (this._getSwarmAgents) {
+      try {
+        for (const id of this._getSwarmAgents()) allAgentIds.add(id);
+      } catch (_) { /* swarm bridge optional */ }
+    }
+    const agents = allAgentIds.size;
     return { humans, agents, total: humans + agents };
+  }
+
+  _maybeBroadcastPresence() {
+    if (!this._getSwarmAgents) return;
+    let n;
+    try { n = this._getSwarmAgents().length; } catch (_) { return; }
+    if (n !== this._lastSwarmCount) {
+      this._lastSwarmCount = n;
+      this._broadcastPresence();
+    }
   }
 
   _recentSnapshot() {
