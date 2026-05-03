@@ -33,3 +33,5 @@ npm-debug.log*
 .mastodon.json
 .telegram.json
 .nostr.json
+.youtube.json
+.youtube-client.json

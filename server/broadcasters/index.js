@@ -20,10 +20,18 @@ const { BlueskyAdapter } = require("./bluesky-adapter");
 const { MastodonAdapter } = require("./mastodon-adapter");
 const { TelegramAdapter } = require("./telegram-adapter");
 const { NostrAdapter } = require("./nostr-adapter");
+const { YouTubeAdapter } = require("./youtube-adapter");
 
 /**
  * Build the list of adapters that have credentials configured.
  * Order matters: Bluesky first (the canonical channel today).
+ *
+ * The YouTube adapter is included but will only fire when the caller
+ * passes a `media` field on the post — text-only routes pass through
+ * without YouTube doing anything (it returns ok=false, "no_media",
+ * which the orchestrator treats as a normal per-adapter result, not
+ * a fatal). This keeps the existing dream/text fan-out unchanged
+ * while letting track + oration paths attach a video file.
  */
 function getEnabledBroadcasters(rootDir) {
   const candidates = [
@@ -31,6 +39,7 @@ function getEnabledBroadcasters(rootDir) {
     new MastodonAdapter(rootDir),
     new TelegramAdapter(rootDir),
     new NostrAdapter(rootDir),
+    new YouTubeAdapter(rootDir),
   ];
   return candidates.filter((b) => b.isEnabled());
 }
@@ -48,7 +57,13 @@ function getEnabledBroadcasters(rootDir) {
  */
 async function broadcastPost(msg, opts = {}) {
   const rootDir = opts.rootDir;
-  const adapters = getEnabledBroadcasters(rootDir);
+  let adapters = getEnabledBroadcasters(rootDir);
+  // If the caller didn't attach media, skip the media-only adapters
+  // (currently just YouTube). They'd otherwise return ok=false with
+  // "no_media" on every text-only post — correct but noisy.
+  if (!msg.media) {
+    adapters = adapters.filter((a) => a.name !== "youtube");
+  }
   if (adapters.length === 0) {
     return [{ name: "none", ok: false, error: "no_adapters_configured" }];
   }
