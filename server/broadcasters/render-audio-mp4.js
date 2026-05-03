@@ -86,12 +86,17 @@ function renderAudioMp4({ audioPath, imagePath, outPath, width = 1920, height = 
         const tail = (stderr || "").split("\n").slice(-12).join("\n");
         return reject(new Error(`ffmpeg failed (rc=${err.code}): ${tail}`));
       }
-      // Pull duration from the audio probe ffmpeg embeds in stderr; fallback
-      // to file-stat heuristic if it's not there.
+      // ffmpeg reports Duration: for each input stream — the image input
+      // (looped from one frame) shows a tiny value, the audio shows the
+      // real track length. Take the max of all matches so the reported
+      // duration reflects the actual output (which is shortest-bound to
+      // audio). Falls back to 0 if nothing parses.
       let durationSec = 0;
-      const m = (stderr || "").match(/Duration:\s+(\d+):(\d+):(\d+(?:\.\d+)?)/);
-      if (m) {
-        durationSec = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+      const re = /Duration:\s+(\d+):(\d+):(\d+(?:\.\d+)?)/g;
+      let m;
+      while ((m = re.exec(stderr || "")) !== null) {
+        const d = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+        if (d > durationSec) durationSec = d;
       }
       resolve({ outPath, durationSec });
     });
