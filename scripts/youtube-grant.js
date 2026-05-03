@@ -40,9 +40,15 @@ const { exec } = require("child_process");
 const ROOT = path.resolve(__dirname, "..");
 const SAVE_PATH = path.join(ROOT, ".youtube.json");
 
+// `youtube` (full read/write) instead of just `youtube.upload + readonly`
+// because playlistItems.insert (used by the adapter to auto-add each
+// upload to a playlist) requires playlist write permission, which only
+// the full scope grants. .readonly + .upload are insufficient — Google
+// returns "Request had insufficient authentication scopes" (403) on
+// playlist mutations under those.
 const SCOPES = [
+  "https://www.googleapis.com/auth/youtube",
   "https://www.googleapis.com/auth/youtube.upload",
-  "https://www.googleapis.com/auth/youtube.readonly",
 ].join(" ");
 
 function ask(rl, q) {
@@ -145,14 +151,15 @@ async function main() {
 
   // Spin up loopback listener — Google deprecated OOB in 2022, so
   // we use http://127.0.0.1:<port> as the redirect URI.
-  const codePromise = new Promise((resolve, reject) => {
+  let redirectUri = "";
+  const code = await new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const u = new URL(req.url, "http://127.0.0.1");
       if (u.pathname !== "/") {
         res.writeHead(404).end();
         return;
       }
-      const code = u.searchParams.get("code");
+      const c = u.searchParams.get("code");
       const error = u.searchParams.get("error");
       res.writeHead(200, { "Content-Type": "text/html" });
       if (error) {
@@ -160,18 +167,18 @@ async function main() {
         server.close();
         return reject(new Error(`OAuth error: ${error}`));
       }
-      if (!code) {
+      if (!c) {
         res.end(`<html><body><h1>Missing code</h1><p>The redirect didn't carry a code parameter.</p></body></html>`);
         server.close();
         return reject(new Error("missing code in redirect"));
       }
       res.end(`<html><body><h1>Granted ✓</h1><p>You can close this tab and return to the terminal.</p></body></html>`);
       server.close();
-      resolve(code);
+      resolve(c);
     });
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
-      const redirectUri = `http://127.0.0.1:${port}/`;
+      redirectUri = `http://127.0.0.1:${port}/`;
       const consentUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
         client_id,
         redirect_uri: redirectUri,
@@ -183,17 +190,10 @@ async function main() {
       console.log("\n[grant] opening browser to:");
       console.log("        " + consentUrl);
       console.log("\n[grant] (if it doesn't open, copy that URL into any browser)\n");
-      // Stash redirect_uri on the server so we can use it when exchanging.
-      server._redirectUri = redirectUri;
       openBrowser(consentUrl);
     });
     server.on("error", reject);
-    // Stash for outer scope to pick up the redirect URI.
-    codePromise._server = server;
   });
-
-  const code = await codePromise;
-  const redirectUri = codePromise._server._redirectUri;
   console.log("[grant] received code; exchanging for tokens...");
 
   const tokenResp = await postForm("https://oauth2.googleapis.com/token", {

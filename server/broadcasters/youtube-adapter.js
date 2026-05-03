@@ -118,11 +118,74 @@ class YouTubeAdapter {
     if (!id) {
       return { ok: false, error: "no_video_id_in_response" };
     }
+
+    // Optional: add to the configured playlist. Fire-and-forget on
+    // failure — we don't want a bad playlist setting to roll back the
+    // successful upload. Quota cost: 50 units per playlistItem insert
+    // (vs 1600 for the upload itself), so this is cheap.
+    let playlist_status = null;
+    if (this._creds.playlist_id) {
+      try {
+        const pl = await this._addToPlaylist(id, this._creds.playlist_id, access);
+        playlist_status = pl.ok ? "added" : `playlist_failed: ${pl.error}`;
+      } catch (e) {
+        playlist_status = `playlist_failed: ${e.message}`;
+      }
+    }
+
     return {
       ok: true,
       url: `https://www.youtube.com/watch?v=${id}`,
       id,
+      playlist: playlist_status,
     };
+  }
+
+  async _addToPlaylist(videoId, playlistId, access) {
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({
+        snippet: {
+          playlistId,
+          resourceId: { kind: "youtube#video", videoId },
+        },
+      });
+      const u = new URL(
+        "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet"
+      );
+      const req = https.request(
+        {
+          method: "POST",
+          hostname: u.hostname,
+          path: u.pathname + u.search,
+          headers: {
+            Authorization: `Bearer ${access}`,
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          const chunks = [];
+          res.on("data", (c) => chunks.push(c));
+          res.on("end", () => {
+            const text = Buffer.concat(chunks).toString("utf8");
+            let parsed;
+            try { parsed = JSON.parse(text); } catch (_) { parsed = text; }
+            if (res.statusCode === 200 && parsed && parsed.id) {
+              resolve({ ok: true, item_id: parsed.id });
+            } else {
+              const detail =
+                parsed && parsed.error && parsed.error.message
+                  ? parsed.error.message
+                  : (typeof parsed === "string" ? parsed.slice(0, 200) : JSON.stringify(parsed).slice(0, 200));
+              resolve({ ok: false, error: `status_${res.statusCode}: ${detail}` });
+            }
+          });
+        }
+      );
+      req.on("error", reject);
+      req.write(body);
+      req.end();
+    });
   }
 
   // ── internals ─────────────────────────────────────────────
