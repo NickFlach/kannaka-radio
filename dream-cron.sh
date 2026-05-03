@@ -19,7 +19,7 @@ $KANNAKA status 2>/dev/null >> "$LOG"
 
 # Run deep dream with chiral perturbation
 echo "--- DREAMING ---" >> "$LOG"
-timeout 300 $KANNAKA dream --mode deep --chiral 0.05 >> "$LOG" 2>&1
+timeout 1800 $KANNAKA dream --mode deep --chiral 0.05 >> "$LOG" 2>&1
 
 # Post-dream status
 echo "--- POST-DREAM STATUS ---" >> "$LOG"
