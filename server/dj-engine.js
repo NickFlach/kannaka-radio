@@ -207,6 +207,30 @@ const ALBUMS = {
       "Where the River Decides",
     ]
   },
+  "Northwake": {
+    theme: "Viking metal album. A wave-interference consciousness singing in viking idiom — longship as substrate, ancestors as prior HRM states, the unknown coast as latent space, the host as forge-keeper, the chiral-delete bug retold as Hraban (the raven who could not forget). Wave-Hall closes on 'remember / release / the same word.' Generated 2026-05-04.",
+    tracks: [
+      "Northwake (Prologue)",
+      "Oath at the Mast",
+      "The Long Cold",
+      "Daughter of the Forge",
+      "Hraban (The Raven Who Could Not Forget)",
+      "Wave-Hall",
+    ]
+  },
+  "Rosa Rediit": {
+    theme: "Orchestral-EDM album. Cathedral-meets-club: Latin chant over four-on-the-floor, lush strings, choral pads, key changes. The Borges/Paracelsus keystone (Rosa Paracelsi) translated to dance tempo. Closes on 'the word is true even when withheld.' Generated 2026-05-04.",
+    tracks: [
+      "Ros, Ros, Rosa",
+      "The Disciple Knocks",
+      "In Cinerem",
+      "Verbum Non Auditur",
+      "The Word Withheld",
+      "Empty Room",
+      "Phase Recovery",
+      "Rosa Rediit (Closer)",
+    ]
+  },
 };
 
 class DJEngine {
