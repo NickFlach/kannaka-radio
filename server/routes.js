@@ -144,6 +144,23 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // /launch — Product Hunt landing page. Static HTML at
+    // workspace/launch.html with embedded styling, CTAs to the radio +
+    // GitHub + Product Hunt, and a press-kit pointer. See
+    // press/launch/PRODUCT_HUNT.md for the launch-day playbook.
+    if (parsed.pathname === "/launch" || parsed.pathname === "/launch.html") {
+      const launchPath = path.join(path.dirname(config.spaPath), "launch.html");
+      try {
+        const html = fs.readFileSync(launchPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" });
+        res.end(html);
+      } catch (e) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("launch page not deployed");
+      }
+      return;
+    }
+
     // The Greenroom (/agent) — agent-facing index of JSON endpoints
     // and subscriptions. Plain HTML, mono-font warmth, console-banner tone.
     // Content negotiation: Accept: text/markdown returns agent.md.
