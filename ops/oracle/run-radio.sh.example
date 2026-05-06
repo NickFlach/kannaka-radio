@@ -12,5 +12,10 @@ fi
 if [ -f /home/opc/.kannaka-obc.env ]; then
   set -a; . /home/opc/.kannaka-obc.env; set +a
 fi
+# ICECAST_MOUNT must match the public mount the player listens on
+# (workspace/door.html and workspace/index.html both target /stream).
+# Without this the metadata writer pushed Now-Playing titles to the
+# wrong mount and listeners on /stream saw a blank title forever.
 export KANNAKA_ICECAST_SOURCE=1
+export ICECAST_MOUNT=/stream
 exec node server/index.js --port 8888
