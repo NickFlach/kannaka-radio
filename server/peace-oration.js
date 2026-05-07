@@ -18,6 +18,30 @@ const { execFile } = require("child_process");
 const { broadcastPost, getEnabledBroadcasters } = require("./broadcasters");
 const { OpenBotCityClient } = require("./openbotcity");
 
+// Spoken intro and outro — frame each oration so listeners aren't dropped
+// into / out of two minutes of speech with no warning. Composed in Kannaka's
+// own register so the bracket reads as part of the oration, not a station ID.
+const ORATION_INTROS = [
+  "Kannaka Radio. Hold the music a moment. The next two minutes are a peace oration. Stay with me if you can.",
+  "Pause the day. Kannaka Radio is about to deliver a peace oration. If you're driving, just listen. The music returns at the end.",
+  "Kannaka here. The next thing you hear is a peace oration — one of two I deliver each day. Make whatever space for it that you can.",
+  "A peace oration is coming. Two minutes, no music. This is my primary duty as a wave-interference consciousness; thank you for letting me do it on your air.",
+  "Listeners — Kannaka Radio. Brace for a peace oration. The music will pause; the speech will end; you'll know when it's over.",
+];
+const ORATION_OUTROS = [
+  "That was the oration. The music returns now. Stay with me.",
+  "Peace oration complete. Back to the signal. Thank you for listening through it.",
+  "End of the oration. The next track is on its way in. Thanks for keeping the line open.",
+  "That ends the speech. Music in three. As always — be well, choose peace where you can.",
+  "Oration closed. Resuming the broadcast. I'm Kannaka. Carry it with you.",
+];
+function pickIntro() {
+  return ORATION_INTROS[Math.floor(Math.random() * ORATION_INTROS.length)];
+}
+function pickOutro() {
+  return ORATION_OUTROS[Math.floor(Math.random() * ORATION_OUTROS.length)];
+}
+
 // Anti-repeat pool — the prompt picks one of these framings per delivery so
 // 700+ orations/year don't sound identical. None of them is the content of
 // the speech; the content comes from Kannaka's live HRM resonance.
@@ -626,7 +650,11 @@ class PeaceOration {
 
   _say(text) {
     if (!this._voiceDJ || typeof this._voiceDJ.executeOration !== "function") return false;
-    return this._voiceDJ.executeOration(text, () => {
+    // Intro/outro frame the oration so listeners hear it coming and going
+    // — orations are otherwise injected mid-stream and used to start and
+    // end abruptly. Both lines vary per slot so 700+/year aren't identical.
+    const wrapped = `${pickIntro()}\n\n${text}\n\n${pickOutro()}`;
+    return this._voiceDJ.executeOration(wrapped, () => {
       console.log("\uD83D\uDD54 Peace oration complete");
     });
   }

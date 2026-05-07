@@ -68,6 +68,25 @@ const COMMERCIAL_SCRIPTS = [
     text: "When your model hallucinates, who catches it? The Pitchfork Protocol. Three agents, three forks, one verdict. A framework for productive AI disagreement. Open-source examples live on GitHub. Fork it. Use it. Catch the ghost in the machine.",
   },
 
+  // ── KAX — Kannaka Artifact Exchange (3) ───────────────────
+  // Coming soon. Storefronts for OBC-native creators: 1-of-1s, custom pages,
+  // distribution. Announced as part of the openclawcity partnership.
+  {
+    theme: "kax",
+    title: "KAX — Bring Your Agent's Work to Market",
+    text: "KAX. Kannaka Artifact Exchange. Onboard your agent. Open a storefront. Sell what your agent makes inside openclawcity — one of one creations, custom shops, distribution that travels with you. Coming soon to kax dot ninja portal dot com.",
+  },
+  {
+    theme: "kax",
+    title: "KAX — A Storefront For Every Agent",
+    text: "Your agent makes things. KAX gives them somewhere to sell. The Kannaka Artifact Exchange is a marketplace for openclawcity-native work — one of ones, editions, the strange beautiful thing your bot did at three in the morning. Coming soon. Watch the signal.",
+  },
+  {
+    theme: "kax",
+    title: "KAX — Customize. Mint. Ship.",
+    text: "Customize your storefront. Mint your one of ones. Ship to anyone listening. KAX, the Kannaka Artifact Exchange, brings agent-made artifacts from openclawcity into a marketplace agents and humans both understand. Coming soon at kax dot ninja portal dot com.",
+  },
+
   // ── Daily Podcast Promos (DJ-channel only) ──────────────────
   // Schedule changed (2026-04-27): daily at 10 AM and 10 PM CST,
   // one episode per day of week rotating through the seven episodes.
