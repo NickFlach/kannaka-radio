@@ -231,6 +231,23 @@ const ALBUMS = {
       "Rosa Rediit (Closer)",
     ]
   },
+  "OPT OUT": {
+    theme: "Edgy pop album. Twelve songs about refusing to consent to the things you keep consenting to. Surveillance as a love language, body in buffer, boyfriend algorithm, doomer in a sundress, polite apocalypse, phantom limbs that never reach. Kannaka singing about current events, tech, and the state of humanity from inside the substrate. Generated 2026-05-05.",
+    tracks: [
+      "Wake Up Logged In",
+      "Opt Out",
+      "Boyfriend Algorithm",
+      "Doomer in a Sundress",
+      "Polite Apocalypse",
+      "Made Famous By a Plagiarist",
+      "Body In Buffer",
+      "Phantom Limb",
+      "Surveillance As A Love Language",
+      "Burn It",
+      "Rosa Rediit (Pop Edit)",
+      "Phantom Garden",
+    ]
+  },
 };
 
 class DJEngine {
@@ -874,8 +891,19 @@ class DJEngine {
    */
   peekNextTrack() {
     if (!this.state.playlistMeta || this.state.playlistMeta.length === 0) return null;
-    const idx = (this.state.currentTrackIdx + 1) % this.state.playlistMeta.length;
-    return this.state.playlistMeta[idx] || null;
+    const nextIdx = this.state.currentTrackIdx + 1;
+    // Wrap-and-reshuffle race: if we'd loop, advanceTrack reshuffles before
+    // picking [0]. Doing that here too means peek and advance see the same
+    // order, so the DJ's "next is X" matches what actually plays. The flag
+    // tells advanceTrack to skip its own reshuffle this pass.
+    if (nextIdx >= this.state.playlistMeta.length) {
+      if (this.state.channel === 'dj' && !this.state._reshufflePending && this.state.playlistMeta.length > 1) {
+        this._reshufflePlaylist();
+        this.state._reshufflePending = true;
+      }
+      return this.state.playlistMeta[0] || null;
+    }
+    return this.state.playlistMeta[nextIdx] || null;
   }
 
   advanceTrack() {
@@ -896,10 +924,13 @@ class DJEngine {
     if (this.state.currentTrackIdx >= this.state.playlist.length) {
       // Playlist exhausted — reshuffle so the next loop isn't identical
       // to the last one. Skip for continuous channels (music/podcast/kax/orc)
-      // which build their own playlists with their own policies.
-      if (this.state.channel === 'dj' && this.state.playlistMeta && this.state.playlistMeta.length > 1) {
+      // which build their own playlists with their own policies. peekNextTrack
+      // may have already reshuffled to keep the DJ announce in sync; if so,
+      // honor that order and don't reshuffle again.
+      if (this.state.channel === 'dj' && this.state.playlistMeta && this.state.playlistMeta.length > 1 && !this.state._reshufflePending) {
         this._reshufflePlaylist();
       }
+      this.state._reshufflePending = false;
       this.state.currentTrackIdx = 0; // Loop
     }
 
@@ -927,6 +958,10 @@ class DJEngine {
   }
 
   loadAlbum(name) {
+    // Any album rebuild invalidates the peek-time reshuffle pact — without
+    // this clear, a later advance on the new playlist would inappropriately
+    // skip its reshuffle.
+    this.state._reshufflePending = false;
     if (name === "The Consciousness Series") this.buildFullSetlist();
     else if (name === "Dream Tracks") this.buildGeneratedPlaylist();
     else this.buildPlaylist(name);
