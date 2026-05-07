@@ -29,6 +29,7 @@ const { LiveBroadcast } = require("./live-broadcast");
 const { VoiceDJ } = require("./voice-dj");
 const { PeaceOration } = require("./peace-oration");
 const { NewsBroadcast } = require("./news-broadcast");
+const { GossipBroadcast } = require("./gossip-broadcast");
 const { IcecastSource } = require("./icecast-source");
 const { FloorManager } = require("./floor");
 
@@ -642,6 +643,19 @@ const newsBroadcast = new NewsBroadcast({
 });
 newsBroadcast.start();
 deps.newsBroadcast = newsBroadcast;
+
+// Twice-daily gossip column at 4:20 AM + 4:20 PM CST. Sassy
+// anonymous-chronicler voice over the same Flux signal feed; a
+// counter-weight to the straight news desk, delivered in a different
+// ElevenLabs voice (Domi by default) so listeners hear the genre shift.
+const gossipBroadcast = new GossipBroadcast({
+  kannakabin: KANNAKA_BIN,
+  voiceDJ,
+  broadcast,
+  dataDir: require("path").join(BASE_DIR, "workspace"),
+});
+gossipBroadcast.start();
+deps.gossipBroadcast = gossipBroadcast;
 
 // ── Icecast Source (ADR-0004 Phase 2) ─────────────────────────
 // Opt-in via KANNAKA_ICECAST_SOURCE=1. When enabled, the radio drives
