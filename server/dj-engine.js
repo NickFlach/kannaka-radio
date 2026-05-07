@@ -743,7 +743,14 @@ class DJEngine {
     // full album — otherwise advanceTrack loops on the 1-2 fresh tracks
     // for 30+ min, which sounds far worse than the occasional repeat.
     // A "small album" or a "mostly-played" album shouldn't get stuck.
-    const MIN_POOL = 3;
+    //
+    // 2026-05-07: bumped 3→6. Programming switches albums every 3 tracks,
+    // so a fresh-pool of 3 means listeners can hear the same track twice
+    // within ~6 minutes when an album is revisited (heard "stuck on Monad"
+    // on Resonance Patterns when 10/13 tracks were on cooldown). 6 forces
+    // the wider-pool fallback whenever an album's effective rotation is
+    // smaller than two programming cycles.
+    const MIN_POOL = 6;
     const fresh = trackMetas.filter((t) => !this._onCooldown(t));
     let pool;
     let mode;
