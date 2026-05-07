@@ -192,11 +192,20 @@ function commercialAsTrack(script, idx, total) {
  */
 function interleaveCommercials(tracks, commercials, interval, channel) {
   if (!commercials || commercials.length === 0) return tracks.slice();
-  // Filter out djOnly commercials on non-DJ channels
+  // Filter out djOnly commercials on non-DJ channels. Always copy so the
+  // shuffle below doesn't mutate the engine's cached commercials array.
   const filtered = channel && channel !== 'dj'
     ? commercials.filter(c => !c.djOnly)
-    : commercials;
+    : commercials.slice();
   if (filtered.length === 0) return tracks.slice();
+  // Shuffle the rotation per playlist build. Without this every fresh build
+  // leads with commercials[0]; with short albums (6-12 tracks) and ads every
+  // 3 you only ever hear the first 2-3 entries of the array. Fisher-Yates
+  // gives us a different ordering each time so all 12+ spots get airtime.
+  for (let i = filtered.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+  }
   const out = [];
   let adIdx = 0;
   for (let i = 0; i < tracks.length; i++) {
