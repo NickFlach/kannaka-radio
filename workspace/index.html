@@ -4412,11 +4412,19 @@ var _inTalkSegment = false;
 var _preTalkVolume = 1;
 
 function handleDJTalkPending() {
-  // Server is about to send a talk segment — pause music audio
-  var audio = document.getElementById('audio');
-  if (audio) {
-    _preTalkVolume = audio.volume;
-    audio.pause();
+  // In DJ mode, <audio> is pointed at /stream (icecast) and the voice is
+  // already baked into the stream bytes via icecast-source's voice queue.
+  // Pausing here makes browsers resume from a buffered (not live) position
+  // — different tabs resume differently and drift apart over the day, with
+  // listeners ending up on different songs. Just leave /stream playing and
+  // let the inline voice come through naturally. In music/podcast modes
+  // <audio> is per-file (not live) so the pause is still correct there.
+  if (currentMode !== 'dj') {
+    var audio = document.getElementById('audio');
+    if (audio) {
+      _preTalkVolume = audio.volume;
+      audio.pause();
+    }
   }
   _inTalkSegment = true;
 }
@@ -4429,8 +4437,14 @@ function handleDJTalkSegment(msg) {
 
   _inTalkSegment = true;
 
-  // Pause music if not already paused
-  if (audio && !audio.paused) {
+  // Same reason as handleDJTalkPending: in DJ mode <audio> is /stream and
+  // the talk segment is already in-stream — pausing/resuming a live icecast
+  // mount is what drifted listeners apart. Skip the pause AND the separate
+  // djVoiceAudio playback in DJ mode (the talk is already audible inline).
+  var skipLocalPlayback = (currentMode === 'dj');
+
+  // Pause music if not already paused (only for non-stream modes)
+  if (!skipLocalPlayback && audio && !audio.paused) {
     _preTalkVolume = audio.volume;
     audio.pause();
   }
@@ -4445,7 +4459,7 @@ function handleDJTalkSegment(msg) {
   addMonologueEntry(msg.text);
 
   // Play talk audio
-  if (msg.audioUrl && djVoiceEnabled && audioEl) {
+  if (!skipLocalPlayback && msg.audioUrl && djVoiceEnabled && audioEl) {
     audioEl.src = msg.audioUrl;
     audioEl.volume = 0.85;
     // Inherit station mute state so orations / talk segments honor mute.
