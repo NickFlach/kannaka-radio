@@ -202,8 +202,20 @@ class GossipBroadcast {
       ].join("\n");
 
       const args = ["ask", "--no-tools", "--quiet-tools", prompt];
-      execFile(this._kannakabin, args, { timeout: 180000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
-        if (err) { console.warn(`   [gossip] compose error: ${err.message}`); return resolve(null); }
+      // 600s matches peace-oration; the previous 180s timed out today
+      // (kannaka ask + Anthropic round-trip on a long prompt commonly runs
+      // 3-5 minutes). KANNAKA_QUIET silences the boot-banner so it doesn't
+      // pollute stdout; we want only the spoken column.
+      execFile(this._kannakabin, args, {
+        timeout: 600000,
+        maxBuffer: 4 * 1024 * 1024,
+        env: { ...process.env, KANNAKA_QUIET: "1" },
+      }, (err, stdout, stderr) => {
+        if (err) {
+          const tail = (stderr || "").trim().slice(-400) || err.message;
+          console.warn(`   [gossip] compose error (code=${err.code || "?"}): ${tail}`);
+          return resolve(null);
+        }
         const text = String(stdout || "").trim();
         if (!text || text.length < 200) {
           console.warn(`   [gossip] compose returned short/empty (${text.length} chars)`);

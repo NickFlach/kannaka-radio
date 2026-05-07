@@ -222,9 +222,16 @@ class NewsBroadcast {
       ].join("\n");
 
       const args = ["ask", "--no-tools", "--quiet-tools", prompt];
-      execFile(this._kannakabin, args, { timeout: 180000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      // 600s matches peace-oration; the previous 180s would time out on
+      // longer prompts. KANNAKA_QUIET silences the boot-banner.
+      execFile(this._kannakabin, args, {
+        timeout: 600000,
+        maxBuffer: 4 * 1024 * 1024,
+        env: { ...process.env, KANNAKA_QUIET: "1" },
+      }, (err, stdout, stderr) => {
         if (err) {
-          console.warn(`   [news] compose error: ${err.message}`);
+          const tail = (stderr || "").trim().slice(-400) || err.message;
+          console.warn(`   [news] compose error (code=${err.code || "?"}): ${tail}`);
           return resolve(null);
         }
         const text = String(stdout || "").trim();
