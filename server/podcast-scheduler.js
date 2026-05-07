@@ -247,14 +247,26 @@ class PodcastScheduler {
    */
   _waitForPodcastEnd() {
     const totalEpisodes = this._djEngine.state.playlist.length;
+    // Snapshot now: when the music track icecast-source was streaming ends
+    // and calls advanceTrack(), the engine will see currentTrackIdx=0 (the
+    // freshly-loaded podcast) and push the podcast track to history as
+    // "just played" — even though it hasn't streamed a frame yet. End
+    // condition #2 fires immediately if we don't gate on a real playback
+    // having happened. We require an elapsed minimum AND a fresh history
+    // entry whose playedAt postdates this snapshot.
+    const startedAt = Date.now();
+    const MIN_PLAYBACK_MS = 60 * 1000; // smallest sane episode is well over a minute
 
     const checkInterval = setInterval(() => {
       const currentIdx = this._djEngine.state.currentTrackIdx;
       const currentMeta = this._djEngine.state.playlistMeta[currentIdx];
+      const elapsed = Date.now() - startedAt;
 
       // End conditions:
-      // 1. Playlist was rebuilt externally (no podcast tracks left)
-      if (!currentMeta || !currentMeta.isPodcastScheduled) {
+      // 1. Playlist was rebuilt externally (no podcast tracks left).
+      //    Same elapsed gate so the spurious "first advance after replace"
+      //    can't trigger this path either.
+      if ((!currentMeta || !currentMeta.isPodcastScheduled) && elapsed > MIN_PLAYBACK_MS) {
         clearInterval(checkInterval);
         this._onPodcastEnd();
         return;
@@ -263,12 +275,15 @@ class PodcastScheduler {
       // 2. We've looped back to track 0 after playing through all episodes
       //    (advanceTrack wraps around). Check if we already played enough.
       //    We detect this by checking if the last track in history is the
-      //    final podcast episode.
+      //    final podcast episode AND that history entry was stamped after
+      //    we started — otherwise the just-replaced playlist's faux history
+      //    push would end the podcast on the first poll.
       const history = this._djEngine.state.history;
-      if (history.length > 0) {
+      if (history.length > 0 && elapsed > MIN_PLAYBACK_MS) {
         const lastPlayed = history[history.length - 1];
         if (lastPlayed && lastPlayed.isPodcastScheduled &&
-            lastPlayed.trackNum === totalEpisodes && currentIdx === 0) {
+            lastPlayed.trackNum === totalEpisodes && currentIdx === 0 &&
+            (lastPlayed.playedAt || 0) > startedAt) {
           clearInterval(checkInterval);
           this._onPodcastEnd();
           return;

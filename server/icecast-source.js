@@ -24,7 +24,7 @@
 
 "use strict";
 
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -294,41 +294,86 @@ class IcecastSource {
     });
   }
 
-  _streamFileToFfmpeg(absPath) {
+  // Probe a file's audio duration in ms. Used to pace _streamFileToFfmpeg
+  // so short files (commercials, voice intros, podcast pre-rolls) don't
+  // advance the dj-engine before their bytes have actually played out.
+  // Returns 0 if probing fails — callers fall back to read-end timing.
+  _probeDurationMs(absPath) {
     return new Promise((resolve) => {
-      if (!this._ffmpeg || !this._ffmpeg.stdin || this._ffmpeg.killed) return resolve();
+      execFile(
+        "ffprobe",
+        ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", absPath],
+        { timeout: 5000 },
+        (err, stdout) => {
+          if (err) return resolve(0);
+          const sec = parseFloat(String(stdout).trim());
+          if (!isFinite(sec) || sec <= 0) return resolve(0);
+          resolve(Math.round(sec * 1000));
+        }
+      );
+    });
+  }
+
+  async _streamFileToFfmpeg(absPath) {
+    if (!this._ffmpeg || !this._ffmpeg.stdin || this._ffmpeg.killed) return;
+    // Probe duration BEFORE we start streaming so we can pace the resolve.
+    // Without this, short files (~100KB commercials, ~50KB voice intros)
+    // pump entirely into ffmpeg's pipe buffer in <1s, r.on("end") fires,
+    // the loop advances, and programming.onTrackChange flips albums while
+    // the actual audio is still playing — listener hears the track cut off
+    // and the next one start abruptly. The 2026-05-07 KAX-ad cutoff was
+    // exactly this: ad's NOW logged at 15:25:10, album switch logged at
+    // 15:25:11, ad never played past 1s.
+    const expectedMs = await this._probeDurationMs(absPath);
+    const startMs = Date.now();
+
+    return new Promise((resolve) => {
       const ff = this._ffmpeg;
+      if (!ff || !ff.stdin || ff.killed) return resolve();
       const r = fs.createReadStream(absPath);
-      // pipe with end:false so the ffmpeg stdin stays open for the next file.
       r.pipe(ff.stdin, { end: false });
       let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
+      const cleanup = () => {
         try { r.unpipe(ff.stdin); } catch (_) {}
         try { r.destroy(); } catch (_) {}
         ff.removeListener("exit", onFfmpegExit);
         if (ff.stdin) ff.stdin.removeListener("error", onStdinError);
+      };
+      // Graceful end: read drained normally. Wait for the audio to play
+      // out via -re's realtime throttle before resolving — but only when
+      // we have a duration to gate on. 200ms slop so the next track can
+      // queue without an audible gap.
+      const finishGraceful = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        const elapsed = Date.now() - startMs;
+        const remaining = expectedMs > 0 ? (expectedMs - elapsed - 200) : 0;
+        if (remaining > 0) setTimeout(resolve, remaining);
+        else resolve();
+      };
+      // Crash path: ffmpeg died or stdin errored. Don't wait — resolve so
+      // the respawn handler can rebuild and the loop can move on.
+      const finishImmediate = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
         resolve();
       };
-      // Read-stream lifecycle events.
-      r.on("end", finish);
-      r.on("close", finish);   // pipe destruction (ffmpeg dies, stdin closes)
+      r.on("end", finishGraceful);
+      r.on("close", finishGraceful);
       r.on("error", (e) => {
         console.warn(`[icecast-source] read ${absPath}: ${e.message}`);
-        finish();
+        finishImmediate();
       });
-      // ffmpeg lifecycle: if the process exits or stdin errors mid-write,
-      // we'd hang forever waiting for "end". Resolve so the loop continues
-      // and the ffmpeg respawn handler can rebuild the source connection.
       const onFfmpegExit = () => {
         console.warn(`[icecast-source] ffmpeg exited during ${path.basename(absPath)}`);
-        finish();
+        finishImmediate();
       };
       const onStdinError = (e) => {
-        if (e.code === "EPIPE") return; // expected during shutdown
+        if (e.code === "EPIPE") return;
         console.warn(`[icecast-source] stdin error during ${path.basename(absPath)}: ${e.message}`);
-        finish();
+        finishImmediate();
       };
       ff.once("exit", onFfmpegExit);
       ff.stdin.on("error", onStdinError);
