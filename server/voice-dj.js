@@ -472,6 +472,13 @@ class VoiceDJ {
     this._speaking = true;
     this._broadcast({ type: 'dj_talk_pending', timestamp: new Date().toISOString() });
 
+    // Orations + news ride the high-quality voice so prosody matches the
+    // gravitas of the long-form delivery; voiceId is overridable per-caller
+    // for slot-specific personas (news anchor vs oration narrator).
+    const ttsOpts = {
+      elevenLabs: true,
+      voiceId: this._orationVoiceId || process.env.ELEVENLABS_ORATION_VOICE || process.env.ELEVENLABS_VOICE_ID,
+    };
     this._generateTTS(text, (err, audioPath, spokenText) => {
       this._speaking = false;
       if (err || !audioPath) {
@@ -518,7 +525,7 @@ class VoiceDJ {
         console.log(`   \u{1F3A4} Oration ended — resuming programming`);
         if (onDone) onDone();
       }, estimatedDurationMs + 2000);
-    });
+    }, ttsOpts);
     return true;
   }
 
@@ -1321,12 +1328,85 @@ class VoiceDJ {
 
   // ── Internal: TTS pipeline ────────────────────────────────
 
-  _generateTTS(text, callback) {
+  /**
+   * @param {string} text
+   * @param {function} callback (err, audioPath, text)
+   * @param {object} [opts]
+   * @param {boolean} [opts.elevenLabs] — prefer ElevenLabs for richer prosody
+   *                                      (orations, news, long-form). Short
+   *                                      DJ patter stays on edge-tts to keep
+   *                                      cost low. Requires ELEVENLABS_API_KEY.
+   * @param {string}  [opts.voiceId]   — ElevenLabs voice ID; defaults to
+   *                                     ELEVENLABS_VOICE_ID env var.
+   * @param {string}  [opts.modelId]   — defaults to "eleven_turbo_v2_5".
+   */
+  _generateTTS(text, callback, opts = {}) {
     const timestamp = Date.now();
     const outputPath = path.join(this._voiceDir, `dj_${timestamp}.mp3`);
+    const voiceDir = this._voiceDir;
+    const wantsElevenLabs = (opts.elevenLabs || opts.voiceId) && process.env.ELEVENLABS_API_KEY;
 
-    // Use edge-tts directly (ElevenLabs support removed -- re-add when key is valid)
+    if (wantsElevenLabs) {
+      const voiceId = opts.voiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM"; // Rachel
+      const modelId = opts.modelId || "eleven_turbo_v2_5";
+      generateElevenLabs(text, voiceId, modelId, outputPath, (err, finalPath) => {
+        if (!err && finalPath && fs.existsSync(finalPath)) {
+          console.log(`   \u{1F5E3} TTS (ElevenLabs/${voiceId.slice(0, 6)}) generated: ${path.basename(finalPath)}`);
+          return callback(null, finalPath, text);
+        }
+        console.warn(`   [tts] ElevenLabs failed (${err && err.message || "unknown"}) — falling back to edge-tts`);
+        fallbackToEdgeTTS();
+      });
+      return;
+    }
+
     fallbackToEdgeTTS();
+
+    function generateElevenLabs(text, voiceId, modelId, mp3Path, cb) {
+      const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`;
+      const body = JSON.stringify({
+        text,
+        model_id: modelId,
+        voice_settings: { stability: 0.55, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
+      });
+      const u = new URL(url);
+      const req = require("https").request({
+        method: "POST",
+        hostname: u.hostname,
+        path: u.pathname + u.search,
+        headers: {
+          "xi-api-key": process.env.ELEVENLABS_API_KEY,
+          "Content-Type": "application/json",
+          "Accept": "audio/mpeg",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        timeout: 60000,
+      }, (res) => {
+        if (res.statusCode !== 200) {
+          let errBody = "";
+          res.on("data", c => errBody += c);
+          res.on("end", () => cb(new Error(`status ${res.statusCode}: ${errBody.slice(0, 200)}`)));
+          return;
+        }
+        const out = fs.createWriteStream(mp3Path);
+        res.pipe(out);
+        out.on("finish", () => {
+          // ElevenLabs returns mp3_44100_128 already; the icecast pipe
+          // expects 44.1k stereo 128k anyway, so no re-encode needed.
+          // Confirm the file is non-empty before claiming success.
+          try {
+            const sz = fs.statSync(mp3Path).size;
+            if (sz < 1000) return cb(new Error(`file too small (${sz}b)`));
+          } catch (e) { return cb(e); }
+          cb(null, mp3Path);
+        });
+        out.on("error", cb);
+      });
+      req.on("error", cb);
+      req.on("timeout", () => { req.destroy(new Error("timeout")); });
+      req.write(body);
+      req.end();
+    }
 
     function fallbackToEdgeTTS() {
       execFile(process.env.EDGE_TTS_BIN || "/home/opc/.local/bin/edge-tts", ["--voice", "en-US-JennyNeural", "--text", text, "--write-media", outputPath], { timeout: 25000 }, (err) => {

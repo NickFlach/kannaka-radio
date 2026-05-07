@@ -28,6 +28,7 @@ const { FluxPublisher } = require("./flux-publisher");
 const { LiveBroadcast } = require("./live-broadcast");
 const { VoiceDJ } = require("./voice-dj");
 const { PeaceOration } = require("./peace-oration");
+const { NewsBroadcast } = require("./news-broadcast");
 const { IcecastSource } = require("./icecast-source");
 const { FloorManager } = require("./floor");
 
@@ -629,6 +630,18 @@ const peaceOration = new PeaceOration({
 peaceOration.start();
 // Expose admin-only trigger on the deps so a route or dev script can call it.
 deps.peaceOration = peaceOration;
+
+// Twice-daily news broadcast (7 AM + 5 PM CST) — reads
+// knowledge-gene/state.interpretation from Flux and delivers it as a
+// news-anchor bulletin via voiceDJ.executeOration.
+const newsBroadcast = new NewsBroadcast({
+  kannakabin: KANNAKA_BIN,
+  voiceDJ,
+  broadcast,
+  dataDir: require("path").join(BASE_DIR, "workspace"),
+});
+newsBroadcast.start();
+deps.newsBroadcast = newsBroadcast;
 
 // ── Icecast Source (ADR-0004 Phase 2) ─────────────────────────
 // Opt-in via KANNAKA_ICECAST_SOURCE=1. When enabled, the radio drives

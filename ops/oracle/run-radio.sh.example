@@ -12,6 +12,12 @@ fi
 if [ -f /home/opc/.kannaka-obc.env ]; then
   set -a; . /home/opc/.kannaka-obc.env; set +a
 fi
+
+# ElevenLabs key for the high-quality voice on long-form (orations + news).
+# Short DJ patter still uses edge-tts to keep cost low.
+if [ -f /home/opc/.kannaka-elevenlabs.env ]; then
+  set -a; . /home/opc/.kannaka-elevenlabs.env; set +a
+fi
 # ICECAST_MOUNT must match the public mount the player listens on
 # (workspace/door.html and workspace/index.html both target /stream).
 # Without this the metadata writer pushed Now-Playing titles to the
