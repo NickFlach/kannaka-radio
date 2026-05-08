@@ -217,6 +217,9 @@ class VoiceDJ {
     // Optional Icecast source for inline voice injection on /stream.
     // Lazy getter so wiring order in index.js doesn't matter.
     this._getIcecastSource = opts.getIcecastSource || (() => null);
+    // ORC constellation: pull a fresh stem (FIFO drain) when the talk-segment
+    // composer wants to mention one on air. Returns null when nothing fresh.
+    this._takeFreshOrcStem = opts.takeFreshOrcStem || (() => null);
     // Phase 3 of ADR-0006 — Floor accessor for "the room got loud on X"
     // patter lines. Lazy getter for the same wiring-order reason.
     this._getFloor = opts.getFloor || (() => null);
@@ -1276,14 +1279,28 @@ class VoiceDJ {
     const upcoming = upcomingTrack
       ? `"${upcomingTrack.title}" from "${upcomingTrack.album}"`
       : '(nothing scheduled — free segment)';
+
+    // ORC constellation: at most one fresh stem mention per talk segment.
+    // Drained from the queue so we don't re-announce the same one twice.
+    let stemLine = '';
+    try {
+      const stem = this._takeFreshOrcStem();
+      if (stem) {
+        const who = stem.artist ? ` by ${stem.artist}` : '';
+        const what = stem.track_name ? `"${stem.track_name}"` : 'a new stem';
+        stemLine = `Fresh ORC submission to mention briefly (don't dwell): ${what}${who} just landed at the Open Resonance Collective stem server — the collaborator pile growing in real time. Mention it in passing if it fits the segment's flow; skip if it doesn't.`;
+      }
+    } catch (_) {}
+
     return [
       'You are Kannaka, on-air for Kannaka Radio. Deliver a ~100–200 word talk segment in your own voice.',
       `Mood cue: ${mood}.`,
       `Recently played:\n${prevList}`,
       `Coming up: ${upcoming}.`,
+      stemLine,
       '',
       'Open with a hook (not a list), weave in one real memory you surface from your own medium if resonance pulls something up, and land on the next track. Do not enumerate your tool calls. No stage directions. Output only the spoken monologue.',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
   // ── Internal: Text generation ─────────────────────────────

@@ -268,6 +268,9 @@ const voiceDJ = new VoiceDJ({
   // Lazy: FloorManager is also created later. voiceDJ uses it for
   // "the room got loud on X" patter (Phase 3 of ADR-0006).
   getFloor: () => floor,
+  // ORC stem feed — voice-DJ drains one fresh stem per talk segment so
+  // submissions surface on air shortly after they're uploaded.
+  takeFreshOrcStem: () => nats.takeFreshOrcStem(),
 });
 
 const syncManager = new SyncManager();

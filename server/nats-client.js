@@ -59,7 +59,23 @@ class NATSClient extends EventEmitter {
       },
       dreams: [],
       agentEvents: [],
+      // ORC constellation: fresh stems queued from ORC.stem.submitted.
+      // Bounded ring buffer; voice-DJ pulls from this for on-air mentions.
+      orcStems: [],
     };
+  }
+
+  /**
+   * Drain a single freshly-submitted ORC stem (FIFO). Returns null when the
+   * pool is empty. Voice-DJ calls this to mint at most one stem mention
+   * per opportunity, so a quiet day on ORC stays quiet on air.
+   */
+  takeFreshOrcStem() {
+    return this.swarmState.orcStems.shift() || null;
+  }
+
+  peekFreshOrcStems() {
+    return this.swarmState.orcStems.slice();
   }
 
   // ── Public API ────────────────────────────────────────────
@@ -96,6 +112,11 @@ class NATSClient extends EventEmitter {
       this._subscribe('queen.event.dream.start');
       this._subscribe('queen.event.dream.end');
       this._subscribe('queen.event.memory.shared');
+
+      // ORC constellation events — stems submitted to orc-stem-server
+      // surface here so kannaka-radio's voice-DJ can mention fresh
+      // collaborator material on air.
+      this._subscribe('ORC.stem.submitted');
     });
 
     this._client.on('data', (data) => {
@@ -348,6 +369,27 @@ class NATSClient extends EventEmitter {
       console.log(`[nats] QueenSync: memory shared by ${evt.agent_id}`);
       return;
     }
+
+    if (subject === 'ORC.stem.submitted') {
+      // Buffer the fresh stem so voice-DJ can mention it on air. Bound the
+      // ring at 8 — busy upload bursts shouldn't queue weeks of mentions.
+      const stem = {
+        stem_id: data.stem_id || null,
+        track_name: data.track_name || null,
+        artist: data.artist || null,
+        phase: data.phase || null,
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        receivedAt: now,
+      };
+      if (stem.stem_id) {
+        this.swarmState.orcStems.push(stem);
+        while (this.swarmState.orcStems.length > 8) this.swarmState.orcStems.shift();
+        this._broadcast({ type: 'orc_stem_submitted', data: stem });
+        this.emit('orc:stem:submitted', stem);
+        console.log(`[nats] ORC stem submitted: "${stem.track_name || '(untitled)'}" by ${stem.artist || 'unknown'}`);
+      }
+      return;
+    }
   }
 
   _scheduleReconnect() {
@@ -399,6 +441,7 @@ const NATS_REQUIRED_FIELDS = {
   "queen.event.join":                   ["schema_version", "ts", "agent_id"],
   "queen.event.leave":                  ["schema_version", "ts", "agent_id"],
   "queen.event.memory.shared":          ["schema_version", "ts", "agent_id", "memory_id"],
+  "ORC.stem.submitted":                 ["schema_version", "ts", "agent_id", "stem_id"],
 };
 
 module.exports = { NATSClient };
