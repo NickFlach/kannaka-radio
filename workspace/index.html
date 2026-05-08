@@ -119,6 +119,24 @@ body::after {
 .track-request-from { color: var(--cyan); font-size: 10px; }
 .track-request-title { color: #fff; margin-top: 4px; }
 
+/* ORC fresh-stem toast — same shape as track-request, different accent so
+   visitors recognize a constellation event vs a listener interaction. */
+.orc-stem-toast {
+  position: fixed; top: 110px; right: 1rem;
+  background: linear-gradient(135deg, #0a1a2e, #13131a);
+  border: 1px solid #6366f1; border-radius: 8px;
+  padding: 10px 14px; z-index: 1001;
+  color: #c7d2fe; font-size: 11px;
+  transform: translateX(120%); transition: transform 0.4s ease;
+  max-width: 300px; backdrop-filter: blur(10px);
+}
+.orc-stem-toast.visible { transform: translateX(0); }
+.orc-stem-toast .label { color: #8b5cf6; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.orc-stem-toast .who { color: #fff; margin-top: 4px; font-weight: 600; }
+.orc-stem-toast .what { color: #c7d2fe; margin-top: 2px; }
+.orc-stem-toast a { color: #a5b4fc; text-decoration: none; }
+.orc-stem-toast a:hover { text-decoration: underline; }
+
 /* ── Animations ── */
 @keyframes glow {
   from { filter: drop-shadow(0 0 5px #8b5cf6); }
@@ -1761,6 +1779,15 @@ body.konami-mode .surface-header h1 {
   <div class="track-request-title" id="requestTitle"></div>
 </div>
 
+<!-- ORC fresh-stem toast — fires when an ORC.stem.submitted NATS event
+     reaches the radio. Voice-DJ will mention it on air at the next talk
+     segment; this gives non-listeners visibility too. -->
+<div class="orc-stem-toast" id="orcStemToast">
+  <div class="label">ORC · NEW STEM</div>
+  <div class="who" id="orcStemWho"></div>
+  <div class="what" id="orcStemWhat"></div>
+</div>
+
 <script>
 // ── State ──
 let state = null;
@@ -3011,6 +3038,22 @@ function updateListenerCount(count) {
   listenerCount = count;
   var el = document.getElementById('listenerNum');
   if (el) el.textContent = count;
+}
+
+function showOrcStemToast(data) {
+  if (!data || !data.stem_id) return;
+  var toast = document.getElementById('orcStemToast');
+  var who = document.getElementById('orcStemWho');
+  var what = document.getElementById('orcStemWhat');
+  if (!toast || !who || !what) return;
+  var artist = data.artist || 'unknown';
+  var track = data.track_name || '(untitled)';
+  var phaseStr = data.phase ? ' · Phase ' + data.phase : '';
+  who.textContent = artist;
+  what.innerHTML = '\u201c' + escapeHtml(track) + '\u201d' + phaseStr +
+    ' · <a href="https://orc.ninja-portal.com/stems.html" target="_blank">browse</a>';
+  toast.classList.add('visible');
+  setTimeout(function() { toast.classList.remove('visible'); }, 12000);
 }
 
 function showTrackRequest(data) {
@@ -4842,6 +4885,12 @@ function connectWS() {
       // ── Shared listening sync ──
       if (msg.type === 'sync') {
         handleSync(msg.data);
+      }
+      // ── ORC fresh-stem notification — voice-DJ will mention this on
+      //    air at the next talk segment; the toast lets visitors who
+      //    aren't listening still see the constellation moving.
+      if (msg.type === 'orc_stem_submitted') {
+        showOrcStemToast(msg.data);
       }
       // ── Voting messages ──
       if (msg.type === 'vote_update') {

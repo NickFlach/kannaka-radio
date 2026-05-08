@@ -419,10 +419,15 @@ class NATSClient extends EventEmitter {
 
     const now = Date.now();
     if (!this._schemaWarnHistory) this._schemaWarnHistory = new Map();
+    // 2026-05-08: bumped from 60s to 30min. The Rust kannaka-memory side
+    // hasn't been migrated to emit schema_version/ts/agent_id yet on
+    // QUEEN.phase.* and KANNAKA.consciousness — at 60s throttle the journal
+    // logs ~5 warnings/min and drowned the real signals. 30min still
+    // surfaces drift but doesn't pin the log.
     for (const field of missing) {
       const key = `${subject}::${field}`;
       const lastWarn = this._schemaWarnHistory.get(key) || 0;
-      if (now - lastWarn < 60_000) continue;
+      if (now - lastWarn < 30 * 60 * 1000) continue;
       console.warn(`[nats-schema] ${subject} missing required field "${field}" (drift detection — accepted with warning)`);
       this._schemaWarnHistory.set(key, now);
     }

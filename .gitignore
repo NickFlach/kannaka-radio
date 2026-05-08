@@ -28,7 +28,29 @@ npm-debug.log*
 *.wav
 *.flac
 *.m4a
-*.oggworkspace/models/art/
+*.ogg
+
+# Runtime / generated assets
+workspace/models/art/
+workspace/podcasts/
+music/Ghost Signals Podcast/
+
+# Per-feature scheduler state — date-keyed dedup files written by the
+# peace-oration / news-broadcast / gossip-broadcast / showcase pipelines.
+# These are local runtime state, not source. Same for the recently-played
+# panel cache.
+workspace/peace-oration-state.json
+workspace/news-broadcast-state.json
+workspace/gossip-broadcast-state.json
+workspace/showcase-state.json
+workspace/recently-played.json
+
+# Oracle-side runtime scripts — the production box has its own copies of
+# cron wrappers (prune-cron, run-push-nats) that source local env files.
+prune-cron.sh
+run-push-nats.sh
+
+# Broadcaster credentials
 .bluesky.json
 .mastodon.json
 .telegram.json

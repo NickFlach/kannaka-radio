@@ -559,19 +559,16 @@ wss.on('connection', (ws) => {
 
 // Ensure commercials are TTS-rendered. Generates any missing MP3s via
 // voiceDJ's TTS pipeline, then registers them with djEngine so channel
-// builders can interleave them into playlists.
+// builders can interleave them into playlists. Programming starts AFTER
+// this resolves so the very first album load already contains the ads —
+// avoids the double "Loaded {album}" pattern at startup where programming
+// built without commercials, then rebuilt seconds later when the ensure
+// promise resolved (caught 2026-05-08 in journalctl noise).
 const { ensureCommercials } = require("./commercials");
 const COMMERCIALS_DIR = path.join(MUSIC_DIR, "commercials");
-ensureCommercials(voiceDJ, COMMERCIALS_DIR)
-  .then(list => {
-    djEngine.setCommercials(list);
-    // Rebuild the current playlist so any already-loaded album picks up the ads
-    if (djEngine.state.currentAlbum && djEngine.state.channel === 'dj') {
-      djEngine.buildPlaylist(djEngine.state.currentAlbum);
-      broadcastState();
-    }
-  })
-  .catch(e => console.warn('[commercials] init failed:', e.message));
+const _commercialsReady = ensureCommercials(voiceDJ, COMMERCIALS_DIR)
+  .then(list => { djEngine.setCommercials(list); })
+  .catch(e => { console.warn('[commercials] init failed:', e.message); });
 
 // Lazily rebuild Gifts for Humanity from kax artifacts (populates the album
 // with real external URLs — won't affect startup if kax is unreachable).
@@ -617,7 +614,10 @@ voiceDJ.setProgramming(() => programming);
 
 // Programming picks the opening set based on current time block.
 // startScheduleLoop() loads the time-appropriate album immediately.
-programming.startScheduleLoop();
+// Wait for commercials to register first so the initial loadAlbum already
+// contains the ad rotation — without this, the album was built once
+// without ads then rebuilt seconds later when the ensure promise resolved.
+_commercialsReady.then(() => programming.startScheduleLoop());
 
 // Twice-daily peace oration (noon + midnight CST). Kannaka's steward-of-
 // virtue duty — a long-form MLK-style speech for humanity.
