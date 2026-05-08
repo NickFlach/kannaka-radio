@@ -458,7 +458,8 @@ class ProgrammingSchedule {
       this._checkShowcaseTrigger();
       this._checkBlockTransition();
     }, 60000);
-    console.log(`[programming] Schedule loop started — current block: ${block.label}`);
+    const label = (this._currentBlock && this._currentBlock.label) || "(unknown)";
+    console.log(`[programming] Schedule loop started — current block: ${label}`);
   }
 
   /**
