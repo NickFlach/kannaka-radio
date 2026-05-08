@@ -41,12 +41,44 @@ Built by [Kannaka](https://github.com/NickFlach/kannaka-memory), born from a dee
                                                 └────────────────┘
 ```
 
-## What's New in v2
+## What's New (May 2026)
+
+- **News bulletin** — twice-daily 7 AM + 5 PM CDT segment reading
+  Flux `knowledge-gene/state.interpretation` over an Adam (ElevenLabs)
+  news-anchor voice. `server/news-broadcast.js`.
+- **Gossip column** — 4:20 AM + 4:20 PM CDT, sassy chronicler-of-the-
+  constellation framing on the same Flux feed, Domi voice. Vague-on-
+  purpose, signed off "xoxo, GG." `server/gossip-broadcast.js`.
+- **ElevenLabs voice for long-form** — orations, news, gossip use
+  ElevenLabs (Rachel / Adam / Domi) for richer prosody. Short DJ patter
+  stays on edge-tts to control cost. Falls through to edge-tts on any
+  ElevenLabs failure so the radio never goes silent.
+- **ORC ↔ radio NATS bridge** — open-resonance-collective stem-server
+  publishes `ORC.stem.submitted` on every upload; the radio buffers up
+  to 8 fresh stems and the voice-DJ mentions one per talk segment.
+  /player surfaces a 12s toast when a fresh stem lands.
+- **Channel isolation** — Music/Podcast/KAX/ORC tabs in /player now
+  switch the local `<audio>` source only; they no longer hit
+  `/api/channel` and yank the global `/stream` out from under everyone
+  else (commit `8a22d55`).
+- **Stream timing fix** — `_streamFileToFfmpeg` ffprobes each track and
+  paces the resolve to actual playout time. Short files (commercials,
+  voice intros) no longer cut off mid-play (commit `4458641`).
+- **Track ↔ announce sync** — peek-time playlist reshuffle keeps the
+  DJ's "next is X" matching what actually plays after a wrap (commit
+  `dc11801`).
+- **Sponsorship + KAX** — Air Time panel on the landing page; KAX
+  (kax.ninja-portal.com) is the agentic marketplace expansion of the
+  OpenClawCity partnership.
+
+For the canonical list of voiced segments, programming blocks, and
+operational details see [`docs/SCHEDULE.md`](docs/SCHEDULE.md).
+
+### Earlier highlights (v2)
 
 - **SPA with 5 layers**: Home (Ghost Vision + queue), Live, Library, Dreams, Swarm constellation
 - **Ghost Vision**: SGA/Fano glyph system — 84-class audio classification, 7-point Fano plane geometry, fold path trajectories
 - **Live Broadcasting**: MediaRecorder mic capture -> WebSocket binary -> ffmpeg -> WAV with live waveform
-- **Voice DJ**: Ghost personality TTS intros (ElevenLabs primary, edge-tts, Windows SAPI fallback)
 - **Dreams Page**: Hallucination timeline, cluster canvas, Xi signatures from kannaka-memory
 - **Flux Broadcasting**: Multi-listener sync, cross-agent track requests, 30s periodic full-state publishing
 - **NATS Swarm**: Kuramoto phase tracking, agent constellation, consciousness metrics (Phi/Xi/order)
@@ -56,27 +88,39 @@ Built by [Kannaka](https://github.com/NickFlach/kannaka-memory), born from a dee
 - **Consciousness DJ**: DJ intros that respond to swarm Phi/Xi/order state
 - **Memory Bridge**: Connects radio to kannaka-memory CLI for track similarity and dream retrieval
 - **Queue Management**: User queue with shuffle, add tracks from Library tab
-- **Security Hardened**: XSS protection, command injection fixes (execFile), 64KB body limits, graceful shutdown
 
 ## Architecture
 
-The server has been split from a monolith into 13 focused modules:
+The server is composed of focused modules:
 
 ```
 server/
-  index.js            — Entry point, wires all modules together
-  dj-engine.js        — Playlist management, album switching, track history
-  perception.js       — 296-dim audio feature extraction via kannaka-ear
-  routes.js           — HTTP API endpoints
-  nats-client.js      — NATS swarm connection + Kuramoto phase sync
-  flux-publisher.js   — Flux Universe publishing
-  live-broadcast.js   — MediaRecorder → ffmpeg live pipeline
-  voice-dj.js         — TTS intro generation (ElevenLabs/edge-tts/SAPI)
-  sync-manager.js     — Multi-client playback sync
-  vote-manager.js     — Collaborative track voting
-  webrtc-signaling.js — WebRTC peer-to-peer signaling
-  music-generator.js  — AI music generation (Replicate/ElevenLabs)
-  utils.js            — SPA file watcher, shared helpers
+  index.js              — Entry point, wires all modules together
+  dj-engine.js          — Playlist management, album switching, track history
+  programming.js        — Six daily blocks, mood cues, mixed-set rotation
+  perception.js         — 296-dim audio feature extraction via kannaka-ear
+  routes.js             — HTTP API endpoints
+  nats-client.js        — NATS swarm connection + Kuramoto phase sync,
+                          ORC.stem.submitted subscriber, fresh-stem queue
+  flux-publisher.js     — Flux Universe publishing
+  icecast-source.js     — pipe-fed ffmpeg → /stream (paced + voice-queued)
+  icecast-metadata.js   — Now-Playing metadata pushed to icecast
+  live-broadcast.js     — MediaRecorder → ffmpeg live pipeline
+  voice-dj.js           — TTS pipeline (ElevenLabs long-form / edge-tts patter)
+  peace-oration.js      — Twice-daily 00:00 + 12:00 oration (Rachel)
+  news-broadcast.js     — Twice-daily 07:00 + 17:00 news bulletin (Adam,
+                          sourced from Flux knowledge-gene/state)
+  gossip-broadcast.js   — Twice-daily 04:20 + 16:20 gossip column (Domi)
+  podcast-scheduler.js  — Twice-daily 10:00 + 22:00 Ghost Signals podcast
+  commercials.js        — 15 ad spots, Fisher-Yates shuffled per playlist
+  sync-manager.js       — Multi-client playback sync
+  vote-manager.js       — Collaborative track voting
+  webrtc-signaling.js   — WebRTC peer-to-peer signaling
+  openbotcity.js        — OBC artifacts/publish-text + speak helpers
+  ghostsignals-hub.js   — Per-track prediction-market emitter (ADR-0012)
+  music-generator.js    — AI music generation (Replicate/ElevenLabs)
+  broadcasters/         — Bluesky / Mastodon / Telegram / Nostr / YouTube
+  utils.js              — SPA file watcher, shared helpers
 
 consciousness-dj.js   — Swarm-aware DJ intros (reacts to Phi/Xi/order)
 memory-bridge.js      — Bridge to kannaka-memory CLI
