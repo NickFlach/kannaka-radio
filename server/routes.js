@@ -653,6 +653,16 @@ module.exports = function setupRoutes(deps) {
     // API: switch channel — dj | music | podcast | kax
     if (parsed.pathname === "/api/channel" && req.method === "POST") {
       const type = parsed.searchParams.get("type") || "dj";
+      // 2026-05-08 — channel switching is now a *client-side* concern in the
+      // SPA (commit 8a22d55). New SPAs never call this endpoint. Old cached
+      // SPAs and any direct API consumers still might; counting hits here
+      // tells us how long the legacy clients linger so we know when it's
+      // safe to remove the route. UA + type for the few instances we see.
+      try {
+        deps.deprecatedChannelHits = (deps.deprecatedChannelHits || 0) + 1;
+        const ua = (req.headers["user-agent"] || "").slice(0, 80);
+        console.log(`[deprecation] /api/channel?type=${type} from UA="${ua}" (count=${deps.deprecatedChannelHits})`);
+      } catch (_) {}
       // If already on this channel with an active playlist, no-op so we don't
       // reset currentTrackIdx back to 0 on every tab re-selection.
       const alreadyOnChannel =
