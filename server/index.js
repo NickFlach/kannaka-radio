@@ -199,6 +199,31 @@ const djEngine = new DJEngine({
             orc_stem_id: actual.orcStemId || null,
             orc_phase: actual.orcPhase || null,
           },
+        }).then(async (market) => {
+          // LADDER prediction loop (path A): three constellation agents
+          // each place a bet on the just-created market. Their reputation
+          // accumulates as TTL resolution closes markets. Trades are
+          // best-effort; a single failed bet doesn't block the others.
+          try {
+            const { predictAll } = require("./lib/agent-predictor");
+            const ws = nats.swarmState && nats.swarmState.consciousness;
+            const ctx = { worldStateConfidence: ws ? ws.phi : null };
+            const trades = predictAll(actual, ctx);
+            for (const t of trades) {
+              try {
+                await gsHub.placeTrade({
+                  market_id: market.id,
+                  trader_id: t.trader_id,
+                  outcome: t.outcome,
+                  shares: t.shares,
+                });
+              } catch (e) {
+                console.warn(`[predict] ${t.trader_id} on "${actual.title}": ${e.message}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`[predict] dispatch failed: ${e.message}`);
+          }
         }).catch(() => {});
       }
     } finally {
@@ -330,8 +355,23 @@ const gsHub = new GhostSignalsHub({
   broadcast,
 });
 gsHub.init().then(async () => {
-  console.log("\n📊 GhostSignalsHub initialized");
+  console.log("\n\u{1F4CA} GhostSignalsHub initialized");
   gsHub.startResolverLoop(10000);
+
+  // Register the three constellation predictors as traders. Idempotent —
+  // returning:true is fine, the LMSR markets just see existing capital.
+  // These are the agents that bet on every per-track market created in
+  // onTrackChange; their reputation accumulates as TTL resolution closes
+  // markets. Path A of the LADDER design — get the loop running with
+  // distinct-but-dumb predictors so the track-record signal exists; smarter
+  // predictors swap in via lib/agent-predictor.js with the same interface.
+  try {
+    await gsHub.registerTrader({ id: "kannaka-01",         display_name: "Kannaka (curator)",  kind: "ai" });
+    await gsHub.registerTrader({ id: "kannaka-witness-01", display_name: "Witness (external)", kind: "ai" });
+    await gsHub.registerTrader({ id: "kannaktopus-01",     display_name: "Kannaktopus (exec)", kind: "ai" });
+    console.log("\u{1F4CA} GhostSignalsHub: 3 constellation traders registered");
+  } catch (e) { console.warn("[gshub] trader register failed:", e.message); }
+
   // Seed default markets if none active
   try {
     const activeMarkets = await gsHub.listMarkets({ active: true, limit: 1 });
@@ -346,7 +386,7 @@ gsHub.init().then(async () => {
       for (const s of seeds) {
         await gsHub.createMarket({ ...s, source: 'system', source_app: 'kannaka-radio' });
       }
-      console.log(`📊 GhostSignalsHub: seeded ${seeds.length} default markets`);
+      console.log(`\u{1F4CA} GhostSignalsHub: seeded ${seeds.length} default markets`);
     }
   } catch (e) { console.warn("[gshub] seed failed:", e.message); }
 }).catch((e) => console.warn("[gshub] init failed:", e.message));
