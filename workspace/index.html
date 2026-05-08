@@ -3095,41 +3095,22 @@ function applyState(s) {
 
       currentFile = c.file;
       var audio = document.getElementById('audio');
-      // ADR-0004 Phase 4: In DJ mode, the canonical audio is the live
-      // Icecast /stream — server-driven, all listeners synced, no per-track
-      // file loads. Switch to /stream once and leave it alone; track changes
-      // only update the displayed metadata via the WS bus.
-      // Music mode (per-track library playback) and KAX/external URLs keep
-      // the old per-file path.
+      // 2026-05-07: post-channel-isolation. In DJ mode this tab follows
+      // /stream and metadata flips on the server's track changes. In
+      // music/podcast mode the SPA is now a private jukebox — the user
+      // picks tracks via the library / queue / podcast UI which set
+      // audio.src per-file. We must NOT auto-flip audio.src here for
+      // non-DJ modes or we'd yank the user out of whatever they picked
+      // every time the SERVER's /stream advances.
       var streamUrl = '/stream';
-      var useStream = (currentMode === 'dj');
-      if (useStream) {
-        // Only re-set src if we're not already on /stream — avoid restarting
-        // the live audio every track-change.
+      if (currentMode === 'dj') {
         if (!audio.src || audio.src.indexOf(streamUrl) < 0) {
           audio.src = streamUrl;
           audio.load();
           audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
         }
-      } else if (c.file && /^https?:\/\//i.test(c.file)) {
-        audio.src = c.file;
-        audio.load();
-        audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
-      } else {
-        audio.src = '/audio/' + encodeURIComponent(c.file);
-        audio.load();
-        // Seek to current track position (so refreshing listeners join in sync).
-        if (s.trackStartedAt) {
-          var elapsed = (Date.now() - s.trackStartedAt) / 1000;
-          audio.addEventListener('loadedmetadata', function seekOnce() {
-            if (elapsed > 0 && elapsed < audio.duration) {
-              audio.currentTime = elapsed;
-            }
-            audio.removeEventListener('loadedmetadata', seekOnce);
-          });
-        }
-        audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
       }
+      // music/podcast: leave audio.src alone — user-driven only.
 
       // Tell the OS we're playing media so iOS/Android keep audio alive
       // when the screen locks and show lock-screen controls.
@@ -3549,24 +3530,51 @@ function initMediaSession() {
 // against the current src (just to consume the gesture) then fetch, and
 // applyState will swap src when the server broadcasts the new track.
 function setChannel(type) {
+  // Local-only mode switch (2026-05-07). Previously this POSTed to
+  // /api/channel which mutated the SERVER's global channel state — every
+  // listener on /stream got reprogrammed when any one user clicked Music
+  // or Podcast. Now the click changes only this tab's <audio> source;
+  // the live radio on /stream stays in DJ mode regardless.
   var audio = document.getElementById('audio');
 
-  // Consume the click gesture by calling play() synchronously
+  // Consume the click gesture so autoplay policy doesn't bite the next play().
   if (audio) {
     audio.play().then(function(){ initAudioAnalyser(); }).catch(function(_e){});
   }
 
-  // Fire the API call (the rest flows through applyState via WebSocket).
-  fetch('/api/channel?type=' + encodeURIComponent(type), { method: 'POST' })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!data.ok) { console.warn('[channel] switch failed:', type); return; }
-      fetch('/api/state').then(function(r){ return r.json(); }).then(function(s) {
-        applyState(s);
-        if (audio) audio.play().then(function(){ initAudioAnalyser(); }).catch(function(_e){});
-      }).catch(function(){});
-    })
-    .catch(function(e) { console.warn('[channel] error:', e); });
+  // KAX and ORC are separate apps on their own subdomains — open them
+  // in a new tab rather than trying to reuse this player's audio element.
+  if (type === 'kax') { window.open('https://kax.ninja-portal.com', '_blank'); return; }
+  if (type === 'orc') { window.open('https://orc.ninja-portal.com', '_blank'); return; }
+
+  currentMode = type;
+
+  if (audio) {
+    if (type === 'dj') {
+      // Reattach to /stream if we'd drifted into music/podcast.
+      if (!audio.src || audio.src.indexOf('/stream') < 0) {
+        audio.src = '/stream';
+        audio.load();
+      }
+      audio.play().then(function(){ initAudioAnalyser(); }).catch(function(_e){});
+    } else {
+      // Music / podcast: detach from the live stream so it doesn't keep
+      // playing in the background. The library / podcast UIs handle
+      // per-file playback when the user picks a track (sets audio.src
+      // to /audio/<file>).
+      if (audio.src && audio.src.indexOf('/stream') >= 0) {
+        try { audio.pause(); } catch (_) {}
+        try { audio.removeAttribute('src'); audio.load(); } catch (_) {}
+      }
+    }
+  }
+
+  // Sync the inner mode-tab UI (dj/podcast/music content panels) with
+  // the channel choice so the matching panel becomes visible.
+  if ((type === 'dj' || type === 'music' || type === 'podcast')
+      && typeof setMode === 'function') {
+    setMode(type);
+  }
 }
 
 async function fetchState() {
