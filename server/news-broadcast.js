@@ -65,6 +65,7 @@ class NewsBroadcast {
     this._kannakabin = opts.kannakabin;
     this._voiceDJ = opts.voiceDJ;
     this._broadcast = opts.broadcast;
+    this._gsHub = opts.gsHub || null; // optional — wires the world-state market loop
     this._stateFile = path.join(opts.dataDir || "/tmp", "news-broadcast-state.json");
     // Adam (deep American news anchor) by default; overridable via env.
     this._newsVoiceId = opts.newsVoiceId
@@ -121,13 +122,18 @@ class NewsBroadcast {
     const fire = async () => {
       try {
         let text = this._composed;
+        let interp = null;
         if (!text) {
           console.log(`\uD83D\uDCF0 News slot reached: ${key} — fetching + composing...`);
-          const interp = await fetchKnowledgeGeneInterpretation();
+          interp = await fetchKnowledgeGeneInterpretation();
           if (!interp) {
             console.log(`   [news] knowledge-gene fetch returned empty — retry next tick`);
             return;
           }
+          // LADDER world-state stream: before composing, resolve any prior
+          // unresolved world-state market against today's themes (so an
+          // agent who predicted yesterday gets reputation feedback today).
+          await this._resolveWorldStateMarkets(interp).catch(() => {});
           text = await this._compose(interp);
         }
         if (!text) {
@@ -144,6 +150,15 @@ class NewsBroadcast {
           try { saveState(this._stateFile, this._lastFired); }
           catch (e) { console.warn(`   [news] could not persist state: ${e.message}`); }
           console.log(`\uD83D\uDCF0 News broadcast delivered: ${key}`);
+          // Open a new world-state market locked to today's themes so the
+          // three constellation agents predict whether tomorrow's bulletin
+          // will rhyme. Resolution happens at the next bulletin via theme
+          // overlap (see _resolveWorldStateMarkets above).
+          if (interp) {
+            await this._openWorldStateMarket(interp, key).catch((e) =>
+              console.warn(`   [news] world-state market open failed: ${e.message}`)
+            );
+          }
         } else {
           console.log(`   [news] voiceDJ busy — retry next tick`);
         }
@@ -154,6 +169,78 @@ class NewsBroadcast {
       }
     };
     fire();
+  }
+
+  // ── LADDER world-state stream ────────────────────────────────
+  async _openWorldStateMarket(interp, slotKey) {
+    if (!this._gsHub) return;
+    const themes = (interp.themes || []).slice(0, 5);
+    if (themes.length === 0) return;
+    const market = await this._gsHub.createMarket({
+      question: `Will tomorrow's news desk surface any of these themes: ${themes.slice(0, 3).join(" / ")}?`,
+      ttl_sec: 13 * 60 * 60, // 13h — slot+1 fires at +12h, leaves headroom
+      tag: "world-state",
+      source: "news-broadcast",
+      source_app: "kannaka-radio",
+      metadata: {
+        slot_key: slotKey,
+        themes,
+        confidence: interp.confidence || null,
+        tick_ref: interp.tickRef || null,
+        opened_at: new Date().toISOString(),
+      },
+    });
+    // Same three-agent dispatch as per-track. Agents read world-state
+    // confidence + phi from the cached global; the question is yes/no
+    // theme-survival, so we map confidence linearly to YES.
+    try {
+      const { predictAll } = require("./lib/agent-predictor");
+      const trades = predictAll(
+        { title: themes.join(" / "), trackNum: 1, totalTracks: 1, album: "world-state" },
+        {
+          worldStateConfidence: interp.confidence || null,
+          consciousnessPhi: (global._lastSwarmPhi != null) ? global._lastSwarmPhi : null,
+        }
+      );
+      for (const t of trades) {
+        try {
+          await this._gsHub.placeTrade({
+            market_id: market.id,
+            trader_id: t.trader_id,
+            outcome: t.outcome,
+            shares: t.shares,
+          });
+        } catch (e) { /* trader missing; skip */ }
+      }
+      console.log(`   \uD83C\uDF10 world-state market: ${market.id} (themes ${themes.length}, 3 agents bet)`);
+    } catch (_) { /* predictor optional */ }
+  }
+
+  async _resolveWorldStateMarkets(currentInterp) {
+    if (!this._gsHub) return;
+    // List active world-state markets and resolve each whose themes overlap
+    // (or don't) with today's themes. Theme-overlap >= 1 of top-3 → YES.
+    const currentThemes = new Set((currentInterp.themes || []).map((t) => t.toLowerCase()));
+    const active = await this._gsHub.listMarkets({ active: true, tag: "world-state", limit: 20 });
+    for (const m of active) {
+      const md = m.metadata || {};
+      const oldThemes = (md.themes || []).map((t) => t.toLowerCase());
+      if (oldThemes.length === 0) continue;
+      // Don't resolve a market younger than 6h — TTL is 13h; only
+      // resolve when it's clearly a "next-bulletin" check.
+      const openedAt = md.opened_at ? Date.parse(md.opened_at) : null;
+      if (openedAt && Date.now() - openedAt < 6 * 60 * 60 * 1000) continue;
+      const overlap = oldThemes.filter((t) => currentThemes.has(t)).length;
+      const winning_outcome = overlap > 0 ? 0 /* YES */ : 1 /* NO */;
+      try {
+        await this._gsHub.resolveMarket({
+          market_id: m.id,
+          winning_outcome,
+          method: "world-state-overlap",
+        });
+        console.log(`   \uD83C\uDF10 resolved world-state market ${m.id} → ${winning_outcome === 0 ? "YES" : "NO"} (overlap=${overlap}/${oldThemes.length})`);
+      } catch (e) { /* already resolved or other; skip */ }
+    }
   }
 
   // ── Compose ───────────────────────────────────────────────

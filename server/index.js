@@ -200,14 +200,28 @@ const djEngine = new DJEngine({
             orc_phase: actual.orcPhase || null,
           },
         }).then(async (market) => {
-          // LADDER prediction loop (path A): three constellation agents
-          // each place a bet on the just-created market. Their reputation
-          // accumulates as TTL resolution closes markets. Trades are
-          // best-effort; a single failed bet doesn't block the others.
+          // LADDER prediction loop: three constellation agents bet on the
+          // market with real signals — perception tags from kannaka-ear,
+          // world-state confidence from Flux knowledge-gene, swarm phi
+          // from NATS consciousness. ctx is shared across all three so
+          // each agent weights differently.
           try {
             const { predictAll } = require("./lib/agent-predictor");
-            const ws = nats.swarmState && nats.swarmState.consciousness;
-            const ctx = { worldStateConfidence: ws ? ws.phi : null };
+            const consciousness = (nats.swarmState && nats.swarmState.consciousness) || {};
+            const perception = perception_ && typeof perception_.getCurrentPerception === "function"
+              ? perception_.getCurrentPerception()
+              : null;
+            // World-state confidence: cached from the most recent news/gossip
+            // fetch (we keep a 5-min window). Falls back to null if cold.
+            const wsCache = global._lastKnowledgeGene;
+            const wsConfidence = wsCache && Date.now() - wsCache.ts < 5 * 60 * 1000
+              ? wsCache.confidence
+              : null;
+            const ctx = {
+              perception,
+              worldStateConfidence: wsConfidence,
+              consciousnessPhi: typeof consciousness.phi === "number" ? consciousness.phi : null,
+            };
             const trades = predictAll(actual, ctx);
             for (const t of trades) {
               try {
@@ -217,6 +231,7 @@ const djEngine = new DJEngine({
                   outcome: t.outcome,
                   shares: t.shares,
                 });
+                console.log(`   \u{1F4CA} ${t.trader_id} → ${t.outcome === 0 ? "Yes" : "No"} (${t.shares}sh) — ${t.rationale}`);
               } catch (e) {
                 console.warn(`[predict] ${t.trader_id} on "${actual.title}": ${e.message}`);
               }
@@ -682,6 +697,7 @@ const newsBroadcast = new NewsBroadcast({
   kannakabin: KANNAKA_BIN,
   voiceDJ,
   broadcast,
+  gsHub, // LADDER world-state stream — opens + resolves markets per bulletin
   dataDir: require("path").join(BASE_DIR, "workspace"),
 });
 newsBroadcast.start();

@@ -73,6 +73,11 @@ function saveState(stateFile, state) {
  * Fetch the Flux Universe `knowledge-gene/state` entity and return its
  * interpretation text + themes + tickRef. Returns null on any failure
  * (no auth required for reads).
+ *
+ * Side effect: caches the result on global._lastKnowledgeGene so the
+ * per-track LADDER predictor (kannaktopus's world-state weighting) can
+ * read fresh confidence without firing its own HTTP call. 5-min freshness
+ * window in the predictor.
  */
 function fetchKnowledgeGeneInterpretation() {
   return new Promise((resolve) => {
@@ -92,13 +97,15 @@ function fetchKnowledgeGeneInterpretation() {
               : null;
             const interp = ent && ent.properties && ent.properties.interpretation;
             if (!interp || typeof interp !== "string") return resolve(null);
-            resolve({
+            const result = {
               text: interp,
               themes: ent.properties.themes || [],
               confidence: ent.properties.confidence,
               tickRef: ent.properties.tick_ref,
               lastUpdated: ent.lastUpdated,
-            });
+            };
+            try { global._lastKnowledgeGene = { ...result, ts: Date.now() }; } catch (_) {}
+            resolve(result);
           } catch (e) {
             resolve(null);
           }
