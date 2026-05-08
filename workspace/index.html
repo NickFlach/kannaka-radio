@@ -1482,7 +1482,11 @@ body.konami-mode .surface-header h1 {
           <button class="btn" onclick="togglePlayPause()">&#x23EF; Play/Pause</button>
           <button class="btn" onclick="nextTrack()">&#x23ED; Next</button>
         </div>
-        <audio id="music-audio-controls" controls preload="auto" style="width:100%;margin:8px 0;border-radius:8px;"></audio>
+        <!-- Removed 2026-05-08: a second <audio id="music-audio-controls">
+             lived here and mirrored the main /stream audio. Pressing play
+             on it created a parallel decoder so listeners heard the same
+             song twice in echo. The Prev / Play-Pause / Next buttons above
+             cover playback control without a duplicate decoder. -->
         <div class="albums" id="albums"></div>
         <div class="library-extras">
           <button onclick="setChannel('kax')" title="KAX channel">KAX</button>
@@ -3159,12 +3163,8 @@ function applyState(s) {
       // when the screen locks and show lock-screen controls.
       updateMediaSession(c, s);
 
-      // Mirror to music-audio-controls if in music mode
-      var musicCtrl = document.getElementById('music-audio-controls');
-      if (musicCtrl && currentMode === 'music') {
-        musicCtrl.src = audio.src;
-        musicCtrl.load();
-      }
+      // (music-audio-controls duplicate decoder removed 2026-05-08 — see
+      //  the comment in the library section.)
 
       // If the new track is a commercial, silence any lingering DJ voice
       if (c.commercial) {
@@ -3443,30 +3443,10 @@ function setMode(mode) {
     if (podAudio && !podAudio.paused) podAudio.pause();
   }
 
-  // Mirror the music-audio-controls element with the main hidden audio
-  var musicControls = document.getElementById('music-audio-controls');
-  var mainAudio = document.getElementById('audio');
-  if (musicControls && mainAudio) {
-    // Sync music controls to same source
-    if (mode === 'music') {
-      musicControls.src = mainAudio.src || '';
-      musicControls.currentTime = mainAudio.currentTime || 0;
-      // Wire music-audio-controls to mirror main audio
-      musicControls.onplay = function() {
-        if (mainAudio.paused) mainAudio.play().catch(function(){});
-      };
-      musicControls.onpause = function() {
-        if (!mainAudio.paused) mainAudio.pause();
-      };
-      musicControls.onseeked = function() {
-        mainAudio.currentTime = musicControls.currentTime;
-      };
-      musicControls.onvolumechange = function() {
-        mainAudio.volume = musicControls.volume;
-        mainAudio.muted = musicControls.muted;
-      };
-    }
-  }
+  // (Removed 2026-05-08: the music-audio-controls mirror used to sync a
+  //  second <audio> element to the main one. With both elements active
+  //  pressing play on either decoded the file twice and produced an echo.
+  //  The library buttons drive the single main <audio> directly now.)
 
   // Hide the standalone Library layer unless we're in music mode — Radio
   // and Podcast shouldn't show a library section below the player.
