@@ -200,9 +200,40 @@ class ProgrammingSchedule {
     this._tracksSinceAlbumSwitch = 0;
     this._lastAlbumPlayed = null;
     this._timer = null;
-    this._override = null; // manual override: { album, until }
+    // Restore any active manual override from disk so a service restart
+    // (prune-cron, deploy, ffmpeg crash) doesn't drop a showcase mid-flight.
+    // 2026-05-08: BEND THE ARC's 11 AM showcase was cut at 16:17 UTC by
+    // prune-cron because the override lived only in memory. Persist it.
+    this._overrideFile = require("path").join(opts.dataDir || "/tmp", "override-state.json");
+    this._override = this._loadOverride();
     this._lastShowcaseFired = this._loadShowcaseState();
     this._preparingShowcase = null; // guards against overlapping prep
+  }
+
+  _loadOverride() {
+    try {
+      const fs = require("fs");
+      if (!fs.existsSync(this._overrideFile)) return null;
+      const o = JSON.parse(fs.readFileSync(this._overrideFile, "utf8"));
+      if (o && typeof o.until === "number" && o.until > Date.now()) {
+        console.log(`[programming] Override restored from disk: ${o.album} (${Math.round((o.until - Date.now()) / 60000)} min remaining)`);
+        return o;
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+
+  _saveOverride() {
+    try {
+      const fs = require("fs");
+      if (this._override) {
+        fs.writeFileSync(this._overrideFile, JSON.stringify(this._override, null, 2));
+      } else if (fs.existsSync(this._overrideFile)) {
+        fs.unlinkSync(this._overrideFile);
+      }
+    } catch (e) {
+      console.warn(`[programming] override persist failed: ${e.message}`);
+    }
   }
 
   _loadShowcaseState() {
@@ -401,11 +432,22 @@ class ProgrammingSchedule {
    * Start the schedule check loop. Runs every 60 seconds.
    */
   startScheduleLoop() {
-    // Initialize: determine current block and load appropriate album
-    const block = this.getCurrentBlock();
-    this._transitionToBlock(block);
-    // Startup transition is NOT inside advanceTrack, so broadcast here
-    this._broadcastState();
+    // If a persisted override is still active, honor it on startup —
+    // load the override album rather than transitioning to the current
+    // block. This is what protects showcases from prune-cron / deploy /
+    // crash restarts. The 60s tick will block-transition only after the
+    // override expires (see _checkBlockTransition's override-active guard).
+    if (this._override && Date.now() < this._override.until) {
+      console.log(`[programming] Resuming persisted override on startup: ${this._override.album}`);
+      this._djEngine.loadAlbum(this._override.album);
+      this._currentBlock = this.getCurrentBlock(); // record current block for label/mood
+      this._broadcastState();
+    } else {
+      // Initialize: determine current block and load appropriate album
+      const block = this.getCurrentBlock();
+      this._transitionToBlock(block);
+      this._broadcastState();
+    }
 
     // Check every 60 seconds for block transitions
     // Same 60s tick checks both block transitions AND scheduled
@@ -527,6 +569,7 @@ class ProgrammingSchedule {
       album,
       until: Date.now() + durationMs,
     };
+    this._saveOverride();
     this._djEngine.loadAlbum(album);
     this._broadcastState();
     console.log(`[programming] Override set: ${album} for ${Math.round(durationMs / 60000)} min`);
@@ -538,6 +581,7 @@ class ProgrammingSchedule {
    */
   clearOverride() {
     this._override = null;
+    this._saveOverride();
     const block = this.getCurrentBlock();
     this._transitionToBlock(block);
     this._broadcastState();

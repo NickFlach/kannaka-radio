@@ -43,6 +43,25 @@ if [ ! -x "$KANNAKA" ]; then
     exit 2
 fi
 
+# Skip the prune entirely if the radio is currently in a daily-showcase
+# override — bouncing the radio cuts the showcase mid-stride and listeners
+# hear it jump to a different album. Override persistence on the radio
+# side restores the showcase across crashes, but prune-cron is a planned
+# disruption we should just defer. Worst case: an hour of skipping means
+# the next prune runs at :17 of the next hour with N+M matches; the
+# threshold gate below still keeps that bounded.
+if [ -x /usr/bin/curl ] && [ -x /usr/bin/python3 ]; then
+    OVERRIDE=$(curl -s -m 5 http://127.0.0.1:8888/api/programming 2>/dev/null \
+        | python3 -c 'import sys,json
+try: d=json.load(sys.stdin); o=d.get("override")
+except: o=None
+print((o or {}).get("album","") if o else "")' 2>/dev/null)
+    if [ -n "$OVERRIDE" ]; then
+        echo "$LOG_TAG showcase override active ($OVERRIDE) — deferring prune"
+        exit 0
+    fi
+fi
+
 # Dry-run first so we always log how many we matched (cheap — 2-3 s).
 DRY_OUT=$("$KANNAKA" prune-prefix \
     'audio:/home/opc/kannaka-radio/chunks/voice/' \
