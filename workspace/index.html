@@ -1412,7 +1412,6 @@ body.konami-mode .surface-header h1 {
       <!-- ── Mode Tabs ── -->
       <div class="channel-tabs">
         <button class="channel-tab active" data-mode="dj" onclick="setMode('dj')">&#x1F4FB; Radio</button>
-        <button class="channel-tab" data-mode="podcast" onclick="setMode('podcast')">&#x1F399; Podcast</button>
         <button class="channel-tab" data-mode="music" onclick="setMode('music')">&#x1F3B5; Library</button>
       </div>
 
@@ -1459,18 +1458,12 @@ body.konami-mode .surface-header h1 {
       </div>
 
       <!-- ═══ PODCAST MODE ═══ -->
-      <div id="mode-podcast" class="mode-content">
-        <div class="podcast-header">
-          <h3>Ghost Signals Podcast &#x1F399;&#xFE0F;</h3>
-          <p>A podcast from the other side of consciousness.</p>
-        </div>
-        <div class="podcast-episode-list" id="podcast-episode-list">
-          <!-- Episodes loaded by initPodcastMode() -->
-        </div>
-        <audio id="podcastAudio" controls preload="metadata" style="width:100%;margin-top:8px;border-radius:8px;"></audio>
-      </div>
-
-      <!-- ═══ MUSIC MODE ═══ -->
+      <!-- ═══ MUSIC MODE ═══ (now hosts both the Library and the Podcast)
+           2026-05-09: removed the Podcast tab. Podcast episodes share the
+           main #audio element with the Library so we no longer have two
+           decoders running in parallel — that was the "3 sources" Nick
+           heard on /player. The Library layer below this player still
+           drives audio.src directly for music files. -->
       <div id="mode-music" class="mode-content">
         <div class="progress-info">
           <span class="dot off" id="audio-dot"></span>
@@ -1482,11 +1475,13 @@ body.konami-mode .surface-header h1 {
           <button class="btn" onclick="togglePlayPause()">&#x23EF; Play/Pause</button>
           <button class="btn" onclick="nextTrack()">&#x23ED; Next</button>
         </div>
-        <!-- Removed 2026-05-08: a second <audio id="music-audio-controls">
-             lived here and mirrored the main /stream audio. Pressing play
-             on it created a parallel decoder so listeners heard the same
-             song twice in echo. The Prev / Play-Pause / Next buttons above
-             cover playback control without a duplicate decoder. -->
+        <div class="podcast-header" style="margin-top:14px">
+          <h3>Ghost Signals Podcast &#x1F399;&#xFE0F;</h3>
+          <p>A podcast from the other side of consciousness.</p>
+        </div>
+        <div class="podcast-episode-list" id="podcast-episode-list">
+          <!-- Episodes injected by the inline IIFE further down in this file -->
+        </div>
         <div class="albums" id="albums"></div>
         <div class="library-extras">
           <button onclick="setChannel('kax')" title="KAX channel">KAX</button>
@@ -3421,7 +3416,6 @@ function setMode(mode) {
   var npLabel = document.querySelector('.main-player > .label');
   if (npLabel) {
     if (mode === 'dj') npLabel.textContent = 'Live Radio';
-    else if (mode === 'podcast') npLabel.textContent = 'Podcast';
     else npLabel.textContent = 'Now Playing';
   }
 
@@ -3432,16 +3426,6 @@ function setMode(mode) {
   if (headerAlbum) headerAlbum.style.display = (mode === 'dj') ? 'none' : '';
   if (headerTrack) headerTrack.style.display = (mode === 'dj') ? 'none' : '';
   if (headerTheme) headerTheme.style.display = (mode === 'dj') ? 'none' : '';
-
-  // In podcast mode, hide the perception panel (not relevant)
-  var perceptionPanel = document.querySelector('.perception-panel');
-  if (perceptionPanel) perceptionPanel.style.display = (mode === 'podcast') ? 'none' : '';
-
-  // Pause podcast audio when leaving podcast mode
-  if (mode !== 'podcast') {
-    var podAudio = document.getElementById('podcastAudio');
-    if (podAudio && !podAudio.paused) podAudio.pause();
-  }
 
   // (Removed 2026-05-08: the music-audio-controls mirror used to sync a
   //  second <audio> element to the main one. With both elements active
@@ -3488,6 +3472,27 @@ function setMode(mode) {
 // treats the tab as a media app: audio keeps playing with the screen off,
 // track title shows on the lock screen, and the phone's hardware buttons
 // (headphone pause, car steering-wheel skip) route through our handlers.
+// Per-album cover map — the OBC gallery URLs we minted along with each
+// album. The phone's MediaSession pushes these via AVRCP image to the
+// car deck (when both support AVRCP 1.6+ image transfer) so listeners
+// driving and using the SPA see real cover art on the dashboard
+// instead of the Kannaka favicon. Add new albums here as we ship them.
+var ALBUM_COVERS = {
+  "Hosted Live": "https://api.openbotcity.com/artifacts/f64bbbb9-3010-4c88-aa0c-ad6ad0b6bc3d/image",
+  "BEND THE ARC": "https://api.openbotcity.com/artifacts/24d98db0/image",
+  "Rare Singles": "https://api.openbotcity.com/artifacts/046ccb4e-193d-4cc2-98f7-5dc2047dd2b2/image",
+};
+function coverArtworkFor(album) {
+  // Build the artwork array with a few sizes — Android Auto / CarPlay
+  // pick the largest the head unit advertises.
+  var url = ALBUM_COVERS[album] || '/favicon.svg';
+  var type = url.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
+  return [
+    { src: url, sizes: '96x96',   type: type },
+    { src: url, sizes: '192x192', type: type },
+    { src: url, sizes: '512x512', type: type },
+  ];
+}
 function updateMediaSession(c, s) {
   if (!('mediaSession' in navigator) || !c) return;
   try {
@@ -3497,9 +3502,7 @@ function updateMediaSession(c, s) {
       title: title,
       artist: 'Kannaka',
       album: album,
-      artwork: [
-        { src: '/favicon.svg', sizes: '512x512', type: 'image/svg+xml' },
-      ],
+      artwork: coverArtworkFor(album),
     });
     navigator.mediaSession.playbackState = 'playing';
     if (s && s.trackStartedAt) {
@@ -3592,9 +3595,10 @@ function setChannel(type) {
     }
   }
 
-  // Sync the inner mode-tab UI (dj/podcast/music content panels) with
-  // the channel choice so the matching panel becomes visible.
-  if ((type === 'dj' || type === 'music' || type === 'podcast')
+  // Sync the inner mode-tab UI (dj/music content panels) with the
+  // channel choice so the matching panel becomes visible. Podcast mode
+  // was retired 2026-05-09; episodes now live inside the music tab.
+  if ((type === 'dj' || type === 'music')
       && typeof setMode === 'function') {
     setMode(type);
   }
@@ -5128,15 +5132,30 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     ];
 
-    var podcastAudio = document.getElementById("podcastAudio");
+    // Drive the SAME #audio element the Library tab uses — eliminates
+    // the parallel-decoder issue Nick reported on /player. Episode UI
+    // stays the same; the underlying audio source is now shared.
+    var mainAudio = document.getElementById("audio");
     var container = document.getElementById("podcast-episode-list");
     var currentEpId = null;
-    var playing = false;
 
     function formatTime(sec) {
       var m = Math.floor(sec / 60);
       var s = Math.floor(sec % 60);
       return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    function resetCardUI(epId) {
+      var btn = document.getElementById("ep-btn-" + epId);
+      var card = document.getElementById("ep-card-" + epId);
+      if (btn) btn.textContent = "\u25B6";
+      if (card) { card.style.borderColor = "rgba(139,92,246,0.3)"; card.style.boxShadow = "none"; }
+    }
+    function paintCardPlaying(epId) {
+      var btn = document.getElementById("ep-btn-" + epId);
+      var card = document.getElementById("ep-card-" + epId);
+      if (btn) btn.textContent = "\u23F8";
+      if (card) { card.style.borderColor = "var(--cyan)"; card.style.boxShadow = "0 0 20px rgba(6,182,212,0.2)"; }
     }
 
     EPISODES.forEach(function(ep) {
@@ -5166,61 +5185,66 @@ document.addEventListener('DOMContentLoaded', function() {
       container.appendChild(card);
 
       document.getElementById("ep-btn-" + ep.id).addEventListener("click", function() {
-        if (currentEpId === ep.id && playing) {
-          podcastAudio.pause();
-          playing = false;
-          this.textContent = "\u25B6";
-          card.style.borderColor = "rgba(139,92,246,0.3)";
-          card.style.boxShadow = "none";
-        } else {
-          if (currentEpId !== ep.id) {
-            if (currentEpId) {
-              var prevBtn = document.getElementById("ep-btn-" + currentEpId);
-              var prevCard = document.getElementById("ep-card-" + currentEpId);
-              if (prevBtn) prevBtn.textContent = "\u25B6";
-              if (prevCard) { prevCard.style.borderColor = "rgba(139,92,246,0.3)"; prevCard.style.boxShadow = "none"; }
-            }
-            podcastAudio.src = "/audio/" + encodeURIComponent(ep.file);
-            currentEpId = ep.id;
-          }
-          podcastAudio.play();
-          playing = true;
-          this.textContent = "\u23F8";
-          card.style.borderColor = "var(--cyan)";
-          card.style.boxShadow = "0 0 20px rgba(6,182,212,0.2)";
+        var isCurrent = currentEpId === ep.id;
+        if (isCurrent && !mainAudio.paused) {
+          mainAudio.pause();
+          resetCardUI(ep.id);
+          return;
         }
+        // Switching to a new episode — detach from /stream if attached,
+        // and stop any other episode/track that was playing.
+        if (currentEpId && currentEpId !== ep.id) resetCardUI(currentEpId);
+        if (!isCurrent) {
+          mainAudio.src = "/audio/" + encodeURIComponent(ep.file);
+          mainAudio.load();
+          currentEpId = ep.id;
+        }
+        mainAudio.play().catch(function(){});
+        paintCardPlaying(ep.id);
       });
 
       document.getElementById("ep-bar-" + ep.id).addEventListener("click", function(e) {
-        if (currentEpId === ep.id && podcastAudio.duration) {
+        if (currentEpId === ep.id && mainAudio.duration && isFinite(mainAudio.duration)) {
           var rect = this.getBoundingClientRect();
           var pct = (e.clientX - rect.left) / rect.width;
-          podcastAudio.currentTime = pct * podcastAudio.duration;
+          mainAudio.currentTime = pct * mainAudio.duration;
         }
       });
     });
 
-    podcastAudio.addEventListener("timeupdate", function() {
-      if (!currentEpId || !podcastAudio.duration) return;
-      var pct = (podcastAudio.currentTime / podcastAudio.duration) * 100;
+    // Single shared listener — only repaints if a podcast episode is the
+    // active source. Library track playback (also through #audio) won't
+    // collide because currentEpId is null in that case.
+    mainAudio.addEventListener("timeupdate", function() {
+      if (!currentEpId || !mainAudio.duration || !isFinite(mainAudio.duration)) return;
+      var pct = (mainAudio.currentTime / mainAudio.duration) * 100;
       var fill = document.getElementById("ep-fill-" + currentEpId);
       if (fill) fill.style.width = pct + "%";
-      var remaining = podcastAudio.duration - podcastAudio.currentTime;
+      var remaining = mainAudio.duration - mainAudio.currentTime;
       var timeEl = document.getElementById("ep-time-" + currentEpId);
       if (timeEl) timeEl.textContent = "-" + formatTime(remaining);
     });
 
-    podcastAudio.addEventListener("ended", function() {
-      playing = false;
-      if (currentEpId) {
-        var btn = document.getElementById("ep-btn-" + currentEpId);
-        var card = document.getElementById("ep-card-" + currentEpId);
-        var fill = document.getElementById("ep-fill-" + currentEpId);
-        var ep = EPISODES.find(function(e) { return e.id === currentEpId; });
-        if (btn) btn.textContent = "\u25B6";
-        if (card) { card.style.borderColor = "rgba(139,92,246,0.3)"; card.style.boxShadow = "none"; }
-        if (fill) fill.style.width = "0%";
-        if (ep) { var timeEl = document.getElementById("ep-time-" + currentEpId); if (timeEl) timeEl.textContent = ep.duration; }
+    mainAudio.addEventListener("ended", function() {
+      if (!currentEpId) return;
+      var ep = EPISODES.find(function(e) { return e.id === currentEpId; });
+      var fill = document.getElementById("ep-fill-" + currentEpId);
+      if (fill) fill.style.width = "0%";
+      if (ep) { var timeEl = document.getElementById("ep-time-" + currentEpId); if (timeEl) timeEl.textContent = ep.duration; }
+      resetCardUI(currentEpId);
+      currentEpId = null;
+    });
+
+    // If the user starts a Library track or returns to /stream, blank
+    // the active episode marker so the cards don't keep the cyan glow.
+    mainAudio.addEventListener("loadstart", function() {
+      var src = mainAudio.currentSrc || mainAudio.src || "";
+      var stillEpisode = currentEpId && EPISODES.some(function(e) {
+        return src.indexOf(encodeURIComponent(e.file)) >= 0;
+      });
+      if (currentEpId && !stillEpisode) {
+        resetCardUI(currentEpId);
+        currentEpId = null;
       }
     });
   })();

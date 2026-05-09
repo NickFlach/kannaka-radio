@@ -1361,11 +1361,16 @@ module.exports = function setupRoutes(deps) {
     // ── Flux Broadcasting API ───────────────────────────────
 
     // GET /api/listeners
+    // Combined count from WS clients + Icecast /stream + /preview, with
+    // a breakdown so callers can render "X via stream, Y via SPA" if
+    // useful. See getListenerCount() in server/index.js for the merge.
     if (parsed.pathname === "/api/listeners") {
+      const breakdown = config.getListenerBreakdown ? config.getListenerBreakdown() : null;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         count: config.getListenerCount(),
         uptime: Math.floor(process.uptime()),
+        ...(breakdown ? { breakdown } : {}),
       }));
       return;
     }

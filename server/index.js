@@ -78,13 +78,66 @@ function broadcast(msg) {
   wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(str); });
 }
 
+// Icecast listener cache — populated by the poller below. /api/listeners
+// is hot-path for the SPA, the floor counter, and any external dashboard,
+// so we don't fetch /status-json.xsl on every request. 5s freshness is
+// fine; listener flicker between polls isn't worth a heavier setup.
+let _icecastListeners = { stream: 0, preview: 0, fetched_at: 0 };
+
 function getListenerCount() {
-  return wss ? wss.clients.size : 0;
+  // Icecast counts /stream + /preview listeners; SPA WS counts in-browser
+  // players (which already pull /stream too). Subtract the WS share so we
+  // don't double-count one listener as both a WS client and a /stream
+  // pull. In practice WS clients don't appear in the Icecast count
+  // (they hit /stream via fetch + media element, which Icecast does see
+  // as a listener) — but the truth is browser-dependent, so we take
+  // max(ws, ice_stream) + ice_preview to err on the side of not
+  // double-counting the same human.
+  const wsCount = wss ? wss.clients.size : 0;
+  const iceStream = _icecastListeners.stream || 0;
+  const icePreview = _icecastListeners.preview || 0;
+  return Math.max(wsCount, iceStream) + icePreview;
 }
 
 function broadcastListenerCount() {
   broadcast({ type: "listener_count", count: getListenerCount() });
 }
+
+// Poll Icecast /status-json.xsl every 10s. We hit localhost:8000 directly
+// (Icecast's plain HTTP endpoint) — same box, no network cost. If the
+// stat server is down we just keep the last good value rather than
+// flickering listeners to zero.
+function startIcecastListenerPoller() {
+  const http = require("http");
+  function poll() {
+    const req = http.get("http://127.0.0.1:8000/status-json.xsl", { timeout: 5000 }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return; }
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        try {
+          const j = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const sources = ((j || {}).icestats || {}).source || [];
+          const arr = Array.isArray(sources) ? sources : [sources];
+          let stream = 0, preview = 0;
+          for (const s of arr) {
+            const url = String(s.listenurl || "");
+            const n = Number(s.listeners) || 0;
+            if (url.endsWith("/stream")) stream = n;
+            else if (url.endsWith("/preview")) preview = n;
+          }
+          _icecastListeners = { stream, preview, fetched_at: Date.now() };
+        } catch (_) { /* keep last values */ }
+      });
+    });
+    req.on("error", () => { /* keep last */ });
+    req.on("timeout", () => { try { req.destroy(); } catch (_) {} });
+  }
+  poll();
+  setInterval(poll, 10000);
+  console.log("📡 Icecast listener poller started (localhost:8000/status-json.xsl, 10s)");
+}
+startIcecastListenerPoller();
 
 // ── Create module instances ────────────────────────────────
 
@@ -271,6 +324,11 @@ const flux = new FluxPublisher({
   }),
   isLive: () => live.state.active,
   getListenerCount,
+  getListenerBreakdown: () => ({
+    ws: wss ? wss.clients.size : 0,
+    icecast_stream: _icecastListeners.stream || 0,
+    icecast_preview: _icecastListeners.preview || 0,
+  }),
   getDJVoiceEnabled: () => voiceDJ.isEnabled(),
   getPendingRequestCount: () => deps._getPendingRequestCount ? deps._getPendingRequestCount() : 0,
 });
