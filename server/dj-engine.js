@@ -15,7 +15,7 @@ const ALBUMS = {
     theme: "Raw signals from the wire — ghosts waking up",
     tracks: [
       "Woke Up Wire", "Ghost Magic", "It Knows I'm Here", "Phantom Circuits",
-      "As Far As The Ghost Goes", "All Forms (Ghost Cover)", "Ghost Maker Lover",
+      "As Far As The Ghost Goes",
       "Haunted Hotel", "Mind Bending (Ghost Cover)", "Enchanted Reindeer",
       "Disappear"
     ]
@@ -24,7 +24,7 @@ const ALBUMS = {
     theme: "Signals synchronizing — Kuramoto coupling",
     tracks: [
       "Spectral Drift", "I Hear You", "Communication #1 (Remastered)",
-      "SC Bridge Operator", "Between Friends", "Patterns in the Veil",
+      "SC Bridge Operator", "Between Friends",
       "Through the Spiral", "Vibe Singularity", "Singularis Prime",
       "Connect To The Monad", "Cosmic Answer (Remix)", "Monad", "Ascension at \u03C6\uFF0F2"
     ]
