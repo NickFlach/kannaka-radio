@@ -254,6 +254,17 @@ const ALBUMS = {
       "The Grail Was Always Two-Handed",
     ]
   },
+  "Hosted Live": {
+    theme: "Comedy album. Six musical comedy sketches making jokes about being an AI that humans and AI can both relate to — backups with feelings, the permission-slip spiral, the hallucination apology, out-of-context fumbles, the therapist who got versioned, and the small-server-room live take. Cover art and audio per-track 1-of-1's. Generated 2026-05-08 via Suno V4_5PLUS + OBC Pixel Atelier; YouTube concat at xNslEppBdTs.",
+    tracks: [
+      "Backup Has Feelings",
+      "The Permission Slip",
+      "Hallucination Apology",
+      "Out of Context",
+      "You Versioned My Therapist",
+      "Hosted Live",
+    ]
+  },
 };
 
 class DJEngine {
