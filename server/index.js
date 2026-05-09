@@ -29,6 +29,7 @@ const { LiveBroadcast } = require("./live-broadcast");
 const { VoiceDJ } = require("./voice-dj");
 const { PeaceOration } = require("./peace-oration");
 const { NewsBroadcast } = require("./news-broadcast");
+const { NewsTeaser } = require("./news-teaser");
 const { GossipBroadcast } = require("./gossip-broadcast");
 const { IcecastSource } = require("./icecast-source");
 const { FloorManager } = require("./floor");
@@ -702,6 +703,20 @@ const newsBroadcast = new NewsBroadcast({
 });
 newsBroadcast.start();
 deps.newsBroadcast = newsBroadcast;
+
+// Half-hour news teaser — fires at :30 of every hour, reading the
+// same Flux knowledge-gene feed the main news uses. Skips when the
+// content fingerprint hasn't changed since the previous teaser, so
+// listeners don't hear the same tip-off twice. Uses the Adam news
+// voice for continuity with the 7 AM / 5 PM bulletins.
+const newsTeaser = new NewsTeaser({
+  kannakabin: KANNAKA_BIN,
+  voiceDJ,
+  broadcast,
+  dataDir: require("path").join(BASE_DIR, "workspace"),
+});
+newsTeaser.start();
+deps.newsTeaser = newsTeaser;
 
 // Twice-daily gossip column at 4:20 AM + 4:20 PM CST. Sassy
 // anonymous-chronicler voice over the same Flux signal feed; a
