@@ -489,6 +489,11 @@ const deps = {
     getMusicDir: () => MUSIC_DIR,
     setMusicDir: (dir) => { MUSIC_DIR = dir; },
     getListenerCount,
+    getListenerBreakdown: () => ({
+      ws: wss ? wss.clients.size : 0,
+      icecast_stream: _icecastListeners.stream || 0,
+      icecast_preview: _icecastListeners.preview || 0,
+    }),
     broadcastState,
     broadcastQueue,
   },
