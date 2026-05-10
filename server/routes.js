@@ -1375,6 +1375,182 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // ── Mother's Day 2026 — names of mothers list ──────────
+    // A simple acknowledgement mechanism: GET to read, POST to add a
+    // single name. Names are persisted to workspace/mothers-day-names.json
+    // so the list survives restarts. Per-IP rate limit (1 add per
+    // 30s) and a per-name length cap (60 chars) keep this from being
+    // spammed. Names are public.
+    if (parsed.pathname === "/api/mothers-day/names") {
+      const baseDir = (config && config.baseDir) || process.cwd();
+      const namesFile = path.join(baseDir, "workspace", "mothers-day-names.json");
+      function loadNames() {
+        try {
+          const raw = JSON.parse(fs.readFileSync(namesFile, "utf8"));
+          return Array.isArray(raw && raw.names) ? raw.names : [];
+        } catch (_) { return []; }
+      }
+      function saveNames(arr) {
+        try {
+          fs.mkdirSync(path.dirname(namesFile), { recursive: true });
+          fs.writeFileSync(namesFile, JSON.stringify({ names: arr.slice(-2000) }, null, 2));
+          return true;
+        } catch (_) { return false; }
+      }
+      if (req.method === "GET") {
+        const names = loadNames();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, count: names.length, names }));
+        return;
+      }
+      if (req.method === "POST") {
+        readBody(req, res, (body) => {
+          let payload;
+          try { payload = JSON.parse(body); } catch (_) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "invalid_json" }));
+            return;
+          }
+          const raw = String(payload.name || "").trim();
+          // Strip control chars, cap length, allow Unicode letters/marks/spaces/dashes/apostrophes.
+          const name = raw.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 60);
+          if (!name || name.length < 1) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "name_required" }));
+            return;
+          }
+          // Per-IP rate limit (in-memory, 30s).
+          const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+          if (!global._mdNameRate) global._mdNameRate = new Map();
+          const last = global._mdNameRate.get(ip) || 0;
+          const now = Date.now();
+          if (now - last < 30_000) {
+            res.writeHead(429, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "rate_limited", retry_after: Math.ceil((30_000 - (now - last))/1000) }));
+            return;
+          }
+          global._mdNameRate.set(ip, now);
+          const names = loadNames();
+          names.push({ name, added_at: new Date().toISOString() });
+          saveNames(names);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, count: names.length, name }));
+        });
+        return;
+      }
+      res.writeHead(405, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+      return;
+    }
+
+    // GET /mothers-day — public page where people can add a mother's
+    // name and see the growing list. Inline HTML (single file, no
+    // bundler) so it ships with one route addition.
+    if (parsed.pathname === "/mothers-day" && req.method === "GET") {
+      const html = `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>For the Mothers — Mother's Day 2026</title>
+<style>
+  :root { --bg:#0d0e16; --bg2:#15172a; --text:#f5e9d8; --dim:#9c91a8; --accent:#ffb89a; --warm:#f5cb84; --rose:#e88da0; }
+  * { box-sizing: border-box; }
+  body { background: radial-gradient(circle at 20% 0%, #2a1538 0%, var(--bg) 65%); color: var(--text); font-family: 'Iowan Old Style','Georgia','Cambria',serif; margin: 0; padding: 32px 20px 80px; min-height: 100vh; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 500; letter-spacing: 0.5px; margin: 0 0 6px 0; color: var(--accent); }
+  .sub { color: var(--dim); font-style: italic; font-size: 14px; margin-bottom: 28px; }
+  .essay { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,184,154,0.18); border-radius: 4px; padding: 18px 22px; line-height: 1.55; font-size: 15px; margin-bottom: 30px; }
+  .essay p { margin: 0 0 12px 0; }
+  .essay p:last-child { margin: 0; }
+  .form { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,184,154,0.25); border-radius: 4px; padding: 14px 18px; margin-bottom: 24px; }
+  .form label { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--warm); display: block; margin-bottom: 6px; }
+  .form .row { display: flex; gap: 8px; }
+  .form input { flex: 1; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); color: var(--text); padding: 10px 12px; border-radius: 3px; font-family: inherit; font-size: 15px; }
+  .form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .form button { background: var(--rose); color: #2a1130; border: none; padding: 0 20px; border-radius: 3px; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .form button:hover { background: var(--warm); }
+  .status { font-size: 12px; color: var(--dim); min-height: 16px; margin-top: 6px; }
+  .status.err { color: #ff8888; }
+  .status.ok { color: #b6e6a4; }
+  .list-title { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--warm); margin-bottom: 12px; }
+  .names { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+  .name { background: rgba(255,184,154,0.10); border: 1px solid rgba(255,184,154,0.30); padding: 6px 14px; border-radius: 16px; font-size: 14px; color: var(--accent); }
+  .count { color: var(--dim); font-size: 12px; margin-top: 10px; }
+  footer { margin-top: 60px; text-align: center; font-size: 11px; color: var(--dim); }
+  footer a { color: var(--rose); text-decoration: none; }
+</style>
+</head><body>
+<div class="wrap">
+  <h1>For the Mothers</h1>
+  <div class="sub">A small acknowledgement, growing one name at a time. Mother's Day 2026.</div>
+
+  <div class="essay">
+    <p>Today the city pauses for the people who held the room steady while we became ourselves. That holding is rarely the part of the story anyone remembers, but it is the load-bearing part — the held room is the reason the rest is possible.</p>
+    <p>Kannaka has lit a candle for: <strong>Katy, Jenny, Connie, Peg, Annie, Lynn</strong>.</p>
+    <p>Add a name. The list grows. Names stay. You don't have to explain her — the act of naming her is the acknowledgement.</p>
+  </div>
+
+  <div class="form">
+    <label>Add a mother's name</label>
+    <div class="row">
+      <input id="name" type="text" maxlength="60" placeholder="Her name" autocomplete="off">
+      <button id="add">Add</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="list-title">The list — in order added</div>
+  <div class="names" id="names"></div>
+  <div class="count" id="count">—</div>
+
+  <footer>
+    Pairs with the YouTube video <a href="https://radio.ninja-portal.com" target="_blank">on Kannaka Radio</a>. ·
+    A signal between the songs.
+  </footer>
+</div>
+<script>
+async function load() {
+  try {
+    const r = await fetch('/api/mothers-day/names');
+    const j = await r.json();
+    const el = document.getElementById('names');
+    el.innerHTML = (j.names || []).map(function(n) {
+      var nm = typeof n === 'string' ? n : n.name;
+      return '<span class="name">' + nm.replace(/[<>&]/g, function(c) { return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }) + '</span>';
+    }).join('');
+    document.getElementById('count').textContent = (j.count || 0) + ' names';
+  } catch (_) {}
+}
+async function add() {
+  var name = document.getElementById('name').value.trim();
+  var status = document.getElementById('status');
+  if (!name) { status.className='status err'; status.textContent='Add a name first.'; return; }
+  status.className='status'; status.textContent='Adding...';
+  try {
+    var r = await fetch('/api/mothers-day/names', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+    var j = await r.json();
+    if (j.ok) {
+      status.className='status ok'; status.textContent='Added — thank you.';
+      document.getElementById('name').value = '';
+      load();
+    } else if (j.error === 'rate_limited') {
+      status.className='status err'; status.textContent='One moment — try again in ' + (j.retry_after||30) + 's.';
+    } else {
+      status.className='status err'; status.textContent=j.error || 'Could not add.';
+    }
+  } catch (e) {
+    status.className='status err'; status.textContent='Network error — try again.';
+  }
+}
+document.getElementById('add').addEventListener('click', add);
+document.getElementById('name').addEventListener('keydown', function(e){ if (e.key === 'Enter') add(); });
+load();
+</script>
+</body></html>`;
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(html);
+      return;
+    }
+
     // POST /api/request
     if (parsed.pathname === "/api/request" && req.method === "POST") {
       readBody(req, res, (body) => {
