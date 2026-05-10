@@ -107,12 +107,13 @@ class PeaceOration {
 
     // Voice for the peace oration. News uses Adam (American male anchor);
     // peace oration runs in a sophisticated British female register so
-    // the two registers are obviously different on air. Override via
-    // ELEVENLABS_PEACE_ORATION_VOICE at deploy time. Default Alice
-    // (British female, clear announcer) per ElevenLabs library.
+    // the two registers are obviously different on air. Default
+    // Katherine (NTqGiNK8P02i66yY2GOH) — Nick's pick from the ElevenLabs
+    // voice library. Override via ELEVENLABS_PEACE_ORATION_VOICE at
+    // deploy time.
     this._peaceOrationVoiceId = opts.peaceOrationVoiceId
       || process.env.ELEVENLABS_PEACE_ORATION_VOICE
-      || "Xb7hH8MSUJpSbSDYk0k2";
+      || "NTqGiNK8P02i66yY2GOH";
   }
 
   start() {
