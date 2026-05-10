@@ -104,6 +104,15 @@ class PeaceOration {
     // Optional FloorManager accessor so _compose can fold today's top
     // reaction tracks into the oration prompt (ADR-0008 deferred layer).
     this._getFloor = opts.getFloor || (() => null);
+
+    // Voice for the peace oration. News uses Adam (American male anchor);
+    // peace oration runs in a sophisticated British female register so
+    // the two registers are obviously different on air. Override via
+    // ELEVENLABS_PEACE_ORATION_VOICE at deploy time. Default Alice
+    // (British female, clear announcer) per ElevenLabs library.
+    this._peaceOrationVoiceId = opts.peaceOrationVoiceId
+      || process.env.ELEVENLABS_PEACE_ORATION_VOICE
+      || "Xb7hH8MSUJpSbSDYk0k2";
   }
 
   start() {
@@ -654,7 +663,14 @@ class PeaceOration {
     // — orations are otherwise injected mid-stream and used to start and
     // end abruptly. Both lines vary per slot so 700+/year aren't identical.
     const wrapped = `${pickIntro()}\n\n${text}\n\n${pickOutro()}`;
+    // Slot the British-female peace voice in for this delivery only,
+    // restoring whatever was set after the oration completes — same
+    // pattern news-broadcast uses. Other consumers of executeOration
+    // (track-intros, dream readouts) keep their own voice settings.
+    const prevVoice = this._voiceDJ._orationVoiceId;
+    this._voiceDJ._orationVoiceId = this._peaceOrationVoiceId;
     return this._voiceDJ.executeOration(wrapped, () => {
+      this._voiceDJ._orationVoiceId = prevVoice;
       console.log("\uD83D\uDD54 Peace oration complete");
     });
   }

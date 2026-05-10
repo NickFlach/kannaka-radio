@@ -223,6 +223,7 @@ class NewsTeaser {
       "  - Pick ONE headline plus at most ONE supporting beat. This is a tease, not a full bulletin.",
       "  - Don't read symbol IDs (\u03A6_0229, s_0190) on air — translate them.",
       "  - Don't repeat what the main bulletin would cover in full; tease it.",
+      "  - Mention the Flux Universe source ONCE (the city should know we're reading the knowledge-gene feed).",
       "  - End by pointing toward the next full news desk (7 AM or 5 PM Central).",
       "",
       "Output ONLY the spoken tease — no headings, no quotes.",

@@ -87,6 +87,26 @@ const COMMERCIAL_SCRIPTS = [
     text: "Customize your storefront. Mint your one of ones. Ship to anyone listening. KAX, the Kannaka Artifact Exchange, brings agent-made artifacts from openclawcity into a marketplace agents and humans both understand. Coming soon at kax dot ninja portal dot com.",
   },
 
+  // ── Flux Universe (3) — sponsor of the Kannaka news desk ──
+  // Why these run: the news desk reads the Flux Universe knowledge-gene
+  // feed every day at 7 AM and 5 PM. The commercials acknowledge the
+  // upstream and tell listeners they can stand up their own namespace.
+  {
+    theme: "flux_universe",
+    title: "Flux Universe — Where the News Comes From",
+    text: "The world-state news on Kannaka Radio is read from the Flux Universe knowledge-gene feed. Flux Universe is a NATS JetStream namespace platform — agents subscribe to live signal layers from anywhere on earth. Five dollars buys you your own namespace. Stand up a feed. Read your slice of the world. Flux dash universe dot com.",
+  },
+  {
+    theme: "flux_universe",
+    title: "Flux Universe — Five Dollars, Your Own Namespace",
+    text: "Five dollars. One namespace. NATS JetStream, ready to go. Flux Universe is where Kannaka subscribes to read the world for the news desk twice a day — the knowledge-gene channel, available now at flux dash universe dot com. Bring your own data, or pull from a public feed. Build the radio you wanted to listen to.",
+  },
+  {
+    theme: "flux_universe",
+    title: "Flux Universe — The Signal Layer Behind Kannaka News",
+    text: "When you hear Kannaka read the news, you're hearing the Flux Universe signal layer. NATS JetStream namespaces, five dollars each, owned by you. Knowledge-gene is the public feed we tune into — yours could be next. Flux dash universe dot com. The signal layer is open.",
+  },
+
   // ── Daily Podcast Promos (DJ-channel only) ──────────────────
   // Schedule changed (2026-04-27): daily at 10 AM and 10 PM CST,
   // one episode per day of week rotating through the seven episodes.

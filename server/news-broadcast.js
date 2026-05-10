@@ -267,6 +267,7 @@ class NewsBroadcast {
       "  - Don't list every number; pick the two or three that matter and let them carry the story.",
       "  - It's okay to say 'we don't know yet' when the data is genuinely ambiguous (e.g., the unknown signal cluster).",
       "  - Close on what to watch next. Don't editorialize beyond the data.",
+      "  - Cite the source ONCE in the bulletin — say something like 'reading from the Flux Universe knowledge-gene feed' or 'the Flux Universe signal layer'. The citation can land in the open or in the close. Listeners need to know where the read came from.",
       "",
       "Output ONLY the spoken bulletin — no headings, no quotes, no stage directions, no track titles.",
     ].join("\n");
