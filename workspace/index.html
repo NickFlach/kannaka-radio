@@ -3427,25 +3427,46 @@ function setMode(mode) {
   if (headerTrack) headerTrack.style.display = (mode === 'dj') ? 'none' : '';
   if (headerTheme) headerTheme.style.display = (mode === 'dj') ? 'none' : '';
 
-  // (Removed 2026-05-08: the music-audio-controls mirror used to sync a
-  //  second <audio> element to the main one. With both elements active
-  //  pressing play on either decoded the file twice and produced an echo.
-  //  The library buttons drive the single main <audio> directly now.)
-
   // Hide the standalone Library layer unless we're in music mode — Radio
   // and Podcast shouldn't show a library section below the player.
   var libraryLayer = document.getElementById('the-library');
   if (libraryLayer) libraryLayer.style.display = (mode === 'music') ? '' : 'none';
 
-  // Consume the click gesture: if the main audio already has a src (from a
-  // prior WS state broadcast), start it now so Radio starts playing on the
-  // first mode-tab interaction instead of needing a round-trip through
-  // another mode. Chrome's autoplay policy requires a synchronous play()
-  // call inside the click handler.
-  if (mode !== 'podcast') {
-    var mainAudio = document.getElementById('audio');
-    if (mainAudio && mainAudio.src && mainAudio.paused) {
+  // ── Tab-aware audio + floor presence (2026-05-10 refactor) ─────
+  // Two clean states:
+  //   dj    → public live stream, /stream playing, user is in the room
+  //   music → private device playback, /stream torn down, floor_leave so
+  //           the listener count drops and reactions don't fire from this
+  //           tab. Library tracks + podcast episodes both drive the
+  //           single #audio element via setLocalAudioSrc() below.
+  var mainAudio = document.getElementById('audio');
+  if (mode === 'dj') {
+    // Reattach to /stream if we'd drifted to a per-file source.
+    if (mainAudio) {
+      var src = mainAudio.currentSrc || mainAudio.src || '';
+      if (src.indexOf('/stream') < 0) {
+        try { mainAudio.src = '/stream'; mainAudio.load(); } catch (_) {}
+      }
+      // The click into the Radio tab is the user gesture that lets
+      // Chrome unblock autoplay.
       mainAudio.play().then(function(){ initAudioAnalyser(); }).catch(function(){});
+    }
+    if (window.ws && window.ws.readyState === 1 && window._floorId) {
+      try { window.ws.send(JSON.stringify({ type: 'floor_join', id: window._floorId, kind: 'human' })); } catch (_) {}
+    }
+  } else if (mode === 'music') {
+    // Library tab is private — pause the live stream + leave the room.
+    if (mainAudio) {
+      try {
+        mainAudio.pause();
+        if ((mainAudio.currentSrc || mainAudio.src || '').indexOf('/stream') >= 0) {
+          mainAudio.removeAttribute('src');
+          mainAudio.load();
+        }
+      } catch (_) {}
+    }
+    if (window.ws && window.ws.readyState === 1) {
+      try { window.ws.send(JSON.stringify({ type: 'floor_leave' })); } catch (_) {}
     }
   }
 
@@ -4578,6 +4599,14 @@ function handleSync(data) {
   var audio = document.getElementById('audio');
   if (!audio) return;
 
+  // The Library tab is private playback — never auto-sync the local
+  // <audio> to the live track from the radio room. If the user is on
+  // 'music' mode they're actively listening to a library track or a
+  // podcast episode they picked themselves; clobbering audio.src with
+  // the live track would interrupt them mid-listen (this is the
+  // 'podcast plays the opening then stops' bug Nick reported).
+  if (typeof currentMode !== 'undefined' && currentMode === 'music') return;
+
   var syncFile = data.file;
   var syncPos  = data.position || 0;
 
@@ -5372,6 +5401,9 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   var floorId = ensureId();
+  // Expose for setMode() in the main script — when the user toggles
+  // back to the Radio tab we send a fresh floor_join with this id.
+  try { window._floorId = floorId; } catch (_) {}
   var lastReactAt = 0;
   var REACT_COOLDOWN_MS = 700;  // light client-side throttle
 

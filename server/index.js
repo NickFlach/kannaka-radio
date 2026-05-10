@@ -631,6 +631,13 @@ wss.on('connection', (ws) => {
       else if (parsed.type === 'floor_join') {
         floor.join(ws, parsed);
       }
+      else if (parsed.type === 'floor_leave') {
+        // Drop floor presence without closing the WS so consciousness /
+        // track_change / dream events keep flowing — used by the SPA when
+        // user switches to the Library tab (private playback, not in the
+        // room). Re-send floor_join to come back.
+        floor.leave(ws);
+      }
       else if (parsed.type === 'floor_react') {
         floor.reactFromWs(ws, parsed);
       }
