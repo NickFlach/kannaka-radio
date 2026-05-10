@@ -177,6 +177,32 @@ const djEngine = new DJEngine({
           flux.publishTrackChange(actual);
           perception_.hearTrack(actual);
           syncManager.trackChanged(actual.file);
+          // Publish to KANNAKA.attention.ear — every track-change is an
+          // ear gravity event. The kannaka-attention beam (kannaka
+          // attention serve daemon) subscribes to this and feeds the
+          // current perception snapshot (tempo, spectral, energy, pitch)
+          // as one observation. Sister subject to KANNAKA.attention.eye.
+          try {
+            const perc = perception_.getCurrentPerception() || {};
+            nats.publish("KANNAKA.attention.ear", JSON.stringify({
+              schema_version: 1,
+              ts: new Date().toISOString(),
+              source: "kannaka-radio",
+              hemisphere: "right", // arbitrary fixed mapping; ears mirror eyes
+              track: {
+                title: actual.title,
+                album: actual.album,
+                file: actual.file,
+                commercial: !!actual.commercial,
+              },
+              perception: {
+                tempo_bpm: perc.tempo_bpm,
+                spectral_centroid: perc.spectral_centroid,
+                rms_energy: perc.rms_energy,
+                pitch: perc.pitch,
+              },
+            }));
+          } catch (_) { /* best-effort */ }
           // Create market for the track
           if (gsHub && actual.title) {
             gsHub.createMarket({

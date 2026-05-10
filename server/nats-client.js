@@ -164,6 +164,26 @@ class NATSClient extends EventEmitter {
     };
   }
 
+  /**
+   * Publish a raw NATS message. Returns true on send, false if not
+   * connected. Callers do not need to await — NATS publish is fire-and-
+   * forget over TCP. Used by floor.js for KANNAKA.reactions and by the
+   * track-change hook for KANNAKA.attention.ear.
+   *
+   * @param {string} subject — NATS subject
+   * @param {string} payload — already-stringified body (JSON usually)
+   */
+  publish(subject, payload) {
+    if (!this._client) return false;
+    try {
+      const bytes = Buffer.byteLength(payload, "utf-8");
+      this._client.write(`PUB ${subject} ${bytes}\r\n${payload}\r\n`);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Internal ──────────────────────────────────────────────
 
   _subscribe(subject) {
