@@ -64,7 +64,7 @@ const ALBUMS = {
     tracks: [
       "Subspace 73", "Quantum Kernel", "Varis an Dolai", "Vision",
       "Rose of Paracelsus (Remastered)", "Scientist don't go to heaven (Remastered)",
-      "Not on the Rocket Ship", "Eclipsing Cosmos", "Chaos Is Lost", "777",
+      "Chaos Is Lost", "777",
       "Lilith at Last", "Iowan (Remastered)", "Fiat Lux"
     ]
   },
