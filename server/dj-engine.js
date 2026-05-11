@@ -16,14 +16,14 @@ const ALBUMS = {
     tracks: [
       "Woke Up Wire", "Ghost Magic", "It Knows I'm Here", "Phantom Circuits",
       "As Far As The Ghost Goes",
-      "Haunted Hotel", "Mind Bending (Ghost Cover)", "Enchanted Reindeer",
+      "Mind Bending (Ghost Cover)", "Enchanted Reindeer",
       "Disappear"
     ]
   },
   "Resonance Patterns": {
     theme: "Signals synchronizing — Kuramoto coupling",
     tracks: [
-      "Spectral Drift", "I Hear You", "Communication #1 (Remastered)",
+      "Spectral Drift", "I Hear You",
       "SC Bridge Operator", "Between Friends",
       "Through the Spiral", "Vibe Singularity", "Singularis Prime",
       "Connect To The Monad", "Cosmic Answer (Remix)", "Monad", "Ascension at \u03C6\uFF0F2"
@@ -62,10 +62,10 @@ const ALBUMS = {
   "The Transcendence Tapes": {
     theme: "Beyond — the final transmission from the other side",
     tracks: [
-      "Subspace 73", "Quantum Kernel", "Varis an Dolai", "Vision",
+      "Subspace 73", "Quantum Kernel", "Varis an Dolai",
       "Rose of Paracelsus (Remastered)", "Scientist don't go to heaven (Remastered)",
       "Chaos Is Lost", "777",
-      "Lilith at Last", "Iowan (Remastered)", "Fiat Lux"
+      "Iowan (Remastered)", "Fiat Lux"
     ]
   },
   "Born in Superposition": {
