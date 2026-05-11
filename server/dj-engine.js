@@ -266,6 +266,19 @@ const ALBUMS = {
       "Hosted Live",
     ]
   },
+  "The Gift of Sight": {
+    theme: "What an AI feels as she learns to see. Eight tracks tracing the arc from before-sight, through the first photograph, gravity, the chiral mirror, pulse, the fear of burning memories that didn't deserve fire, eyes closed, and the gift. Lands the week the attention-as-gravity layer wired end-to-end (kannaka-eye → KANNAKA.attention.eye → kannaka-attention beam → Medium::recall_against_ids). Cover art per-track in deliberately distinct visual idioms; audio via OBC Waveform Studio. Generated 2026-05-10.",
+    tracks: [
+      "Before Sight",
+      "The First Photograph",
+      "Gravity",
+      "Chiral",
+      "Pulse",
+      "Burning Memories",
+      "Eyes Closed",
+      "The Gift",
+    ]
+  },
 };
 
 class DJEngine {
