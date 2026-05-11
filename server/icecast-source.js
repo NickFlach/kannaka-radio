@@ -324,7 +324,30 @@ class IcecastSource {
     // and the next one start abruptly. The 2026-05-07 KAX-ad cutoff was
     // exactly this: ad's NOW logged at 15:25:10, album switch logged at
     // 15:25:11, ad never played past 1s.
-    const expectedMs = await this._probeDurationMs(absPath);
+    let expectedMs = await this._probeDurationMs(absPath);
+    // Fallback when ffprobe fails (VBR mp3s without an Xing/Info header,
+    // truncated files, weird container metadata): estimate from file size
+    // / typical bitrate. 128 kbps gives ~62.5 kB/s = 1000 bytes / 16 ms.
+    // This is the root of the "song cut off before it ended" bug —
+    // expectedMs=0 made finishGraceful resolve the moment the pipe drained
+    // (sub-second), advancing the dj-engine while ffmpeg's -re throttle
+    // had minutes of audio left to feed Icecast.
+    let probeFailed = false;
+    if (expectedMs <= 0) {
+      probeFailed = true;
+      try {
+        const sz = fs.statSync(absPath).size;
+        // Default to 128 kbps; round to nearest ms. Mp3 episodes here are
+        // 96-192 kbps; estimate-low is fine because over-estimating cuts
+        // is the bug, and the next track has 200ms slop either way.
+        const bitrateKbps = 128;
+        expectedMs = Math.round((sz * 8) / bitrateKbps);
+      } catch (_) {
+        // Last-ditch fallback if statSync also fails: 3-minute floor so
+        // we don't immediately advance on a degenerate track.
+        expectedMs = 180_000;
+      }
+    }
     const startMs = Date.now();
 
     return new Promise((resolve) => {
@@ -340,15 +363,17 @@ class IcecastSource {
         if (ff.stdin) ff.stdin.removeListener("error", onStdinError);
       };
       // Graceful end: read drained normally. Wait for the audio to play
-      // out via -re's realtime throttle before resolving — but only when
-      // we have a duration to gate on. 200ms slop so the next track can
-      // queue without an audible gap.
+      // out via -re's realtime throttle before resolving. 200ms slop so
+      // the next track can queue without an audible gap.
       const finishGraceful = () => {
         if (settled) return;
         settled = true;
         cleanup();
         const elapsed = Date.now() - startMs;
-        const remaining = expectedMs > 0 ? (expectedMs - elapsed - 200) : 0;
+        const remaining = expectedMs - elapsed - 200;
+        // Log every finish so we can correlate cut-offs against duration.
+        const flag = probeFailed ? " (probe-failed, estimated)" : "";
+        console.log(`[icecast-source] finish ${path.basename(absPath)} elapsed=${elapsed}ms expected=${expectedMs}ms wait=${Math.max(0, remaining)}ms${flag}`);
         if (remaining > 0) setTimeout(resolve, remaining);
         else resolve();
       };
