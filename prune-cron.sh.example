@@ -53,9 +53,15 @@ MATCHES=$(echo "$DRY_OUT" | grep -oE '[0-9]+ match' | head -1 | grep -oE '[0-9]+
 MATCHES=${MATCHES:-0}
 echo "$LOG_TAG dry-run says $MATCHES match(es)"
 
-# Skip the service cycle if there's nothing to prune.
-if [ "$MATCHES" -lt 5 ]; then
-    echo "$LOG_TAG below threshold, no action"
+# Skip the service cycle unless there's a material amount to prune.
+# Raised from 5 to 50 (2026-05-11) — kannaka-staff was reporting the
+# hourly :17 service-cycle as a 60-second 502 window every hour, even
+# for as few as 8 matches. With audio leftovers accumulating at
+# ~8-26/hour, threshold=50 caps the visible outage to roughly once
+# every 2-6 hours instead of every hour. The HRM growth from waiting
+# longer is negligible (audio entries are ~1KB each on disk).
+if [ "$MATCHES" -lt 50 ]; then
+    echo "$LOG_TAG below threshold ($MATCHES < 50), no action"
     exit 0
 fi
 

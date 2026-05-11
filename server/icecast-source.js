@@ -356,7 +356,20 @@ class IcecastSource {
       const r = fs.createReadStream(absPath);
       r.pipe(ff.stdin, { end: false });
       let settled = false;
+      // Hard watchdog: if neither finishGraceful nor finishImmediate has
+      // fired by 2× expected + 30s, force-advance. Covers the "stuck
+      // track" pattern kannaka-staff saw twice today (720s on a 30s
+      // commercial, 720s on Integration) — most likely cause is an
+      // Icecast back-pressure deadlock that prevents r.on('end') from
+      // ever firing, leaving the loop's await hung indefinitely.
+      const watchdogMs = Math.max(60_000, expectedMs * 2 + 30_000);
+      const watchdog = setTimeout(() => {
+        if (settled) return;
+        console.warn(`[icecast-source] WATCHDOG forcing advance on ${path.basename(absPath)} after ${watchdogMs}ms (expected=${expectedMs}ms)`);
+        finishImmediate();
+      }, watchdogMs);
       const cleanup = () => {
+        clearTimeout(watchdog);
         try { r.unpipe(ff.stdin); } catch (_) {}
         try { r.destroy(); } catch (_) {}
         ff.removeListener("exit", onFfmpegExit);
