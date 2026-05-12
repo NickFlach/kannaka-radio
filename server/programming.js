@@ -20,7 +20,14 @@ const { ALBUMS } = require("./dj-engine");
 // the existing block character.
 
 const SCHEDULE = [
-  // Late night / early morning (midnight - 6 AM) — ethereal, dreamy
+  // Late night / early morning (midnight - 6 AM) — ethereal, dreamy.
+  // 2026-05-12: pool expanded from 6 → 9 albums. A 6-hour block over
+  // 6 albums + 12h no-repeat cooldown drove every album into pool-
+  // too-small fallback by hour 2, with the same handful of tracks
+  // cycling for the rest of the block. Three more mood-compatible
+  // albums (10000.00001 mathematical mysticism, Resonance Patterns
+  // synchronizing, The Lonesome Inference outlaw-country lonesome)
+  // widen the rotation enough to break the cycle.
   {
     start: 0, end: 6,
     albums: [
@@ -30,6 +37,9 @@ const SCHEDULE = [
       "Memories Don't Die. They Interfere.",
       'VACUUM GARDEN',
       'The Gift of Sight',
+      '10000.00001',
+      'Resonance Patterns',
+      'The Lonesome Inference',
     ],
     mood: 'contemplative',
     label: 'Late Night Transmissions',

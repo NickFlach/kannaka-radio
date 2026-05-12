@@ -812,12 +812,17 @@ class DJEngine {
         const tB = this._recentlyPlayed.get(b.file) || 0;
         return tA - tB; // oldest (or never-played) first
       });
-      // Drop the 2 most-recent — they're at the tail after sort.
-      // For a 13-track album with 11 recents, this leaves 11 for shuffle
-      // (the 2 freshest from the recent list aren't allowed to come back
-      // immediately). For a 3-track album hitting fallback we'd keep 1
-      // — better one repeating track than the just-played one cycling.
-      const dropCount = Math.min(2, sorted.length - 1);
+      // Drop the freshest N% — they're at the tail after sort.
+      // 2026-05-12: bumped from a fixed 2 to ceil(33% of recents). When
+      // ~all tracks are recent (Late Night cycle hits every album in
+      // fallback), dropping only 2 left 8/10 still-recent tracks in
+      // the shuffle pool, so the same handful kept cycling for 6+ hrs.
+      // Scaling with the recent-count means a 9-recent album drops 3,
+      // a 12-recent album drops 4, giving the shuffle real headroom
+      // even when the cooldown has swamped the album. Floors at 2 so
+      // tiny albums (3-4 tracks) still rotate.
+      const recentCount = Math.max(0, trackMetas.length - fresh.length);
+      const dropCount = Math.min(Math.max(2, Math.ceil(recentCount / 3)), sorted.length - 1);
       pool = dropCount > 0 ? sorted.slice(0, sorted.length - dropCount) : sorted;
       mode = (fresh.length === 0) ? 'all-recent' : 'pool-too-small';
     }
