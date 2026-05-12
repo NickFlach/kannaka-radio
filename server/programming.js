@@ -44,13 +44,18 @@ const SCHEDULE = [
     mood: 'contemplative',
     label: 'Late Night Transmissions',
   },
-  // Morning (6 AM - 10 AM) — gentle wake-up, building energy
+  // Morning (6 AM - 10 AM) — gentle wake-up, building energy.
+  // 2026-05-12: pulled 'Gifts for Humanity' — the album's track list
+  // in dj-engine.js holds placeholder titles (Gift of Presence, etc.)
+  // for songs that were planned but never produced/uploaded. KAX has
+  // no matching artifacts, so rebuildGiftsFromKax() returns 0 tracks
+  // and the load lands with title=null. When it's the picked album,
+  // playback gets stuck. Re-add once the songs ship.
   {
     start: 6, end: 10,
     albums: [
       'Resonance Patterns',
       'Neurogenesis',
-      'Gifts for Humanity',
       'One More Life',
       'INTERFERENCE PATTERNS',
       'Hosted Live',
@@ -75,7 +80,9 @@ const SCHEDULE = [
     mood: 'excited',
     label: 'Peak Frequency',
   },
-  // Afternoon (2 PM - 6 PM) — flowing, creative
+  // Afternoon (2 PM - 6 PM) — flowing, creative.
+  // 2026-05-12: pulled 'Gifts for Humanity' — see Morning block note;
+  // tracks not yet produced. Re-add when songs land.
   {
     start: 14, end: 18,
     albums: [
@@ -85,7 +92,6 @@ const SCHEDULE = [
       'One More Life',
       'INTERFERENCE PATTERNS',
       'QueenSync',
-      'Gifts for Humanity',
       'BEND THE ARC',
       '10000.00001',
       'VACUUM GARDEN',
@@ -431,23 +437,34 @@ class ProgrammingSchedule {
 
   /**
    * Switch to a different album within the current block (mixed-set).
+   * Tries each candidate in the block's rotation up to N times — if a
+   * candidate fails to load (empty playlist, missing files, kax rebuild
+   * still returned nothing) we move to the next album rather than
+   * letting the listener fall into a stuck-loop on a dead album.
    * @param {object} block
    */
   _switchAlbumInBlock(block) {
-    this._albumIndexInBlock++;
-    const album = this.pickAlbumForBlock(block);
+    const tried = new Set();
+    const maxAttempts = Math.max(1, Math.min(block.albums.length, 4));
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      this._albumIndexInBlock++;
+      const album = this.pickAlbumForBlock(block);
+      if (tried.has(album)) continue;
+      tried.add(album);
+      // Don't switch to the same album we're already playing
+      if (album === this._djEngine.state.currentAlbum) continue;
 
-    // Don't switch to the same album
-    if (album === this._djEngine.state.currentAlbum) return;
-
-    this._lastAlbumPlayed = album;
-    this._tracksSinceAlbumSwitch = 0;
-
-    // Load the new album (don't broadcastState here — the caller's
-    // advanceTrack → onTrackChange flow handles the single broadcast)
-    this._djEngine.loadAlbum(album);
-
-    console.log(`[programming] Mixed-set switch → ${album} (block: ${block.label})`);
+      const track = this._djEngine.loadAlbum(album);
+      if (!track) {
+        console.log(`[programming] Skipping ${album} — loadAlbum returned null (empty playlist?)`);
+        continue;
+      }
+      this._lastAlbumPlayed = album;
+      this._tracksSinceAlbumSwitch = 0;
+      console.log(`[programming] Mixed-set switch → ${album} (block: ${block.label})`);
+      return;
+    }
+    console.warn(`[programming] _switchAlbumInBlock: no playable album in ${block.label} after ${maxAttempts} attempts — keeping current`);
   }
 
   /**

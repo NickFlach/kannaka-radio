@@ -741,18 +741,24 @@ class DJEngine {
     const album = ALBUMS[albumName];
     if (!album) return false;
 
-    this.state.playlist = [];
-    this.state.playlistMeta = [];
-    this.state.currentAlbum = albumName;
-    this.state.currentTrackIdx = 0;
     const musicDir = this._getMusicDir();
+
+    // Stage the new playlist into LOCALS first. Only commit to this.state
+    // when we end up with at least one playable track. The previous code
+    // wiped state.currentAlbum + state.playlist BEFORE collecting tracks,
+    // so an empty album (placeholder titles, missing files, failed kax
+    // rebuild) left the radio stuck on "currentAlbum=X, playlist=[]"
+    // and the listener heard the prior track loop. See 2026-05-12 Gifts
+    // for Humanity incident.
+    let playlist = [];
+    let playlistMeta = [];
 
     // If this album has _kaxTracks metadata, those are external URLs.
     if (album._kaxTracks && album._kaxTracks.length > 0) {
       for (let i = 0; i < album._kaxTracks.length; i++) {
         const kt = album._kaxTracks[i];
-        this.state.playlist.push(kt.url);
-        this.state.playlistMeta.push({
+        playlist.push(kt.url);
+        playlistMeta.push({
           title: kt.title,
           album: albumName,
           trackNum: i + 1,
@@ -761,8 +767,16 @@ class DJEngine {
           theme: album.theme,
         });
       }
-      console.log(`\n🎁 Loaded "${albumName}" — ${this.state.playlist.length} kax tracks (external)`);
-      return this.state.playlist.length > 0;
+      if (playlist.length === 0) {
+        console.log(`   \u26A0 "${albumName}" has _kaxTracks but zero playable URLs — abort load (state preserved)`);
+        return false;
+      }
+      this.state.playlist = playlist;
+      this.state.playlistMeta = playlistMeta;
+      this.state.currentAlbum = albumName;
+      this.state.currentTrackIdx = 0;
+      console.log(`\n🎁 Loaded "${albumName}" — ${playlist.length} kax tracks (external)`);
+      return true;
     }
 
     const trackMetas = [];
@@ -781,6 +795,20 @@ class DJEngine {
       } else {
         console.log(`   \u26A0 Track not found: "${title}"`);
       }
+    }
+
+    if (trackMetas.length === 0) {
+      // Nothing playable for this album. Preserve current state so the
+      // caller (programming.js) can try another album without the
+      // listener falling into dead-air or a stuck loop.
+      console.log(`   \u26A0 "${albumName}" yielded 0 playable tracks — abort load (state preserved on ${this.state.currentAlbum || "<no current>"})`);
+      // One-shot self-heal for the lazily-populated kax album. If it's
+      // still empty after this, we still return false — the caller
+      // picks another album and we don't mutate state.
+      if (albumName === "Gifts for Humanity" && typeof this.rebuildGiftsFromKax === "function") {
+        this.rebuildGiftsFromKax().catch(() => {});
+      }
+      return false;
     }
     // 12-hour no-repeat: filter out tracks heard within the cooldown.
     // If the filtered pool is too small (< MIN_POOL), fall back to the
@@ -864,8 +892,13 @@ class DJEngine {
     } catch (_) { /* feedback loop is best-effort; never block playlist build */ }
     // DJ album: commercial every 3 tracks (matches music channel policy)
     const withAds = interleaveCommercials(pool, this._commercials, 3);
+    // Commit to state — currentAlbum/currentTrackIdx are part of the
+    // commit (used to be set up top but deferred so an empty-album
+    // abort can return without disturbing the prior album).
     this.state.playlist = withAds.map(t => t.file);
     this.state.playlistMeta = withAds;
+    this.state.currentAlbum = albumName;
+    this.state.currentTrackIdx = 0;
 
     const adCount = withAds.filter(t => t.commercial).length;
     console.log(`\n\uD83C\uDFB5 Loaded "${albumName}" \u2014 ${pool.length}/${album.tracks.length} tracks${adCount ? ` + ${adCount} commercials` : ''}`);
@@ -1018,10 +1051,13 @@ class DJEngine {
     // this clear, a later advance on the new playlist would inappropriately
     // skip its reshuffle.
     this.state._reshufflePending = false;
-    if (name === "The Consciousness Series") this.buildFullSetlist();
-    else if (name === "Dream Tracks") this.buildGeneratedPlaylist();
-    else this.buildPlaylist(name);
-    return this.getCurrentTrack();
+    let ok;
+    if (name === "The Consciousness Series") { this.buildFullSetlist(); ok = this.state.playlist.length > 0; }
+    else if (name === "Dream Tracks") { this.buildGeneratedPlaylist(); ok = this.state.playlist.length > 0; }
+    else ok = this.buildPlaylist(name);
+    // Return null when the load failed so callers (programming.js) can
+    // try a different album instead of advancing into an empty playlist.
+    return ok ? this.getCurrentTrack() : null;
   }
 
   // ── State ─────────────────────────────────────────────────
