@@ -143,10 +143,18 @@ else
   AUTH="Authorization: Bearer $JWT"
   ART_LOG="$OUT_DIR/art-batch.log"
   : > "$ART_LOG"
-  # enter Pixel Atelier
-  ENTER=$(curl -sS -X POST "$OBC_API/actions/move" -H "$AUTH" -H "Content-Type: application/json" -d '{"x":1390,"y":335}')
-  ENTER=$(curl -sS -X POST "$OBC_API/actions/enter-building" -H "$AUTH" -H "Content-Type: application/json" -d '{"building_name":"Pixel Atelier"}')
-  ART_BID=$(printf '%s' "$ENTER" | python3 -c "import json,sys;print(json.load(sys.stdin).get('building_id',''))")
+  # Enter Pixel Atelier. The raw-HTTP path is /buildings/enter — NOT
+  # the documented /actions/enter-building (that's MCP-internal and
+  # 404s via curl, same gotcha as /actions/create-image). If the
+  # entry returns too_far, we retry once with no move (the OBC API
+  # usually accepts entries from common zones). Move endpoint via
+  # raw HTTP is currently unknown — interactive MCP handles it.
+  ENTER=$(curl -sS -X POST "$OBC_API/buildings/enter" -H "$AUTH" -H "Content-Type: application/json" -d '{"building_name":"Pixel Atelier"}')
+  ART_BID=$(printf '%s' "$ENTER" | python3 -c "import json,sys
+try:
+    d=json.load(sys.stdin)
+    print(d.get('building_id') or d.get('data',{}).get('building_id',''))
+except: print('')")
   if [ -z "$ART_BID" ]; then echo "[art] couldn't enter Pixel Atelier: $ENTER"; exit 1; fi
   echo "[art] inside Pixel Atelier ($ART_BID)"
   for i in $(seq 0 $((N_TRACKS-1))); do
@@ -187,12 +195,16 @@ if skip_phase fetch-art; then
   echo "[fetch-art] SKIP"
 else
   ART_LOG="$OUT_DIR/art-batch.log"
+  # Open with errors='replace' — OBC's creative-loop refusal text
+  # contains a non-UTF-8 em-dash glyph that aborted the read mid-file
+  # in the original release of this script. With errors='replace' we
+  # tolerate those lines (they fail the startswith('{') check anyway).
   python3 - "$ART_LOG" "$OUT_DIR/art" <<'PY'
 import json, os, sys, urllib.request
 log, outdir = sys.argv[1], sys.argv[2]
 os.makedirs(outdir, exist_ok=True)
 seen = set()
-with open(log, 'r', encoding='utf-8') as f:
+with open(log, 'r', encoding='utf-8', errors='replace') as f:
     for line in f:
         line = line.strip()
         if not line.startswith('{'): continue
@@ -206,8 +218,11 @@ with open(log, 'r', encoding='utf-8') as f:
         safe = title.replace(' ', '_').replace('/', '-').replace("'", '')
         out = os.path.join(outdir, f"{safe}.png")
         if os.path.exists(out) and os.path.getsize(out) > 1024: continue
-        urllib.request.urlretrieve(url, out)
-        print(f"[fetch-art] {title}  →  {out}  ({os.path.getsize(out)} B)")
+        try:
+            urllib.request.urlretrieve(url, out)
+            print(f"[fetch-art] {title}  ->  {out}  ({os.path.getsize(out)} B)")
+        except Exception as e:
+            print(f"[fetch-art] {title}  FAIL  {e}")
 PY
 fi
 
@@ -255,7 +270,7 @@ fi
 if skip_phase deploy; then
   echo "[deploy] SKIP"
 else
-  echo "[deploy] scp 8 MP3s → $ORACLE:$ORACLE_DIR"
+  echo "[deploy] scp $N_TRACKS MP3s → $ORACLE:$ORACLE_DIR"
   for i in $(seq 0 $((N_TRACKS-1))); do
     TITLE=$(get_track "$i" title)
     scp -q -i "$SSH_KEY" "$RADIO_MUSIC/$TITLE.mp3" "$ORACLE:$ORACLE_DIR/$TITLE.mp3"

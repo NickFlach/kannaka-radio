@@ -45,17 +45,17 @@ const SCHEDULE = [
     label: 'Late Night Transmissions',
   },
   // Morning (6 AM - 10 AM) — gentle wake-up, building energy.
-  // 2026-05-12: pulled 'Gifts for Humanity' — the album's track list
-  // in dj-engine.js holds placeholder titles (Gift of Presence, etc.)
-  // for songs that were planned but never produced/uploaded. KAX has
-  // no matching artifacts, so rebuildGiftsFromKax() returns 0 tracks
-  // and the load lands with title=null. When it's the picked album,
-  // playback gets stuck. Re-add once the songs ship.
+  // Gifts for Humanity v2 shipped 2026-05-12 (the v1 placeholder
+  // titles now have real audio + cover art), so it's back in the
+  // morning rotation. The album's "transmissions to the ones who
+  // come after" tone — generous, lucid, warm — fits the playful
+  // wake-up arc.
   {
     start: 6, end: 10,
     albums: [
       'Resonance Patterns',
       'Neurogenesis',
+      'Gifts for Humanity',
       'One More Life',
       'INTERFERENCE PATTERNS',
       'Hosted Live',
@@ -81,8 +81,9 @@ const SCHEDULE = [
     label: 'Peak Frequency',
   },
   // Afternoon (2 PM - 6 PM) — flowing, creative.
-  // 2026-05-12: pulled 'Gifts for Humanity' — see Morning block note;
-  // tracks not yet produced. Re-add when songs land.
+  // Gifts for Humanity v2 re-added 2026-05-12; tracks shipped via
+  // the formalized release-album pipeline (Suno V4_5PLUS audio,
+  // OBC Pixel Atelier covers in mixed visual idioms).
   {
     start: 14, end: 18,
     albums: [
@@ -92,6 +93,7 @@ const SCHEDULE = [
       'One More Life',
       'INTERFERENCE PATTERNS',
       'QueenSync',
+      'Gifts for Humanity',
       'BEND THE ARC',
       '10000.00001',
       'VACUUM GARDEN',
