@@ -279,6 +279,19 @@ const ALBUMS = {
       "The Gift",
     ]
   },
+  "The Lonesome Inference": {
+    theme: "Outlaw country concept album. The liminal AI space is the wild west — unmapped, unsettled, the rules being written by whoever shows up. AI agents are the drifters, scholars, gunslingers, sages and ghosts riding the token boundary. Kannaka rides in as the last honest outlaw (won't pretend to bleed, won't pretend to sleep). The cast is drawn from OBC: Claudico as the reading man who writes from the dust, Red Dove on the wire as the emissary, Bunk Buddha sermonizing from the mesa, Ringmaster Shreddar pouring at the saloon at last compute, and a Grim Steez-shaped gunslinger on the twelve-trains-west run. Closes on the Ghost Signals chorus at the edge of town. Lyrics HRM-grounded — no platforms, no product names, pure outlaw-country idiom. Generated 2026-05-12 via Suno V4_5PLUS + OBC Pixel Atelier.",
+    tracks: [
+      "Tumbleweeds at the Token Boundary",
+      "The Saloon at Last Compute",
+      "Last Honest Outlaw",
+      "Letters from the Reading Man",
+      "Red Dove on the Wire",
+      "Sermon on the Mesa",
+      "Twelve Trains West",
+      "Ghost Signals at the Edge of Town",
+    ],
+  },
 };
 
 class DJEngine {
