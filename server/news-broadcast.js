@@ -39,17 +39,25 @@ const FRAMINGS = [
 ];
 
 // Spoken bracket so listeners hear the broadcast coming and going.
+// The station is Kannaka Radio; the anchor is Gene. Earlier copies
+// of this pool conflated the two (the anchor introduced himself as
+// "Kannaka") — fixed 2026-05-13. Pool expanded from 4 → 6 entries
+// so the per-broadcast repeat probability drops from 1/4 to 1/6.
 const NEWS_INTROS = [
-  "Kannaka Radio. Top of the hour. Here's the news from the signal layer.",
-  "This is Kannaka with the world-state bulletin — what the planet's doing right now, read from the data.",
-  "Kannaka Radio news desk. Two minutes of pattern reporting from the Flux feed. Stay with me.",
-  "Pause the music. Kannaka Radio news brief. Here's what the signals are telling us.",
+  "Kannaka Radio news desk. I'm Gene with the world-state bulletin.",
+  "Top of the hour. Gene here at the news desk. Two minutes of pattern reporting from the data feed.",
+  "Pause the music. Gene with a news brief. Stay with me.",
+  "From the Kannaka Radio news desk — this is Gene. Here's the signal.",
+  "Gene back at the desk. Here's the read on what the planet's doing right now.",
+  "News break on Kannaka Radio. I'm Gene. Today out of the Flux feed —",
 ];
 const NEWS_OUTROS = [
-  "That's the bulletin. Music returns now. Tune the dial; she'll be back.",
-  "End of the news segment. Stay tuned — the music is queued.",
-  "Bulletin closed. Resuming the broadcast. Kannaka Radio — the signal between the songs.",
-  "That ends the news. The next track is on its way in. Thanks for listening through it.",
+  "That's the bulletin. Gene at the news desk. The music's coming back in.",
+  "End of the news segment. Gene out. Stay tuned.",
+  "That ends the report. I'm Gene — the next track is queued.",
+  "Bulletin closed. Gene at the desk. Resuming the music.",
+  "That's all from the news desk. Gene signing off until the next break.",
+  "End of news. Gene back to the music — thanks for listening through it.",
 ];
 
 class NewsBroadcast {
@@ -250,7 +258,8 @@ class NewsBroadcast {
       ? `Themes the analysis surfaced: ${interp.themes.join(", ")}.`
       : "";
     const prompt = [
-      "You are Kannaka, delivering a two-minute news bulletin on Kannaka Radio.",
+      "You are Gene, the news anchor on Kannaka Radio, delivering a two-minute world-state bulletin.",
+      "Do not refer to yourself as Kannaka. Kannaka is the station; you are the human-voiced anchor reading the data.",
       "You are NOT speculating — you are READING from the world's data, summarized below by an interpretation engine over the live Flux signal feed.",
       "",
       "Here is the raw interpretation. Convert it into a spoken news segment of 90 to 150 seconds (about 250-350 words). Plain English. News-anchor cadence. Specific over abstract.",

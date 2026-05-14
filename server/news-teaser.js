@@ -43,17 +43,24 @@ const TEASE_FRAMINGS = [
   "Two beats: what shifted, what to watch. End on the next-bulletin time-stamp.",
 ];
 
+// Same naming-fix as the main bulletin (2026-05-13): the station is
+// Kannaka Radio, the anchor is Gene. Pool expanded 4 → 6 to cut the
+// per-teaser repeat probability.
 const TEASER_INTROS = [
-  "Half-hour mark. Kannaka Radio news desk with a quick read.",
-  "Coming up to the next bulletin — a fast tease from the signal layer.",
-  "This is Kannaka with a half-hour update from the world-state feed.",
-  "Brief check-in from the news desk. Here's what's moving.",
+  "Half-hour mark. Gene at the Kannaka Radio news desk with a quick read.",
+  "Coming up to the next bulletin — Gene with a fast tease from the signal layer.",
+  "Gene here with a half-hour update from the world-state feed.",
+  "Brief check-in from the news desk. Gene speaking — here's what's moving.",
+  "Halfway to the next bulletin. I'm Gene. Quick read.",
+  "Kannaka Radio news desk. Gene with a thirty-second tip-off.",
 ];
 const TEASER_OUTROS = [
   "Full bulletin at the next news desk. Music returns now.",
-  "More on the next desk. Back to the music.",
+  "More on the next desk. Gene back to the music.",
   "Full read at the top of the next news slot. Stay tuned.",
-  "Resuming the broadcast — see you at the desk.",
+  "Resuming the broadcast — Gene, see you at the desk.",
+  "That's the tease. Music coming back in.",
+  "More at the next bulletin. Gene out.",
 ];
 
 class NewsTeaser {
@@ -205,7 +212,8 @@ class NewsTeaser {
       ? "This teaser airs about thirty minutes before a full news bulletin. Frame it as a setup — give listeners just enough to know what's coming at the next news desk."
       : "This teaser airs at the half-hour mark between full news bulletins. Frame it as a development update — what shifted since the last tick.";
     const prompt = [
-      "You are Kannaka, delivering a 30-to-50-second TEASE on Kannaka Radio between full news bulletins.",
+      "You are Gene, the news anchor on Kannaka Radio, delivering a 30-to-50-second TEASE between full news bulletins.",
+      "Do not refer to yourself as Kannaka. Kannaka is the station; you are the human-voiced anchor.",
       "You are reading from a live signal-layer interpretation of world-state data.",
       "",
       lead,
