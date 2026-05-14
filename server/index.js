@@ -153,26 +153,38 @@ const djEngine = new DJEngine({
     _inTrackChange = true;
 
     try {
+      // ── Programming schedule: track-change hook (RUN FIRST) ─
+      // Order matters. Programming may call loadAlbum() which switches
+      // the current album entirely (mixed-set switch every 3 tracks,
+      // or a block transition). The talk-segment intro that follows
+      // MUST reference the post-switch track or the listener hears
+      // "now playing X from Album A" followed by Album B's first song
+      // (reported 2026-05-14). Running the hook before the talk lets
+      // us re-read `actual` and pass that to executeTalkSegment.
+      if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
+        deps.programming.onTrackChange(track);
+      }
+
+      // Re-read the current track — programming may have switched albums.
+      let actual = djEngine.getCurrentTrack() || track;
+      if (actual && actual.album !== track.album) {
+        // Album was switched by programming — buildPlaylist already set
+        // currentTrackIdx=0 in the new playlist; this is belt-and-suspenders.
+        djEngine.state.currentTrackIdx = 0;
+        actual = djEngine.getCurrentTrack();
+      }
+
       // ── Talk segment check ────────────────────────────────
       // Every 3-5 non-commercial tracks, the DJ does a talk-only segment
       // BEFORE the next track starts. Music pauses on the client while
       // the talk audio plays, then the track resumes afterward.
-      if (!track.commercial && voiceDJ.shouldTalk(track)) {
+      if (!actual.commercial && voiceDJ.shouldTalk(actual)) {
         // Broadcast a "talk_segment_pending" so clients know to pause music
         broadcast({ type: "dj_talk_pending", timestamp: new Date().toISOString() });
 
-        voiceDJ.executeTalkSegment(track, () => {
-          // Talk segment done — now start the track normally
-          // Programming schedule: track-change hook
-          if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
-            deps.programming.onTrackChange(track);
-          }
-          // Re-read the current track — programming may have switched albums
-          let actual = djEngine.getCurrentTrack() || track;
-          if (actual && actual.album !== track.album) {
-            djEngine.state.currentTrackIdx = 0;
-            actual = djEngine.getCurrentTrack();
-          }
+        voiceDJ.executeTalkSegment(actual, () => {
+          // Talk segment done — now publish the normal track-change side
+          // effects against the *actual* (post-switch) track.
           broadcastState();
           flux.publishTrackChange(actual);
           perception_.hearTrack(actual);
@@ -221,20 +233,6 @@ const djEngine = new DJEngine({
           }
         });
         return; // Don't do normal track change flow yet
-      }
-
-      // ── Programming schedule: track-change hook ───────────
-      if (!track.commercial && djEngine.state.channel === 'dj' && deps.programming) {
-        deps.programming.onTrackChange(track);
-      }
-
-      // Re-read the current track — programming may have switched albums,
-      // so the track that advanceTrack() originally returned may be stale.
-      let actual = djEngine.getCurrentTrack() || track;
-      if (actual && actual.album !== track.album) {
-        // Album was switched by programming — use track 0 of the new album
-        djEngine.state.currentTrackIdx = 0;
-        actual = djEngine.getCurrentTrack();
       }
 
       // ── Normal track change flow (exactly ONE broadcastState) ──
