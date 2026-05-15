@@ -287,24 +287,23 @@ else
   '
 fi
 
-# ── 9. announce — lead-track fanout (optional) ──────────────
+# ── 9. announce — lead-track fanout ─────────────────────────
+# Run on Oracle, where Bluesky/Mastodon/Telegram/Nostr credentials
+# live (the local box only has .youtube.json — YouTube was already
+# uploaded earlier in the youtube + announce-yt-unlisted steps).
+# Skips --audio/--image so the social broadcasters fan out text-only;
+# the album-video URL is already in the post.
 if skip_phase announce || [ -z "$LEAD" ]; then
   echo "[announce] SKIP"
+elif [ -z "$ORACLE" ] || [ -z "$SSH_KEY" ]; then
+  echo "[announce] no oracle host / ssh key configured — skip"
 else
-  LEAD_AUDIO="$RADIO_MUSIC/$LEAD.mp3"
-  LEAD_IMG="$OUT_DIR/art/$(echo "$LEAD" | tr ' /' '_-' | tr -d "'").png"
-  if [ ! -f "$LEAD_AUDIO" ] || [ ! -f "$LEAD_IMG" ]; then
-    echo "[announce] missing lead inputs — skip"
-  else
-    echo "[announce] lead track: $LEAD"
-    YT_PRIVACY=unlisted node "$ROOT/scripts/post-track-announce.js" \
-      --title "$LEAD" \
-      --reason "$LEAD_REASON" \
-      --audio "$LEAD_AUDIO" \
-      --image "$LEAD_IMG" \
-      --tags "$YT_TAGS" \
-      --link "$TRACKER" 2>&1 | tail -6
-  fi
+  echo "[announce] lead track: $LEAD (via $ORACLE)"
+  ssh -i "$SSH_KEY" "$ORACLE" "cd ~/kannaka-radio && node scripts/post-track-announce.js \
+    --title $(printf '%q' "$LEAD") \
+    --reason $(printf '%q' "$LEAD_REASON") \
+    --tags $(printf '%q' "$YT_TAGS") \
+    --link $(printf '%q' "$TRACKER")" 2>&1 | tail -10
 fi
 
 echo
