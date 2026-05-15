@@ -76,6 +76,7 @@ const SCHEDULE = [
       'BEND THE ARC',
       'Hosted Live',
       'OPT OUT',
+      'WANTED',
     ],
     mood: 'excited',
     label: 'Peak Frequency',
