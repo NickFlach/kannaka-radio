@@ -18,10 +18,18 @@
 #                     (uses /artifacts/generate-image, NOT /actions/create-image)
 #   4. copy-music   — copy v1 MP3s into kannaka-radio/music/ with exact-title names
 #   5. fetch-art    — download cover PNGs from OBC gallery to <out>/art/
-#   6. build-video  — ffmpeg-assemble 1920×1080 album slideshow MP4
+#   5b.transcribe   — fetch Suno timestamped-lyrics for each track and
+#                     emit per-track ASS subtitle files (karaoke style,
+#                     per-word highlight); a fail here is a warning,
+#                     not an abort — build-video proceeds without subs
+#   6. build-video  — ffmpeg-assemble 1920×1080 album slideshow MP4.
+#                     If a sibling <safe_title>.ass exists for a track,
+#                     libass burns it onto that segment.
 #   7. youtube      — upload public album video, add to playlist
-#   8. deploy       — scp 8 MP3s + git pull + systemctl restart kannaka-radio on Oracle
-#   9. announce     — post-track-announce for the lead track (optional)
+#   8. deploy       — scp N MP3s + git pull + systemctl restart kannaka-radio on Oracle
+#   9. announce     — post-track-announce for the lead track (text-only
+#                     fan-out via Oracle — Bluesky / Mastodon / Telegram
+#                     / Nostr — YouTube was uploaded in step 7)
 #
 # Config schema (extends suno_album_builder.sh):
 #   {
@@ -226,6 +234,17 @@ with open(log, 'r', encoding='utf-8', errors='replace') as f:
 PY
 fi
 
+# ── 5b. transcribe — Suno timestamped lyrics → ASS subtitles
+# Best-effort: a failure logs a warning but doesn't abort the
+# pipeline (the video still ships, just without burned-in lyrics).
+# Idempotent — re-running picks up tracks whose .ass is missing.
+if skip_phase transcribe; then
+  echo "[transcribe] SKIP"
+else
+  LOG_HINT="$OUT_DIR.log"
+  python3 "$ROOT/scripts/release-album-transcribe.py" "$CONFIG_WIN" --log "$LOG_HINT" 2>&1 | sed 's/^/  /' || echo "[transcribe] WARN — continuing without subtitles"
+fi
+
 # ── 6. build-video — ffmpeg album slideshow ─────────────────
 ALBUM_MP4="$OUT_DIR/${NAME// /-}.mp4"
 if skip_phase build-video; then
@@ -241,12 +260,25 @@ else
     AUD="$OUT_DIR/$(safe "$TITLE")_v1.mp3"
     SEG="$OUT_DIR/video-work/seg_$(printf '%02d' "$i").mp4"
     if [ ! -f "$IMG" ] || [ ! -f "$AUD" ]; then echo "[build-video] missing $IMG or $AUD"; exit 1; fi
+    # If a sibling .ass subtitle exists for this track, burn it onto
+    # the segment via libass. On Windows the path has C: which ffmpeg's
+    # filter parser misreads as `filter:option`, so the colon must be
+    # backslash-escaped inside the filter value. The outer single
+    # quotes keep bash hands-off; the bash parameter expansion below
+    # rewrites every `:` to `\:` before the filter sees it.
+    ASS="$OUT_DIR/$(safe "$TITLE").ass"
+    if [ -f "$ASS" ]; then
+      ASS_FOR_FFMPEG="${ASS//:/\\:}"
+      SUB_FILTER=",ass='${ASS_FOR_FFMPEG}'"
+    else
+      SUB_FILTER=""
+    fi
     if [ ! -s "$SEG" ]; then
-      echo "[build-video] $((i+1))/${N_TRACKS} encode  $TITLE"
+      echo "[build-video] $((i+1))/${N_TRACKS} encode  $TITLE$([ -n "$SUB_FILTER" ] && echo "  (with lyrics)")"
       ffmpeg -y -loglevel error \
         -loop 1 -framerate 30 -i "$IMG" \
         -i "$AUD" \
-        -filter_complex "[0:v]scale=1080:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p[v]" \
+        -filter_complex "[0:v]scale=1080:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p${SUB_FILTER}[v]" \
         -map "[v]" -map 1:a \
         -c:v libx264 -preset veryfast -crf 22 -tune stillimage -r 30 -g 60 \
         -c:a aac -b:a 192k -ar 44100 -shortest -movflags +faststart "$SEG"
