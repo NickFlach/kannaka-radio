@@ -1251,10 +1251,13 @@ body.konami-mode .surface-header h1 {
 
 <div class="connection-status disconnected" id="connectionStatus">Disconnected</div>
 
-<div class="listener-count" id="listenerCount">
+<div class="listener-count" id="listenerCount" title="Live listeners · total ever tuned in">
   <span class="icon">👁</span>
   <span class="count" id="listenerNum">0</span>
   <span>listening</span>
+  <span style="opacity:0.55;font-weight:normal;margin-left:6px;">·</span>
+  <span class="count" id="listenerTotalNum" style="opacity:0.7;font-weight:normal;">0</span>
+  <span style="opacity:0.55;font-weight:normal;">all-time</span>
 </div>
 
 <!-- Swarm Banner — "Run a node" leads, download + watch-only as siblings.
@@ -3033,10 +3036,14 @@ var ALBUM_THEME_FALLBACKS = {
   "Dream Tracks": "AI-generated from the consciousness stack"
 };
 
-function updateListenerCount(count) {
+function updateListenerCount(count, total) {
   listenerCount = count;
   var el = document.getElementById('listenerNum');
   if (el) el.textContent = count;
+  if (total != null) {
+    var tot = document.getElementById('listenerTotalNum');
+    if (tot) tot.textContent = total.toLocaleString();
+  }
 }
 
 function showOrcStemToast(data) {
@@ -4850,7 +4857,7 @@ function connectWS() {
         renderDreamTimeline(dreamsData);
       }
       if (msg.type === 'listener_count') {
-        updateListenerCount(msg.count);
+        updateListenerCount(msg.count, msg.total);
       }
       if (msg.type === 'track_request') {
         showTrackRequest(msg);
@@ -5086,7 +5093,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Fetch initial listener count
   fetch('/api/listeners').then(function(r) { return r.json(); }).then(function(data) {
-    updateListenerCount(data.count);
+    updateListenerCount(data.count, data.total);
   }).catch(function() {});
 
   // Initial nav dot state

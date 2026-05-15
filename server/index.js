@@ -84,6 +84,48 @@ function broadcast(msg) {
 // fine; listener flicker between polls isn't worth a heavier setup.
 let _icecastListeners = { stream: 0, preview: 0, fetched_at: 0 };
 
+// Total-ever-listened counter. Two semantics live in the codebase now:
+//   • live   — getListenerCount() — concurrent listeners right now
+//   • total  — _listenerTotals.unique — humans who have ever tuned in
+// "Unique" is approximate: every fresh WS connect bumps the counter once,
+// and every positive delta on the Icecast /stream + /preview gauges (i.e.
+// the gauge grew between polls) bumps by the size of the delta. A single
+// browser-refresh creates a new WS connect and counts as a new tune-in;
+// no IP/cookie dedupe — privacy-friendly. The counter is persisted to
+// disk every 10s so a restart doesn't reset to zero.
+const LISTENER_STATE_PATH = process.env.KANNAKA_LISTENER_STATE
+  || path.join(BASE_DIR, "data", "listener-totals.json");
+let _listenerTotals = { unique: 0, started_at: Date.now() };
+let _lastBroadcastCount = -1;
+let _lastIceStreamSeen = 0;
+let _lastIcePreviewSeen = 0;
+
+(function loadListenerTotals() {
+  try {
+    const raw = require("fs").readFileSync(LISTENER_STATE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.unique === "number") {
+      _listenerTotals = { unique: parsed.unique, started_at: parsed.started_at || Date.now() };
+      console.log(`[listeners] loaded total=${_listenerTotals.unique} from ${LISTENER_STATE_PATH}`);
+    }
+  } catch (_) {
+    try { require("fs").mkdirSync(path.dirname(LISTENER_STATE_PATH), { recursive: true }); } catch {}
+  }
+})();
+
+function _persistListenerTotals() {
+  try {
+    require("fs").writeFileSync(LISTENER_STATE_PATH, JSON.stringify(_listenerTotals));
+  } catch (_) { /* best-effort */ }
+}
+setInterval(_persistListenerTotals, 10000);
+process.on("exit", _persistListenerTotals);
+
+function bumpListenerTotal(n) {
+  if (!Number.isFinite(n) || n <= 0) return;
+  _listenerTotals.unique += n;
+}
+
 function getListenerCount() {
   // Icecast counts /stream + /preview listeners; SPA WS counts in-browser
   // players (which already pull /stream too). Subtract the WS share so we
@@ -99,8 +141,26 @@ function getListenerCount() {
   return Math.max(wsCount, iceStream) + icePreview;
 }
 
+function getListenerTotal() {
+  return _listenerTotals.unique;
+}
+
 function broadcastListenerCount() {
-  broadcast({ type: "listener_count", count: getListenerCount() });
+  const count = getListenerCount();
+  _lastBroadcastCount = count;
+  broadcast({ type: "listener_count", count, total: getListenerTotal() });
+}
+
+// Called by the Icecast poller when the cached count changes between
+// polls. Without this, the SPA badge stayed frozen between WS connect /
+// disconnect events — car-deck listeners pulling /stream directly never
+// triggered a re-broadcast, so the visible count diverged from the
+// authoritative /api/listeners value.
+function broadcastListenerCountIfChanged() {
+  const count = getListenerCount();
+  if (count !== _lastBroadcastCount) {
+    broadcastListenerCount();
+  }
 }
 
 // Poll Icecast /status-json.xsl every 10s. We hit localhost:8000 directly
@@ -127,6 +187,17 @@ function startIcecastListenerPoller() {
             else if (url.endsWith("/preview")) preview = n;
           }
           _icecastListeners = { stream, preview, fetched_at: Date.now() };
+          // Total-ever bumps on positive-delta — anyone who tuned in
+          // between polls is a new listener for total-counter purposes.
+          const streamDelta = stream - _lastIceStreamSeen;
+          const previewDelta = preview - _lastIcePreviewSeen;
+          if (streamDelta > 0) bumpListenerTotal(streamDelta);
+          if (previewDelta > 0) bumpListenerTotal(previewDelta);
+          _lastIceStreamSeen = stream;
+          _lastIcePreviewSeen = preview;
+          // Live-count badge refresh — only fires if the merged count
+          // actually changed, so a noisy +1/-1 flutter doesn't spam WS.
+          broadcastListenerCountIfChanged();
         } catch (_) { /* keep last values */ }
       });
     });
@@ -348,6 +419,7 @@ const flux = new FluxPublisher({
   }),
   isLive: () => live.state.active,
   getListenerCount,
+  getListenerTotal,
   getListenerBreakdown: () => ({
     ws: wss ? wss.clients.size : 0,
     icecast_stream: _icecastListeners.stream || 0,
@@ -513,6 +585,7 @@ const deps = {
     getMusicDir: () => MUSIC_DIR,
     setMusicDir: (dir) => { MUSIC_DIR = dir; },
     getListenerCount,
+    getListenerTotal,
     getListenerBreakdown: () => ({
       ws: wss ? wss.clients.size : 0,
       icecast_stream: _icecastListeners.stream || 0,
@@ -593,7 +666,12 @@ wss.on('connection', (ws) => {
     chunkCount: live.state.chunkCount,
   }));
 
-  // Send listener count on connect
+  // Bump total-ever-listened on every fresh WS connect. A browser
+  // refresh creates a new WS — that counts as a new tune-in by design
+  // (no IP/cookie dedupe; we don't want to track humans across sessions).
+  bumpListenerTotal(1);
+
+  // Send listener count on connect (both live + total in the same frame)
   broadcastListenerCount();
 
   // Handle incoming messages.

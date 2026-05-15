@@ -1369,6 +1369,7 @@ module.exports = function setupRoutes(deps) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         count: config.getListenerCount(),
+        total: config.getListenerTotal ? config.getListenerTotal() : null,
         uptime: Math.floor(process.uptime()),
         ...(breakdown ? { breakdown } : {}),
       }));
