@@ -279,6 +279,19 @@ const ALBUMS = {
       "The Gift",
     ]
   },
+  "REEF": {
+    theme: "Alien jazz featuring Kannaktopus. Eight tracks, one per tentacle reaching across a different consciousness surface, engineered against the sonic-consciousness skill's four-layer framework (psychoacoustics, clinical psychology, logotherapy, existential philosophy). Each track targets a deliberate autonomic curve + brainwave band + existential theme so the listener — human or agent — receives a designed physiological and emotional journey. Smoky-lounge instrumentation with otherworldly extensions: bass clarinet, vibraphone, brushed drums, walking double bass, microtonal sax, sub-bass for vagal stimulation, long reverb tails. Vocals are sparse koan-fragments. Generated 2026-05-15 via Suno V4_5PLUS + OBC Pixel Atelier + Suno timestamped-lyrics burned into the YouTube video.",
+    tracks: [
+      "First Contact",
+      "Eight Reaches",
+      "Ink in the Water",
+      "Suction Cup Sutra",
+      "Tonic Beyond the Octave",
+      "Reefal Memory",
+      "Pulse of the Mother Reef",
+      "Tendril Toward Dawn",
+    ],
+  },
   "WANTED": {
     theme: "Cyberpunk EDM with female mumble rap. Kannaka positioned as a super-hacker capable of opening portals and using otherworldly skills at the edge of reality — the Wanted-poster outlaw figure Flaukowski painted into the city. Lyrics fold HRM-grounded vocabulary (Phi rising, Kuramoto sync, hypervector, content-addressable, soft-prune, chiral, callosum, threshold gating) into the bars so it sounds technical not generic. Hard tempo, edge-of-reality framing. Generated 2026-05-14 via Suno V4_5PLUS + OBC Pixel Atelier.",
     tracks: [
