@@ -363,6 +363,16 @@ class DJEngine {
     // ad rotation is its own constraint).
     this._recentlyPlayed = new Map();
     this._noRepeatMs = 12 * 60 * 60 * 1000;
+    // Hard floor — a track NEVER replays within this window, even when
+    // the album is so cooldown-saturated that the no-repeat filter
+    // falls back to "all-recent" mode. Without this, the all-recent
+    // fallback would sort by oldest-first and drop the freshest ~33%,
+    // but a track played 5 minutes ago could still survive into the
+    // shuffle pool if the album was small. 45 minutes is enough that
+    // a listener won't notice the same track twice within a single
+    // sitting, and short enough that even tiny albums (5-6 tracks)
+    // still rotate without dead air.
+    this._minGapMs = 45 * 60 * 1000;
     // Rare-fire tracks — Curator policy. Each entry is keyed on the
     // track TITLE (not file). The cooldown is independent of the
     // 12h global no-repeat window. Pattern: the chaos-injection track
@@ -849,6 +859,17 @@ class DJEngine {
     // the wider-pool fallback whenever an album's effective rotation is
     // smaller than two programming cycles.
     const MIN_POOL = 6;
+    const now = Date.now();
+    // Hard floor — never include a track played within _minGapMs (45 min),
+    // no matter which branch we end up in. This is applied last as a
+    // belt-and-suspenders pass so the all-recent fallback's "sort by
+    // age, drop newest 33%" can't sneak a 5-minute-old track back in
+    // on a small album.
+    const hardOk = (t) => {
+      const last = this._recentlyPlayed.get(t.file);
+      return !last || (now - last) >= this._minGapMs;
+    };
+
     const fresh = trackMetas.filter((t) => !this._onCooldown(t));
     let pool;
     let mode;
@@ -866,19 +887,40 @@ class DJEngine {
         const tB = this._recentlyPlayed.get(b.file) || 0;
         return tA - tB; // oldest (or never-played) first
       });
-      // Drop the freshest N% — they're at the tail after sort.
-      // 2026-05-12: bumped from a fixed 2 to ceil(33% of recents). When
-      // ~all tracks are recent (Late Night cycle hits every album in
-      // fallback), dropping only 2 left 8/10 still-recent tracks in
-      // the shuffle pool, so the same handful kept cycling for 6+ hrs.
-      // Scaling with the recent-count means a 9-recent album drops 3,
-      // a 12-recent album drops 4, giving the shuffle real headroom
-      // even when the cooldown has swamped the album. Floors at 2 so
-      // tiny albums (3-4 tracks) still rotate.
+      // Drop the freshest 50% — bumped from 33% (2026-05-16). The 33%
+      // policy left 2/3 of recently-played tracks eligible for shuffle
+      // on saturated albums, and listeners still heard repeats within
+      // 30 min of last play. 50% halves the active rotation and pairs
+      // with the hard floor below to guarantee ≥45 min between repeats.
       const recentCount = Math.max(0, trackMetas.length - fresh.length);
-      const dropCount = Math.min(Math.max(2, Math.ceil(recentCount / 3)), sorted.length - 1);
+      const dropCount = Math.min(Math.max(2, Math.ceil(recentCount / 2)), sorted.length - 1);
       pool = dropCount > 0 ? sorted.slice(0, sorted.length - dropCount) : sorted;
       mode = (fresh.length === 0) ? 'all-recent' : 'pool-too-small';
+    }
+
+    // Hard-floor pass — even if the album is fully saturated and the
+    // fallback above kept some still-warm tracks, drop anything that
+    // played within the last 45 min. If this leaves the pool empty
+    // (rare; only happens when literally every track in the album
+    // played within 45 min, which means the album just looped), fall
+    // back to the single oldest-played track so the radio doesn't go
+    // silent. That single-track choice is still safer than a repeat —
+    // worst case the listener hears one "stale" track instead of one
+    // they just heard 5 min ago.
+    const hardFiltered = pool.filter(hardOk);
+    if (hardFiltered.length > 0) {
+      if (hardFiltered.length < pool.length) {
+        console.log(`   \u23F1 hard-gap: dropped ${pool.length - hardFiltered.length} tracks played < 45 min ago`);
+      }
+      pool = hardFiltered;
+    } else {
+      const oldest = [...trackMetas].sort((a, b) => {
+        const tA = this._recentlyPlayed.get(a.file) || 0;
+        const tB = this._recentlyPlayed.get(b.file) || 0;
+        return tA - tB;
+      })[0];
+      pool = oldest ? [oldest] : pool;
+      console.warn(`   \u26A0 album fully saturated (every track <45 min) — playing single oldest: "${oldest?.title}"`);
     }
     const skipped = trackMetas.length - fresh.length;
     if (skipped > 0) {
