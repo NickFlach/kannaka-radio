@@ -4596,48 +4596,24 @@ function updateDJVoiceToggle() {
 }
 
 // ══════════════════════════════════════════════════════
-//  Shared Listening Sync
+//  Shared Listening Sync — REMOVED (kr#15 / ADR-0004 Phase 6)
 // ══════════════════════════════════════════════════════
+//
+// DJ mode is now /stream (Icecast) — every listener receives identical
+// bytes at identical times by the broadcaster, so per-listener seek
+// synchronization is structurally unnecessary. The old handleSync()
+// fetched /audio/<file> + seeked to a server-reported position, which
+// was the only client-side use of /audio/ in DJ mode. With /stream the
+// dance is gone.
+//
+// Library tab still uses /audio (playFromLibrary, playQueueItem) for
+// on-demand single-track playback — those are explicit user actions on
+// private playback, not DJ-mode synchronization.
 
-var SYNC_TOLERANCE = 2; // seconds — don't seek if within this range
-
-function handleSync(data) {
-  if (!data || !data.file) return;
-  var audio = document.getElementById('audio');
-  if (!audio) return;
-
-  // The Library tab is private playback — never auto-sync the local
-  // <audio> to the live track from the radio room. If the user is on
-  // 'music' mode they're actively listening to a library track or a
-  // podcast episode they picked themselves; clobbering audio.src with
-  // the live track would interrupt them mid-listen (this is the
-  // 'podcast plays the opening then stops' bug Nick reported).
-  if (typeof currentMode !== 'undefined' && currentMode === 'music') return;
-
-  var syncFile = data.file;
-  var syncPos  = data.position || 0;
-
-  // Account for network latency (approximate)
-  var latencyMs = Date.now() - (data.timestamp || Date.now());
-  syncPos += Math.max(0, latencyMs) / 1000;
-
-  // If different file: switch to it and seek
-  if (syncFile !== currentFile) {
-    currentFile = syncFile;
-    audio.src = '/audio/' + encodeURIComponent(syncFile);
-    audio.load();
-    audio.currentTime = syncPos;
-    audio.play().then(function() { initAudioAnalyser(); }).catch(function() {});
-    return;
-  }
-
-  // Same file: only seek if drift exceeds tolerance
-  if (audio.readyState >= 2) {
-    var drift = Math.abs(audio.currentTime - syncPos);
-    if (drift > SYNC_TOLERANCE) {
-      audio.currentTime = syncPos;
-    }
-  }
+/* legacy handleSync removed — kept stub below for any in-flight WS
+   messages with type='sync' from older server builds. No-op. */
+function handleSync(_data) {
+  /* intentionally empty — see comment block above */
 }
 
 // ══════════════════════════════════════════════════════
@@ -4902,10 +4878,11 @@ function connectWS() {
       if (msg.type === 'agent_activity') {
         addAgentActivity(msg.data);
       }
-      // ── Shared listening sync ──
-      if (msg.type === 'sync') {
-        handleSync(msg.data);
-      }
+      // ── Shared listening sync ── REMOVED in kr#15 / ADR-0004 Phase 6.
+      // DJ mode now plays /stream (Icecast), which is inherently synced
+      // for all listeners — no per-client seek dance needed. Library tab
+      // playback (playFromLibrary / playQueueItem) still uses /audio
+      // because those are explicit user actions on private playback.
       // ── ORC fresh-stem notification — voice-DJ will mention this on
       //    air at the next talk segment; the toast lets visitors who
       //    aren't listening still see the constellation moving.
