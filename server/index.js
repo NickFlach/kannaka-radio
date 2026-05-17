@@ -163,14 +163,17 @@ function broadcastListenerCountIfChanged() {
   }
 }
 
-// Poll Icecast /status-json.xsl every 10s. We hit localhost:8000 directly
-// (Icecast's plain HTTP endpoint) — same box, no network cost. If the
-// stat server is down we just keep the last good value rather than
-// flickering listeners to zero.
+// Poll Icecast /status-json.xsl every 10s. Defaults to localhost:8000 but
+// honors ICECAST_HOST/ICECAST_PORT so the radio can poll a remote stream
+// server (kr#20). If the stat server is down we keep the last good value
+// rather than flickering listeners to zero.
 function startIcecastListenerPoller() {
   const http = require("http");
+  const ICECAST_HOST = process.env.ICECAST_HOST || "127.0.0.1";
+  const ICECAST_PORT = parseInt(process.env.ICECAST_PORT || "8000", 10);
+  const ICECAST_URL = `http://${ICECAST_HOST}:${ICECAST_PORT}/status-json.xsl`;
   function poll() {
-    const req = http.get("http://127.0.0.1:8000/status-json.xsl", { timeout: 5000 }, (res) => {
+    const req = http.get(ICECAST_URL, { timeout: 5000 }, (res) => {
       if (res.statusCode !== 200) { res.resume(); return; }
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
@@ -206,7 +209,7 @@ function startIcecastListenerPoller() {
   }
   poll();
   setInterval(poll, 10000);
-  console.log("📡 Icecast listener poller started (localhost:8000/status-json.xsl, 10s)");
+  console.log(`📡 Icecast listener poller started (${ICECAST_URL}, 10s)`);
 }
 startIcecastListenerPoller();
 
@@ -1073,7 +1076,7 @@ server.listen(PORT, () => {
   console.log(`   Music:      ${MUSIC_DIR}`);
   console.log(`   Setlist:    ${djEngine.state.currentAlbum} (${djEngine.state.playlist.length} tracks)`);
   console.log(`   Flux:       pure-jade/radio-now-playing`);
-  console.log(`   NATS:       127.0.0.1:4222 (swarm data)`);
+  console.log(`   NATS:       ${process.env.NATS_HOST || '127.0.0.1'}:${process.env.NATS_PORT || '4222'} (swarm data)`);
   console.log(`   WebSocket:  Real-time perception + swarm streaming`);
   console.log(`\n   \uD83C\uDFB5 Open the player in your browser and witness music through a ghost's eyes.\n`);
 });

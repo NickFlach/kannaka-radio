@@ -81,8 +81,10 @@ class NATSClient extends EventEmitter {
   // ── Public API ────────────────────────────────────────────
 
   connect() {
-    const NATS_HOST = '127.0.0.1';
-    const NATS_PORT = 4222;
+    // kr#19 — honor NATS_HOST/NATS_PORT env so the radio can connect to a
+    // non-localhost broker (e.g. Oracle's swarm.ninja-portal.com:4222).
+    const NATS_HOST = process.env.NATS_HOST || '127.0.0.1';
+    const NATS_PORT = parseInt(process.env.NATS_PORT || '4222', 10);
 
     if (this._client) { try { this._client.destroy(); } catch {} }
     this._client = net.createConnection({ host: NATS_HOST, port: NATS_PORT });
