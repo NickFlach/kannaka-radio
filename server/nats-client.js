@@ -131,6 +131,14 @@ class NATSClient extends EventEmitter {
     });
 
     this._client.on('close', () => {
+      // Only reconnect if the close was unintentional. A manual disconnect()
+      // sets _manualDisconnect=true beforehand; without this gate, calling
+      // disconnect() armed a reconnect timer and the client revived itself,
+      // making clean shutdowns impossible. (#21)
+      if (this._manualDisconnect) {
+        this._manualDisconnect = false;
+        return;
+      }
       console.log('[nats] Disconnected, reconnecting in 5s...');
       this._scheduleReconnect();
     });
@@ -146,6 +154,7 @@ class NATSClient extends EventEmitter {
   }
 
   disconnect() {
+    this._manualDisconnect = true;
     if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
     if (this._pruneInterval) clearInterval(this._pruneInterval);
     if (this._client) { try { this._client.destroy(); } catch {} }
@@ -259,10 +268,21 @@ class NATSClient extends EventEmitter {
 
     if (subject.startsWith('QUEEN.phase.')) {
       const agentId = subject.split('.')[2] || 'unknown';
+      // Reject out-of-order phase packets. Pre-fix a late-delivered older
+      // packet could move an agent backward and reset `lastSeen` to now,
+      // keeping stale gossip looking fresh. Use the publisher's ts (unix-ms)
+      // when present; fall back to receipt time. (#25)
+      const incomingTs = typeof data.ts === "number" ? data.ts : null;
+      const prev = this.swarmState.agents[agentId];
+      if (prev && incomingTs != null && typeof prev.publishedTs === "number" && incomingTs < prev.publishedTs) {
+        // older packet — keep what we have
+        return;
+      }
       this.swarmState.agents[agentId] = {
         phase: data.phase != null ? data.phase : data.theta || 0,
         displayName: data.display_name || data.displayName || agentId,
         lastSeen: now,
+        publishedTs: incomingTs != null ? incomingTs : now,
         ...data,
       };
       this.swarmState.queen.agentCount = Object.keys(this.swarmState.agents).length;

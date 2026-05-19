@@ -81,12 +81,18 @@ class PerceptionEngine {
     this._broadcastPerception(this.current);
     this.startPerceptionLoop();
 
-    // Async kannaka-ear call — non-blocking, updates perception when done
+    // Async kannaka-ear call — non-blocking, updates perception when done.
+    // Once real perception lands, _hasRealPerception locks the loop out
+    // of overwriting `current` with regenerated mock/resonance data for
+    // the rest of the track. Pre-fix the 2fps loop replaced the real
+    // analysis ~500ms later and every consumer downstream saw mock. (#22)
+    this._hasRealPerception = false;
     const filePath = path.join(this._getMusicDir(), track.file);
     execFile(this._kannakabin, ["hear", filePath], { timeout: 30000 }, (err, stdout) => {
       if (!err && stdout) {
         const perception = this._parsePerceptionOutput(stdout, track);
         this.current = perception;
+        this._hasRealPerception = perception && perception.source === "kannaka-ear";
         this._broadcastPerception(perception);
         console.log(`   \uD83D\uDC41 Perception: ${perception.tempo_bpm.toFixed(0)}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
       }
@@ -247,10 +253,15 @@ class PerceptionEngine {
     this._interval = setInterval(() => {
       // Only generate + send if someone is listening
       if (this._hasClients()) {
-        // Use HRM-blended perception when consciousness data is available
-        this.current = this._getConsciousness
-          ? this.resonancePerception(track)
-          : this.generateMockPerception(track);
+        // Once real kannaka-ear data has landed, the loop keeps re-broadcasting
+        // it (so the SPA stays animated) but never overwrites `current` with
+        // synthetic features. Pre-fix this regenerated mock/resonance every
+        // 500ms and clobbered the real analysis. (#22)
+        if (!this._hasRealPerception) {
+          this.current = this._getConsciousness
+            ? this.resonancePerception(track)
+            : this.generateMockPerception(track);
+        }
         this._broadcastPerception(this.current);
       }
     }, 500); // 2fps
