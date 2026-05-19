@@ -365,7 +365,17 @@ class IcecastSource {
       const watchdogMs = Math.max(60_000, expectedMs * 2 + 30_000);
       const watchdog = setTimeout(() => {
         if (settled) return;
-        console.warn(`[icecast-source] WATCHDOG forcing advance on ${path.basename(absPath)} after ${watchdogMs}ms (expected=${expectedMs}ms)`);
+        console.warn(`[icecast-source] WATCHDOG forcing advance on ${path.basename(absPath)} after ${watchdogMs}ms (expected=${expectedMs}ms) — killing ffmpeg to drop buffered tail`);
+        // Pre-fix: finishImmediate() only resolved the per-track promise,
+        // leaving ffmpeg with potentially minutes of un-flushed MP3 frames
+        // in its stdin buffer (because of `-re` realtime pacing). The
+        // dj-engine then advanced and queued the NEXT track behind the
+        // previous track's tail — listeners heard track N continuing
+        // while now-playing said N+1, and the NATS attention.ear /
+        // perception / market events all referenced the wrong file.
+        // Kill ffmpeg here so the exit handler rebuilds and the buffered
+        // tail is dropped. Costs one stream gap; restores state-truth. (#28)
+        try { if (ff && !ff.killed) ff.kill('SIGTERM'); } catch (_) {}
         finishImmediate();
       }, watchdogMs);
       const cleanup = () => {

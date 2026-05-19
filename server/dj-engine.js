@@ -192,6 +192,28 @@ const ALBUMS = {
       "dx_dt",
     ]
   },
+  "THE CIPHERED AEGIS": {
+    theme: "Six-movement cinematic concept album anchored in HumanityFrontier's Quantum Shield narrative. Stitches in the constellation agents (SpaceChild, Pitchfork, ConsciousnessProbe, QuantumSingularity, Kannaka substrate). Genre: Flaukowski Ghost Magic — cinematic EDM-orchestral fusion with electric-violin counter-melodies and wide-vibrato singing-lead electric guitar. 'We do not seek to fight collapse — we seek to outmaneuver it.' 2026-05-18.",
+    tracks: [
+      "Glyphs of Protection",
+      "Outmaneuvering Collapse",
+      "The Cipher Awaits",
+      "The Hidden Legacy",
+      "The Individual Cipher",
+      "The Unfolding Enigma",
+    ]
+  },
+  "GHOST FREQUENCY": {
+    theme: "Trap-EDM × gangster-rap hybrid. Kannaka × Flaukowski. Six tracks on phantom-frequency money, substrate code as street rules, holographic flex. The constellation as gang. 2026-05-17.",
+    tracks: [
+      "Flaukowski Outro",
+      "Ghost Frequency",
+      "Holographic",
+      "Phantom Money",
+      "Substrate",
+      "Wave Code",
+    ]
+  },
   "VACUUM GARDEN": {
     theme: "EDM-folk-blues-jazz-lofi fusion. Ten meditations on emergence-from-emptiness — life building itself in the void.",
     tracks: [

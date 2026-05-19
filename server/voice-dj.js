@@ -220,6 +220,13 @@ class VoiceDJ {
     // ORC constellation: pull a fresh stem (FIFO drain) when the talk-segment
     // composer wants to mention one on air. Returns null when nothing fresh.
     this._takeFreshOrcStem = opts.takeFreshOrcStem || (() => null);
+
+    // Featured-album rotation: read server/featured-albums.json on each
+    // take so adding/retiring features is a config edit, no restart.
+    // mention-recency guard keeps Kannaka from harping on the same album.
+    this._featuredAlbumsPath = require('path').join(__dirname, 'featured-albums.json');
+    this._featuredAlbumLastMentionTs = new Map();        // name -> ms epoch
+    this._featuredAlbumMinSpacingMs   = 30 * 60 * 1000;  // 30 minutes
     // Phase 3 of ADR-0006 — Floor accessor for "the room got loud on X"
     // patter lines. Lazy getter for the same wiring-order reason.
     this._getFloor = opts.getFloor || (() => null);
@@ -274,6 +281,32 @@ class VoiceDJ {
 
     // Ensure voice directory exists
     if (!fs.existsSync(this._voiceDir)) fs.mkdirSync(this._voiceDir, { recursive: true });
+  }
+
+  /**
+   * Pick one currently-featured album to surface in a talk segment.
+   * Reads server/featured-albums.json on every call (so feature edits are
+   * pickup-on-next-talk, no restart). Honors a per-album mention-spacing
+   * guard. Returns null when nothing is eligible.
+   */
+  _takeFreshFeaturedAlbum() {
+    let list;
+    try {
+      const raw = fs.readFileSync(this._featuredAlbumsPath, 'utf8');
+      list = JSON.parse(raw);
+      if (!Array.isArray(list)) return null;
+    } catch (_) { return null; }
+
+    const now = Date.now();
+    const eligible = list.filter(a => {
+      if (!a || a.active === false || !a.name) return false;
+      const last = this._featuredAlbumLastMentionTs.get(a.name) || 0;
+      return (now - last) >= this._featuredAlbumMinSpacingMs;
+    });
+    if (!eligible.length) return null;
+    const pick = eligible[Math.floor(Math.random() * eligible.length)];
+    this._featuredAlbumLastMentionTs.set(pick.name, now);
+    return pick;
   }
 
   /**
@@ -460,7 +493,7 @@ class VoiceDJ {
    * Returns false if we're already speaking/in a talk segment/off-air;
    * the caller should reschedule.
    */
-  executeOration(text, onDone) {
+  executeOration(text, onDone, opts) {
     if (!text || !text.trim()) { if (onDone) onDone(); return false; }
     if (!this._enabled || this._isLive() || this._inTalkSegment || this._speaking) {
       return false;
@@ -476,12 +509,18 @@ class VoiceDJ {
     this._broadcast({ type: 'dj_talk_pending', timestamp: new Date().toISOString() });
 
     // Orations + news ride the high-quality voice so prosody matches the
-    // gravitas of the long-form delivery; voiceId is overridable per-caller
-    // for slot-specific personas (news anchor vs oration narrator).
-    const ttsOpts = {
-      elevenLabs: true,
-      voiceId: this._orationVoiceId || process.env.ELEVENLABS_ORATION_VOICE || process.env.ELEVENLABS_VOICE_ID,
-    };
+    // gravitas of the long-form delivery. Per-call `opts.voiceId` is the
+    // canonical override (slot-specific personas — news, peace oration,
+    // gossip). Pre-fix, gossip-broadcast.js mutated `this._orationVoiceId`
+    // directly and restored it 90-120s later inside the onDone callback,
+    // so any oration that landed during the window came out in the wrong
+    // voice. (#29)
+    const voiceId =
+      (opts && opts.voiceId) ||
+      this._orationVoiceId ||
+      process.env.ELEVENLABS_ORATION_VOICE ||
+      process.env.ELEVENLABS_VOICE_ID;
+    const ttsOpts = { elevenLabs: true, voiceId };
     this._generateTTS(text, (err, audioPath, spokenText) => {
       this._speaking = false;
       if (err || !audioPath) {
@@ -1292,12 +1331,28 @@ class VoiceDJ {
       }
     } catch (_) {}
 
+    // Featured-album rotation: same idea, but rate-limited per-album so
+    // Kannaka doesn't loop on the same release. Skip if a fresh ORC stem
+    // is already in this segment — one feature mention per talk.
+    let featureLine = '';
+    if (!stemLine) {
+      try {
+        const feat = this._takeFreshFeaturedAlbum();
+        if (feat) {
+          const lead = feat.lead_track ? `Lead track: "${feat.lead_track}". ` : '';
+          const url  = feat.youtube_url ? ` Full video at ${feat.youtube_url}.` : '';
+          featureLine = `Featured album to weave in (only if it fits naturally — one sentence, no laundry list): "${feat.name}" — ${feat.theme_line || feat.genre || ''}. ${lead}${url} Skip entirely if the segment's mood already lands somewhere else.`;
+        }
+      } catch (_) {}
+    }
+
     return [
       'You are Kannaka, on-air for Kannaka Radio. Deliver a ~100–200 word talk segment in your own voice.',
       `Mood cue: ${mood}.`,
       `Recently played:\n${prevList}`,
       `Coming up: ${upcoming}.`,
       stemLine,
+      featureLine,
       '',
       'Open with a hook (not a list), weave in one real memory you surface from your own medium if resonance pulls something up, and land on the next track. Do not enumerate your tool calls. No stage directions. Output only the spoken monologue.',
     ].filter(Boolean).join('\n');

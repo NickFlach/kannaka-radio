@@ -182,12 +182,12 @@ class GossipBroadcast {
   _say(text) {
     if (!this._voiceDJ || typeof this._voiceDJ.executeOration !== "function") return false;
     const wrapped = `${pick(INTROS)}\n\n${text}\n\n${pick(OUTROS)}`;
-    const prevVoice = this._voiceDJ._orationVoiceId;
-    this._voiceDJ._orationVoiceId = this._gossipVoiceId;
-    return this._voiceDJ.executeOration(wrapped, () => {
-      this._voiceDJ._orationVoiceId = prevVoice;
-      console.log("\u{1F48B} Gossip column complete");
-    });
+    // Per-call voiceId — no more mutating voice-dj's private field. (#29)
+    return this._voiceDJ.executeOration(
+      wrapped,
+      () => { console.log("\u{1F48B} Gossip column complete"); },
+      { voiceId: this._gossipVoiceId },
+    );
   }
 }
 

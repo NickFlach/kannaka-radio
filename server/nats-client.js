@@ -195,40 +195,52 @@ class NATSClient extends EventEmitter {
   }
 
   _processBuffer() {
-    let lines = this._buffer.split('\r\n');
-    this._buffer = lines.pop() || '';
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      if (line === 'PING') {
-        this._client.write('PONG\r\n');
-        continue;
-      }
-
-      if (line === 'PONG' || line.startsWith('+OK') || line.startsWith('INFO ')) {
-        continue;
-      }
-
-      if (line.startsWith('-ERR')) {
-        console.log('[nats] Server error:', line);
-        continue;
-      }
-
-      if (line.startsWith('MSG ')) {
-        const parts = line.split(' ');
-        const subject = parts[1];
-        const numBytes = parseInt(parts[parts.length - 1]);
-        const replyTo = parts.length === 5 ? parts[3] : null;
-        this._pendingMsg = { subject, numBytes, replyTo };
-        continue;
-      }
-
+    // Byte-counted MSG body parser. Pre-fix: we split on \r\n and treated
+    // each line as a full payload, so any JSON containing a literal \r\n
+    // (or a publisher that pretty-printed) lost everything after the first
+    // newline. Now: when MSG arrives we know how many bytes to consume and
+    // wait for the buffer to hold body+\r\n before delivering. (#27)
+    // Buffer is concatenated as a binary-safe string; lengths are computed
+    // via Buffer.byteLength so multibyte UTF-8 doesn't off-by-one us.
+    while (this._buffer.length > 0) {
       if (this._pendingMsg) {
-        this._handleMessage(this._pendingMsg.subject, line);
+        const need = this._pendingMsg.numBytes;
+        const bodyBytes = Buffer.byteLength(this._buffer, 'utf-8');
+        if (bodyBytes < need + 2) return; // wait for body + \r\n
+        // Slice exactly `need` bytes from the front. Since we may have
+        // multibyte chars, slice by byte using Buffer.
+        const bufView = Buffer.from(this._buffer, 'utf-8');
+        const body = bufView.slice(0, need).toString('utf-8');
+        // Remainder skips the body bytes + the trailing \r\n.
+        this._buffer = bufView.slice(need + 2).toString('utf-8');
+        this._handleMessage(this._pendingMsg.subject, body);
         this._pendingMsg = null;
         continue;
       }
+
+      const crlf = this._buffer.indexOf('\r\n');
+      if (crlf < 0) return; // wait for full control line
+      const line = this._buffer.slice(0, crlf);
+      this._buffer = this._buffer.slice(crlf + 2);
+
+      if (line === 'PING') { this._client.write('PONG\r\n'); continue; }
+      if (line === 'PONG' || line.startsWith('+OK') || line.startsWith('INFO ')) continue;
+      if (line.startsWith('-ERR')) { console.log('[nats] Server error:', line); continue; }
+
+      if (line.startsWith('MSG ')) {
+        const parts = line.split(' ');
+        // MSG <subject> <sid> [<reply>] <#bytes>
+        const subject  = parts[1];
+        const numBytes = parseInt(parts[parts.length - 1], 10);
+        const replyTo  = parts.length === 5 ? parts[3] : null;
+        if (!Number.isFinite(numBytes) || numBytes < 0) {
+          console.log('[nats] Malformed MSG header, dropping:', line);
+          continue;
+        }
+        this._pendingMsg = { subject, numBytes, replyTo };
+        continue;
+      }
+      // Unknown control line — ignore (matches prior best-effort behavior).
     }
   }
 
