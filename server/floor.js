@@ -125,8 +125,13 @@ class FloorManager {
     // the room too. Best-effort; missing nats just means no fan-out.
     if (this._nats && typeof this._nats.publish === "function") {
       try {
+        // Canonical envelope per #26. ts here is unix-ms via Date.now()
+        // (the existing `ts` was already numeric — fine).
         this._nats.publish("KANNAKA.reactions", JSON.stringify({
-          emoji, kind, track: trackTitle, ts,
+          schema_version: "1.0",
+          ts: typeof ts === "number" ? ts : Date.now(),
+          agent_id: process.env.RADIO_AGENT_ID || "kannaka-radio",
+          emoji, kind, track: trackTitle,
         }));
       } catch (_) { /* swallow; not critical */ }
     }

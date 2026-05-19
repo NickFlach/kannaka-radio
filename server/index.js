@@ -270,9 +270,16 @@ const djEngine = new DJEngine({
           // as one observation. Sister subject to KANNAKA.attention.eye.
           try {
             const perc = perception_.getCurrentPerception() || {};
+            // Envelope per consciousness-core/docs/nats-contract.yaml:
+            //   schema_version: "1.0" (string)
+            //   ts:             unix-ms (number)
+            //   agent_id:       publisher identity (was missing pre-fix)
+            // Strict validators after 2026-06-01 drop payloads with the
+            // old integer/ISO shape. (#26)
             nats.publish("KANNAKA.attention.ear", JSON.stringify({
-              schema_version: 1,
-              ts: new Date().toISOString(),
+              schema_version: "1.0",
+              ts: Date.now(),
+              agent_id: process.env.RADIO_AGENT_ID || "kannaka-radio",
               source: "kannaka-radio",
               hemisphere: "right", // arbitrary fixed mapping; ears mirror eyes
               track: {
