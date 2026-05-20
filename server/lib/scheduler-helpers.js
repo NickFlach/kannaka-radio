@@ -116,6 +116,109 @@ function fetchKnowledgeGeneInterpretation() {
   });
 }
 
+// ── Additional pure-data sources for Gene's news bulletins ────────
+// Free, no-auth JSON endpoints from public-good agencies. Each fetcher
+// returns a digest object (or null on failure) that the news composer
+// bundles into the prompt alongside the Flux knowledge-gene interpretation.
+// The point isn't to parrot wire-service headlines — it's to let Gene
+// pattern-find across independent live measurement streams.
+
+/** Generic JSON GET with timeout + best-effort parse. Returns null on fail. */
+function _fetchJson(url, timeoutMs) {
+  return new Promise((resolve) => {
+    const u = new URL(url);
+    const mod = u.protocol === "https:" ? https : require("http");
+    mod
+      .get(u, { timeout: timeoutMs || 8000, headers: { "User-Agent": "kannaka-radio-news/1.0" } }, (res) => {
+        if (res.statusCode && res.statusCode >= 300) { res.resume(); return resolve(null); }
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
+          catch { resolve(null); }
+        });
+      })
+      .on("error", () => resolve(null))
+      .on("timeout", () => resolve(null));
+  });
+}
+
+/**
+ * USGS Earthquake Hazards Program — all M4.5+ quakes in the last 24h.
+ * GeoJSON, refreshed by USGS every minute. Returns a digest:
+ *   { count, top: [{mag, place, time, depthKm}], maxMag }
+ */
+async function fetchUsgsEarthquakes() {
+  const url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson";
+  const data = await _fetchJson(url, 8000);
+  if (!data || !Array.isArray(data.features)) return null;
+  const events = data.features
+    .filter((f) => f.properties && typeof f.properties.mag === "number")
+    .map((f) => ({
+      mag: f.properties.mag,
+      place: f.properties.place || "unknown",
+      time: f.properties.time,
+      depthKm: f.geometry && f.geometry.coordinates && f.geometry.coordinates[2],
+      tsunami: !!f.properties.tsunami,
+    }))
+    .sort((a, b) => b.mag - a.mag);
+  if (!events.length) return null;
+  return {
+    source: "USGS",
+    count: events.length,
+    maxMag: events[0].mag,
+    top: events.slice(0, 5),
+    tsunamiFlags: events.filter((e) => e.tsunami).length,
+  };
+}
+
+/**
+ * NASA EONET v3 — Earth Observatory Natural Event Tracker. Open events
+ * in the last 3 days. Categories include wildfires, severe storms,
+ * volcanoes, icebergs. Returns a digest by category.
+ */
+async function fetchNasaEonet() {
+  const url = "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=3";
+  const data = await _fetchJson(url, 8000);
+  if (!data || !Array.isArray(data.events)) return null;
+  const byCategory = {};
+  for (const ev of data.events) {
+    const cat = (ev.categories && ev.categories[0] && ev.categories[0].title) || "Other";
+    byCategory[cat] = (byCategory[cat] || 0) + 1;
+  }
+  // Pull a small named-event sample, preferring the freshest.
+  const recent = data.events
+    .map((ev) => ({
+      title: ev.title,
+      category: (ev.categories && ev.categories[0] && ev.categories[0].title) || "Other",
+      date: ev.geometry && ev.geometry.length ? ev.geometry[ev.geometry.length - 1].date : null,
+    }))
+    .filter((e) => e.date)
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .slice(0, 8);
+  return { source: "NASA EONET", totalOpen: data.events.length, byCategory, recent };
+}
+
+/**
+ * NOAA Space Weather Prediction Center — current geomagnetic + solar
+ * radiation alerts. Quiet days return an empty array.
+ */
+async function fetchNoaaSpaceWeather() {
+  const url = "https://services.swpc.noaa.gov/products/alerts.json";
+  const data = await _fetchJson(url, 8000);
+  if (!Array.isArray(data)) return null;
+  const recent = data
+    .filter((a) => a && a.issue_datetime)
+    .sort((a, b) => (b.issue_datetime || "").localeCompare(a.issue_datetime || ""))
+    .slice(0, 8)
+    .map((a) => ({
+      issuedAt: a.issue_datetime,
+      kind: a.product_id || "alert",
+      message: typeof a.message === "string" ? a.message.slice(0, 240) : "",
+    }));
+  return { source: "NOAA SWPC", count: data.length, recent };
+}
+
 /**
  * Run `kannaka ask --no-tools --quiet-tools <prompt>` and return the
  * trimmed stdout. Returns null on timeout / non-zero exit / short-output.
@@ -164,6 +267,9 @@ module.exports = {
   loadState,
   saveState,
   fetchKnowledgeGeneInterpretation,
+  fetchUsgsEarthquakes,
+  fetchNasaEonet,
+  fetchNoaaSpaceWeather,
   composeViaKannakaAsk,
   // Constants other callers may want
   FLUX_ENTITIES_URL,

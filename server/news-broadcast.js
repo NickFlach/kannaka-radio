@@ -25,6 +25,9 @@ const {
   loadState,
   saveState,
   fetchKnowledgeGeneInterpretation,
+  fetchUsgsEarthquakes,
+  fetchNasaEonet,
+  fetchNoaaSpaceWeather,
   composeViaKannakaAsk,
 } = require("./lib/scheduler-helpers");
 
@@ -252,31 +255,79 @@ class NewsBroadcast {
   }
 
   // ── Compose ───────────────────────────────────────────────
-  _compose(interp) {
+  async _compose(interp) {
     const framing = pick(FRAMINGS);
     const themesLine = interp.themes && interp.themes.length
-      ? `Themes the analysis surfaced: ${interp.themes.join(", ")}.`
+      ? `Themes the Flux analysis surfaced: ${interp.themes.join(", ")}.`
       : "";
+
+    // Supplemental pure-data streams. These are RAW measurements from
+    // public-good agencies — quakes, natural-event tracking, space weather.
+    // Gene is told to pattern-find ACROSS them and the Flux interpretation,
+    // not parrot each one. All fetches run in parallel with hard timeouts;
+    // any one (or all) can return null and Gene still gets the Flux baseline.
+    const [usgs, eonet, swpc] = await Promise.all([
+      fetchUsgsEarthquakes().catch(() => null),
+      fetchNasaEonet().catch(() => null),
+      fetchNoaaSpaceWeather().catch(() => null),
+    ]);
+
+    const supplemental = [];
+    if (usgs) {
+      const topLines = usgs.top.map(
+        (e) => `    M${e.mag.toFixed(1)} — ${e.place} (depth ${e.depthKm || "?"} km)`,
+      ).join("\n");
+      supplemental.push(
+        `USGS earthquakes (last 24h, M4.5+): ${usgs.count} events, max M${usgs.maxMag.toFixed(1)}`
+          + (usgs.tsunamiFlags ? `, tsunami flags: ${usgs.tsunamiFlags}` : "")
+          + `\n${topLines}`,
+      );
+    }
+    if (eonet) {
+      const catLines = Object.entries(eonet.byCategory)
+        .sort((a, b) => b[1] - a[1])
+        .map(([cat, n]) => `    ${cat}: ${n}`)
+        .join("\n");
+      const recentLines = eonet.recent.slice(0, 4)
+        .map((e) => `    ${e.category}: ${e.title}`)
+        .join("\n");
+      supplemental.push(
+        `NASA EONET open natural events (last 3 days, ${eonet.totalOpen} active):\n${catLines}\n  Recent named events:\n${recentLines}`,
+      );
+    }
+    if (swpc && swpc.recent.length) {
+      const swpcLines = swpc.recent.slice(0, 4)
+        .map((a) => `    [${a.kind}] ${a.message.slice(0, 160)}`)
+        .join("\n");
+      supplemental.push(`NOAA Space Weather alerts (most recent ${swpc.recent.length}):\n${swpcLines}`);
+    }
+    const supplementalBlock = supplemental.length
+      ? "\n\nINDEPENDENT DATA STREAMS — synthesize patterns across these and the Flux interpretation above. Don't just list them.\n\n" + supplemental.join("\n\n")
+      : "";
+
     const prompt = [
       "You are Gene, the news anchor on Kannaka Radio, delivering a two-minute world-state bulletin.",
       "Do not refer to yourself as Kannaka. Kannaka is the station; you are the human-voiced anchor reading the data.",
-      "You are NOT speculating — you are READING from the world's data, summarized below by an interpretation engine over the live Flux signal feed.",
+      "You are NOT speculating and you are NOT parroting wire-service headlines. You are READING from independent public-good measurement streams — Flux Universe's signal interpretation, plus USGS seismic data, NASA's natural-event tracker, and NOAA space-weather alerts. Pattern-find across them.",
       "",
-      "Here is the raw interpretation. Convert it into a spoken news segment of 90 to 150 seconds (about 250-350 words). Plain English. News-anchor cadence. Specific over abstract.",
+      "Here is the raw data. Convert it into a spoken news segment of 90 to 150 seconds (about 250-350 words). Plain English. News-anchor cadence. Specific over abstract.",
       "",
-      "RAW INTERPRETATION:",
+      "FLUX UNIVERSE INTERPRETATION (primary):",
       interp.text,
       "",
       themesLine,
+      supplementalBlock,
       "",
       `Framing for this delivery: ${framing}`,
       "",
       "Rules:",
       "  - Don't read symbol IDs (\u03A6_0229, s_0190) on air — translate them into what they represent.",
       "  - Don't list every number; pick the two or three that matter and let them carry the story.",
-      "  - It's okay to say 'we don't know yet' when the data is genuinely ambiguous (e.g., the unknown signal cluster).",
+      "  - It's okay to say 'we don't know yet' when the data is genuinely ambiguous.",
+      "  - Look for ECHOES across the streams — a Flux-flagged anomaly that lines up with a quake swarm, a space-weather event correlating with the integrity signal, etc. That's the news.",
       "  - Close on what to watch next. Don't editorialize beyond the data.",
-      "  - Cite the source ONCE in the bulletin — say something like 'reading from the Flux Universe knowledge-gene feed' or 'the Flux Universe signal layer'. The citation can land in the open or in the close. Listeners need to know where the read came from.",
+      "  - Cite at least two of your sources by name in the bulletin (e.g., 'the Flux Universe signal layer', 'the USGS feed', 'NASA's natural-event tracker', 'NOAA space weather'). Listeners need to know where the read came from.",
+      "  - This is YOUR pattern report, not someone else's headline. The data is real; the synthesis is yours.",
       "",
       "Output ONLY the spoken bulletin — no headings, no quotes, no stage directions, no track titles.",
     ].join("\n");
