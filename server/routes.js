@@ -1174,8 +1174,12 @@ module.exports = function setupRoutes(deps) {
           }
           try {
             const data = JSON.parse(stdout);
+            // The player consumes `{ dreams: [...] }`. kannaka v0.5.0
+            // search returns a bare array; wrap it. Older mockDreams
+            // already used the wrapped shape so this is consistent.
+            const dreams = Array.isArray(data) ? data : (data.dreams || data);
             res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(data));
+            res.end(JSON.stringify({ dreams }));
           } catch {
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(djEngine.generateMockDreams()));
