@@ -77,7 +77,7 @@ MATCHES=${MATCHES:-0}
 echo "$LOG_TAG dry-run says $MATCHES match(es)"
 
 # Skip the service cycle if there's nothing to prune.
-if [ "$MATCHES" -lt 50 ]; then
+if [ "$MATCHES" -lt 200 ]; then
     echo "$LOG_TAG below threshold, no action"
     exit 0
 fi
