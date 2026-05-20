@@ -1150,9 +1150,21 @@ module.exports = function setupRoutes(deps) {
 
     // ── Dreams API ──────────────────────────────────────────
 
-    // GET /api/dreams
+    // GET /api/dreams — surface recent audio-related memories from the HRM.
+    //
+    // Pre-fix this called `kannaka recall --tag audio --limit 20 --format json`
+    // which hung forever: `recall` requires a positional query, `--tag` and
+    // `--format` are not flags it knows, and with no query the parser waits
+    // on stdin. The 15s execFile timeout never fired before nginx's own
+    // upstream timeout closed the socket, so /api/dreams just appeared dead
+    // from the player page and blocked the player's init fetch chain.
+    //
+    // Use real `kannaka search` (literal, fast, read-only — added in
+    // kannaka-memory v0.5.0) against an audio-themed query and pull the
+    // top hits. Fall through to mockDreams on any failure so the player
+    // page always gets a response.
     if (parsed.pathname === "/api/dreams") {
-      execFile(config.kannakabin, ["recall", "--tag", "audio", "--limit", "20", "--format", "json"],
+      execFile(config.kannakabin, ["search", "audio perception dream", "--limit", "20", "--json"],
         { timeout: 15000 }, (err, stdout) => {
           if (err || !stdout) {
             const mockDreams = djEngine.generateMockDreams();
