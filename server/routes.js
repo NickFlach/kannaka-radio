@@ -385,7 +385,10 @@ module.exports = function setupRoutes(deps) {
         title: t.title || null,
         album: t.album || djEngine.state.currentAlbum || null,
         track: t.file || null,
-        startedAt: djEngine.state.trackStartTime || null,
+        // Engine writes `trackStartedAt` (see dj-engine.js advanceTrack);
+        // route previously read `trackStartTime` (never written) and
+        // always returned null. (#31)
+        startedAt: djEngine.state.trackStartedAt || null,
       }));
       return;
     }

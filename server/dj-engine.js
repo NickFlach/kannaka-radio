@@ -1186,7 +1186,14 @@ class DJEngine {
   }
 
   jumpToTrack(idx) {
-    this.state.currentTrackIdx = Math.max(0, Math.min(idx - 1, this.state.playlist.length - 1));
+    // /api/jump?idx=N sends 0-based playlist positions. Pre-fix this set
+    // currentTrackIdx = idx-1 then advanceTrack() incremented to idx —
+    // so jumpToTrack(0) ended up playing playlist[1] and the first track
+    // was unreachable. (#32)
+    const target = Math.max(0, Math.min(idx, this.state.playlist.length - 1));
+    // advanceTrack() reads currentTrackIdx+1 next, so target-1 makes it
+    // resolve to `target` exactly. -1 is fine for "play 0 next".
+    this.state.currentTrackIdx = target - 1;
     return this.advanceTrack();
   }
 

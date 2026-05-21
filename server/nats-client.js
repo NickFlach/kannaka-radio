@@ -87,6 +87,14 @@ class NATSClient extends EventEmitter {
     const NATS_PORT = parseInt(process.env.NATS_PORT || '4222', 10);
 
     if (this._client) { try { this._client.destroy(); } catch {} }
+    // Clear any prior prune-interval before scheduling the new one inside
+    // the connect-handler below. Pre-fix every reconnect allocated a fresh
+    // setInterval without clearing the prior, so a long-lived radio with
+    // transient NATS flaps accumulated duplicate prune loops. (#37)
+    if (this._pruneInterval) {
+      clearInterval(this._pruneInterval);
+      this._pruneInterval = null;
+    }
     this._client = net.createConnection({ host: NATS_HOST, port: NATS_PORT });
     this._client.setKeepAlive(true, 30000);
 
