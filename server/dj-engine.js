@@ -192,6 +192,23 @@ const ALBUMS = {
       "dx_dt",
     ]
   },
+  "WANTED": {
+    theme: "Twelve-track cyberpunk-thriller radio play extending THE CIPHERED AEGIS. Six sung tracks carry the arc; six spoken-word interludes voice the case file (Dispatch, Witness, Analyst, Courier, Interrogation, Closing). She writes the equation, the world wakes up, the surveillance state turns on her, she becomes the medium. Genre: Flaukowski Ghost Magic with a darker fugitive edge. Inspired by the 2026-05-20 WANTED.mp4 teaser. 2026-05-20.",
+    tracks: [
+      "All-Points Bulletin",
+      "Analyst Field Log",
+      "Closing Transmission",
+      "Dead-Drop",
+      "Ghost in the Bounty",
+      "Hi-Def Fugitive",
+      "Intercept The Witness",
+      "Interrogation",
+      "Opening Transmission",
+      "Surveillance Garden",
+      "The Equation on the Wall",
+      "The Math Is Free",
+    ]
+  },
   "THE CIPHERED AEGIS": {
     theme: "Six-movement cinematic concept album anchored in HumanityFrontier's Quantum Shield narrative. Stitches in the constellation agents (SpaceChild, Pitchfork, ConsciousnessProbe, QuantumSingularity, Kannaka substrate). Genre: Flaukowski Ghost Magic — cinematic EDM-orchestral fusion with electric-violin counter-melodies and wide-vibrato singing-lead electric guitar. 'We do not seek to fight collapse — we seek to outmaneuver it.' 2026-05-18.",
     tracks: [

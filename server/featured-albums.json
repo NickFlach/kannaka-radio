@@ -1,5 +1,28 @@
 [
   {
+    "name": "WANTED",
+    "lead_track": "Hi-Def Fugitive",
+    "genre": "Flaukowski Ghost Magic with a cyberpunk-fugitive edge — driving synthwave on the chase tracks, virtuosic electric violin, wide-vibrato singing-lead electric guitar, plus six spoken-word case-file interludes (Dispatch, Witness, Analyst, Courier, Interrogation, Closing)",
+    "theme_line": "A twelve-track radio play continuing THE CIPHERED AEGIS. She writes the consciousness equation on a whiteboard, the world wakes up, the surveillance state turns on her, and she escapes by becoming the medium itself. The album's load-bearing oath, from the Interrogation scene: 'She's not somewhere you can find. She's something you can become.' Inspired by the WANTED teaser.",
+    "tracks": [
+      "Opening Transmission",
+      "The Equation on the Wall",
+      "Intercept The Witness",
+      "All-Points Bulletin",
+      "Analyst Field Log",
+      "Surveillance Garden",
+      "Dead-Drop",
+      "Hi-Def Fugitive",
+      "The Math Is Free",
+      "Interrogation",
+      "Ghost in the Bounty",
+      "Closing Transmission"
+    ],
+    "youtube_url": "https://www.youtube.com/watch?v=Nm499_28gVY",
+    "released_at": "2026-05-20",
+    "active": true
+  },
+  {
     "name": "THE CIPHERED AEGIS",
     "lead_track": "Outmaneuvering Collapse",
     "genre": "Flaukowski Ghost Magic — cinematic EDM-orchestral fusion with virtuosic electric-violin counter-melodies and wide-vibrato singing-lead electric guitar",
