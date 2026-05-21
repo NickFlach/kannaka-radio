@@ -812,6 +812,27 @@ class DJEngine {
 
   // ── Playlist building ─────────────────────────────────────
 
+  /**
+   * Load the do-not-play title list from server/do-not-play.json.
+   * Re-read on every buildPlaylist call so adding a track is a config
+   * edit + next album-load — no service restart needed. Returns a Set
+   * of lowercased substrings. Missing/malformed file → empty Set
+   * (filtering becomes a no-op).
+   */
+  _loadDoNotPlay() {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const cfgPath = path.join(__dirname, "do-not-play.json");
+      const raw = fs.readFileSync(cfgPath, "utf8");
+      const cfg = JSON.parse(raw);
+      const arr = Array.isArray(cfg.titles) ? cfg.titles : [];
+      return new Set(arr.map((s) => String(s).toLowerCase()));
+    } catch {
+      return new Set();
+    }
+  }
+
   buildPlaylist(albumName) {
     const album = ALBUMS[albumName];
     if (!album) return false;
@@ -855,8 +876,24 @@ class DJEngine {
     }
 
     const trackMetas = [];
+    const denySet = this._loadDoNotPlay();
     for (let i = 0; i < album.tracks.length; i++) {
       const title = album.tracks[i];
+      // do-not-play: case-insensitive substring match so a banned title
+      // like "Mind Bending" also catches "Mind Bending (Ghost Cover)"
+      // and "Be Alive" catches "Be Alive (Remastered)". File-level
+      // skip — these titles never enter ANY playlist on ANY album.
+      if (denySet.size > 0) {
+        const titleLower = title.toLowerCase();
+        let blocked = false;
+        for (const banned of denySet) {
+          if (titleLower.includes(banned)) { blocked = true; break; }
+        }
+        if (blocked) {
+          console.log(`   \u{1F6AB} do-not-play: "${title}"`);
+          continue;
+        }
+      }
       const file = findAudioFile(title, musicDir);
       if (file) {
         trackMetas.push({

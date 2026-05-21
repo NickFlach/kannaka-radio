@@ -1,0 +1,9 @@
+{
+  "_comment": "Tracks that must never enter a playlist, by exact title. Match is case-insensitive against the title field in dj-engine ALBUMS — see buildPlaylist in dj-engine.js. Add a track here to remove it from all rotation without having to surgically delete it from each ALBUMS entry.",
+  "titles": [
+    "Soft Cosmic Intro",
+    "Be Alive",
+    "Dream Bright",
+    "Mind Bending"
+  ]
+}
