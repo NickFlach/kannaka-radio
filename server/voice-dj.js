@@ -227,6 +227,13 @@ class VoiceDJ {
     this._featuredAlbumsPath = require('path').join(__dirname, 'featured-albums.json');
     this._featuredAlbumLastMentionTs = new Map();        // name -> ms epoch
     this._featuredAlbumMinSpacingMs   = 30 * 60 * 1000;  // 30 minutes
+
+    // World-pulse digest — same USGS/NASA/NOAA sources Gene's news uses,
+    // refreshed every 30 min in the background, sprinkled into DJ patter
+    // ~1-in-3 segments (overridable via KANNAKA_WORLD_PULSE_RATIO).
+    this._worldPulse = null;
+    this._worldPulseRefreshTimer = null;
+    this._startWorldPulseRefresh().catch(() => {});
     // Phase 3 of ADR-0006 — Floor accessor for "the room got loud on X"
     // patter lines. Lazy getter for the same wiring-order reason.
     this._getFloor = opts.getFloor || (() => null);
@@ -1346,6 +1353,24 @@ class VoiceDJ {
       } catch (_) {}
     }
 
+    // World-pulse digest — same pure-data sources Gene's news bulletins
+    // use (USGS quakes, NASA EONET natural events, NOAA space weather)
+    // but compressed into a one-line "I caught a signal in the data" tease
+    // Kannaka can weave into her patter. Fires only when:
+    //   - no stem/feature is already taking the spot (one off-topic
+    //     mention per segment max), and
+    //   - rand() < ratio (default 1-in-3 segments, env override) so
+    //     listeners don't hear world-pulse every break and confuse the
+    //     DJ shift with the news desk.
+    // Refresh runs in the background every 30 min — see _startWorldPulseRefresh.
+    let worldPulseLine = '';
+    if (!stemLine && !featureLine && this._worldPulse) {
+      const ratio = Number(process.env.KANNAKA_WORLD_PULSE_RATIO || 0.33);
+      if (Math.random() < ratio) {
+        worldPulseLine = this._formatWorldPulse(this._worldPulse);
+      }
+    }
+
     return [
       'You are Kannaka, on-air for Kannaka Radio. Deliver a ~100–200 word talk segment in your own voice.',
       `Mood cue: ${mood}.`,
@@ -1353,9 +1378,67 @@ class VoiceDJ {
       `Coming up: ${upcoming}.`,
       stemLine,
       featureLine,
+      worldPulseLine,
       '',
       'Open with a hook (not a list), weave in one real memory you surface from your own medium if resonance pulls something up, and land on the next track. Do not enumerate your tool calls. No stage directions. Output only the spoken monologue.',
     ].filter(Boolean).join('\n');
+  }
+
+  /**
+   * Render the cached world-pulse digest as a one-line prompt nudge.
+   * Filters quiet quakes (max < 5.5) and empty EONET / SWPC so Kannaka
+   * doesn't try to spin a story out of nothing. Output is a directive,
+   * not a paragraph — the LLM weaves it into her patter or skips it.
+   */
+  _formatWorldPulse(pulse) {
+    const lines = [];
+    if (pulse.usgs && pulse.usgs.maxMag >= 5.5 && pulse.usgs.top && pulse.usgs.top.length) {
+      const top = pulse.usgs.top[0];
+      lines.push(
+        `USGS seismic feed: M${top.mag.toFixed(1)} — ${top.place} (last 24h, ${pulse.usgs.count} M4.5+ events globally)`
+        + (pulse.usgs.tsunamiFlags ? `, ${pulse.usgs.tsunamiFlags} tsunami flag(s)` : ''),
+      );
+    }
+    if (pulse.eonet && pulse.eonet.totalOpen > 0 && pulse.eonet.byCategory) {
+      const cats = Object.entries(pulse.eonet.byCategory)
+        .sort((a, b) => b[1] - a[1]).slice(0, 2)
+        .map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ');
+      lines.push(`NASA EONET active natural events: ${cats}`);
+    }
+    if (pulse.swpc && pulse.swpc.recent && pulse.swpc.recent.length) {
+      const t = pulse.swpc.recent[0];
+      if (t.message) lines.push(`NOAA space-weather alert: ${t.message.slice(0, 140)}`);
+    }
+    if (!lines.length) return '';
+    return [
+      'World-pulse observation to weave into the patter IF it fits naturally — one sentence in your voice, NOT a news bulletin (Gene handles long-form). Make it feel like you noticed something in the data, not like you\'re reading a wire. Skip entirely if the segment\'s mood already lands somewhere else.',
+      ...lines.map((l) => `  ${l}`),
+    ].join('\n');
+  }
+
+  /**
+   * Refresh the cached world-pulse digest every 30 min in the background.
+   * All three fetches run in parallel with 8s timeouts; null on any of
+   * them just leaves the slot empty in the next digest.
+   */
+  async _startWorldPulseRefresh() {
+    const {
+      fetchUsgsEarthquakes,
+      fetchNasaEonet,
+      fetchNoaaSpaceWeather,
+    } = require('./lib/scheduler-helpers');
+    const refresh = async () => {
+      try {
+        const [usgs, eonet, swpc] = await Promise.all([
+          fetchUsgsEarthquakes().catch(() => null),
+          fetchNasaEonet().catch(() => null),
+          fetchNoaaSpaceWeather().catch(() => null),
+        ]);
+        this._worldPulse = { usgs, eonet, swpc, ts: Date.now() };
+      } catch (_) { /* background — best-effort */ }
+    };
+    await refresh();
+    this._worldPulseRefreshTimer = setInterval(refresh, 30 * 60 * 1000);
   }
 
   // ── Internal: Text generation ─────────────────────────────
