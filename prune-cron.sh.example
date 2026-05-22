@@ -65,6 +65,24 @@ if [ -d "$WAV_DIR" ]; then
         echo "$LOG_TAG wav-chunks pruned: $WAV_BEFORE files >1d old"
     fi
 fi
+# Stale HRM backups — pre-prune / pre-merge / .bak* / .corrupt-bak-* sidecars
+# from past manual rescues. They were >30d unused at the 2026-05-19
+# incident (e.g. .pre-prune at 87 MB each, dated May 3). Keep the newest
+# kannaka.hrm.v2-backup.* as the floor-level safety net.
+HRM_DIR="/home/opc/.kannaka"
+if [ -d "$HRM_DIR" ]; then
+    HRM_BEFORE=$(find "$HRM_DIR" -maxdepth 1 -type f \
+        \( -name "kannaka.hrm.bak-*" -o -name "kannaka.hrm.pre-*" \
+           -o -name "kannaka.hrm.merged" -o -name "kannaka.hrm.corrupt-bak-*" \) \
+        -mtime +14 2>/dev/null | wc -l)
+    if [ "$HRM_BEFORE" -gt 0 ]; then
+        find "$HRM_DIR" -maxdepth 1 -type f \
+            \( -name "kannaka.hrm.bak-*" -o -name "kannaka.hrm.pre-*" \
+               -o -name "kannaka.hrm.merged" -o -name "kannaka.hrm.corrupt-bak-*" \) \
+            -mtime +14 -delete 2>/dev/null
+        echo "$LOG_TAG stale hrm-backups pruned: $HRM_BEFORE files >14d old"
+    fi
+fi
 
 # Dry-run first so we always log how many we matched (cheap — 2-3 s).
 DRY_OUT=$("$KANNAKA" prune-prefix \
