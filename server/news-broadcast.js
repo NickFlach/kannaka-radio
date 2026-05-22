@@ -28,6 +28,7 @@ const {
   fetchUsgsEarthquakes,
   fetchNasaEonet,
   fetchNoaaSpaceWeather,
+  fetchSmithsonianVolcanoes,
   composeViaKannakaAsk,
 } = require("./lib/scheduler-helpers");
 
@@ -266,10 +267,11 @@ class NewsBroadcast {
     // Gene is told to pattern-find ACROSS them and the Flux interpretation,
     // not parrot each one. All fetches run in parallel with hard timeouts;
     // any one (or all) can return null and Gene still gets the Flux baseline.
-    const [usgs, eonet, swpc] = await Promise.all([
+    const [usgs, eonet, swpc, volcanoes] = await Promise.all([
       fetchUsgsEarthquakes().catch(() => null),
       fetchNasaEonet().catch(() => null),
       fetchNoaaSpaceWeather().catch(() => null),
+      fetchSmithsonianVolcanoes().catch(() => null),
     ]);
 
     const supplemental = [];
@@ -300,6 +302,14 @@ class NewsBroadcast {
         .map((a) => `    [${a.kind}] ${a.message.slice(0, 160)}`)
         .join("\n");
       supplemental.push(`NOAA Space Weather alerts (most recent ${swpc.recent.length}):\n${swpcLines}`);
+    }
+    if (volcanoes && volcanoes.recent.length) {
+      const volLines = volcanoes.recent.slice(0, 6)
+        .map((v) => `    ${v.name}${v.country ? " (" + v.country + ")" : ""}: ${v.status}`)
+        .join("\n");
+      supplemental.push(
+        `Smithsonian Weekly Volcanic Activity (${volcanoes.count} volcanoes reported):\n${volLines}`,
+      );
     }
     const supplementalBlock = supplemental.length
       ? "\n\nINDEPENDENT DATA STREAMS — synthesize patterns across these and the Flux interpretation above. Don't just list them.\n\n" + supplemental.join("\n\n")

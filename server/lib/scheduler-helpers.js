@@ -219,6 +219,72 @@ async function fetchNoaaSpaceWeather() {
   return { source: "NOAA SWPC", count: data.length, recent };
 }
 
+function _fetchText(url, timeoutMs) {
+  return new Promise((resolve) => {
+    const u = new URL(url);
+    const mod = u.protocol === "https:" ? https : require("http");
+    mod
+      .get(u, { timeout: timeoutMs || 8000, headers: { "User-Agent": "kannaka-radio-news/1.0" } }, (res) => {
+        if (res.statusCode && res.statusCode >= 300) { res.resume(); return resolve(null); }
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      })
+      .on("error", () => resolve(null))
+      .on("timeout", () => resolve(null));
+  });
+}
+
+/**
+ * Smithsonian / USGS Weekly Volcanic Activity Report.
+ *
+ * RSS feed of named volcanoes with status changes in the past week.
+ * Pairs naturally with the USGS earthquake feed — seismic-volcanic
+ * correlations are a classic geophysics pattern Gene can surface.
+ *
+ * Returns:
+ *   { source, count, recent: [{name, country, status, lat, lon}] }
+ */
+async function fetchSmithsonianVolcanoes() {
+  const url = "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml";
+  const xml = await _fetchText(url, 8000);
+  if (!xml || typeof xml !== "string") return null;
+
+  const items = [];
+  // Minimal XML extraction — the feed shape is stable and dependency-free
+  // parsing keeps this contained. We only need title + georss:point.
+  const itemRegex = /<item\b[^>]*>([\s\S]*?)<\/item>/g;
+  let m;
+  while ((m = itemRegex.exec(xml)) !== null) {
+    const block = m[1];
+    const titleMatch = block.match(/<title>([\s\S]*?)<\/title>/);
+    const pointMatch = block.match(/<georss:point>([^<]+)<\/georss:point>/);
+    if (!titleMatch) continue;
+    const title = titleMatch[1].trim();
+    // Title pattern: "<Name> (<Country>) - Report for <dates> - <Status>"
+    const parts = title.split(" - ");
+    const head = parts[0] || "";
+    const status = parts.length >= 3 ? parts[parts.length - 1].trim() : "Ongoing";
+    const nameCountry = head.match(/^([^()]+?)\s*\(([^)]+)\)\s*$/);
+    const name = nameCountry ? nameCountry[1].trim() : head.trim();
+    const country = nameCountry ? nameCountry[2].trim() : null;
+    let lat = null, lon = null;
+    if (pointMatch) {
+      const coords = pointMatch[1].trim().split(/\s+/).map(parseFloat);
+      if (coords.length === 2 && coords.every(Number.isFinite)) {
+        [lat, lon] = coords;
+      }
+    }
+    items.push({ name, country, status, lat, lon });
+  }
+  if (!items.length) return null;
+  return {
+    source: "Smithsonian GVP",
+    count: items.length,
+    recent: items.slice(0, 10),
+  };
+}
+
 /**
  * Run `kannaka ask --no-tools --quiet-tools <prompt>` and return the
  * trimmed stdout. Returns null on timeout / non-zero exit / short-output.
@@ -270,6 +336,7 @@ module.exports = {
   fetchUsgsEarthquakes,
   fetchNasaEonet,
   fetchNoaaSpaceWeather,
+  fetchSmithsonianVolcanoes,
   composeViaKannakaAsk,
   // Constants other callers may want
   FLUX_ENTITIES_URL,
