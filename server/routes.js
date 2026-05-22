@@ -10,6 +10,24 @@ const { ALBUMS } = require("./dj-engine");
 const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
 
 /**
+ * Resolve the public origin for discoverability surfaces.
+ *
+ * Precedence: explicit `RADIO_PUBLIC_URL` env > forwarded headers (nginx /
+ * load balancer) > incoming Host header > localhost fallback. The result is
+ * always returned without a trailing slash so callers can concatenate paths.
+ */
+function publicOrigin(req) {
+  const envUrl = (process.env.RADIO_PUBLIC_URL || "").trim();
+  if (envUrl) return envUrl.replace(/\/+$/, "");
+  const proto = (req.headers["x-forwarded-proto"] || "").split(",")[0].trim()
+    || (req.socket && req.socket.encrypted ? "https" : "http");
+  const host = (req.headers["x-forwarded-host"] || "").split(",")[0].trim()
+    || req.headers.host
+    || "localhost";
+  return `${proto}://${host}`;
+}
+
+/**
  * @param {object} deps
  * @param {import('./dj-engine').DJEngine}     deps.djEngine
  * @param {import('./perception').PerceptionEngine} deps.perception
@@ -217,7 +235,7 @@ module.exports = function setupRoutes(deps) {
       } catch {
         // Minimal fallback — never 404 on robots.txt; bots interpret 404 as "no rules".
         res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end("User-agent: *\nAllow: /\nSitemap: https://radio.ninja-portal.com/sitemap.xml\n");
+        res.end(`User-agent: *\nAllow: /\nSitemap: ${publicOrigin(req)}/sitemap.xml\n`);
       }
       return;
     }
@@ -234,7 +252,7 @@ module.exports = function setupRoutes(deps) {
         { loc: "/preview",  changefreq: "always",  priority: "0.5" },
         { loc: "/void",     changefreq: "yearly",  priority: "0.3" },
       ];
-      const host = "https://radio.ninja-portal.com";
+      const host = publicOrigin(req);
       const body = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
         urls.map((u) =>
           `  <url><loc>${host}${u.loc}</loc><lastmod>${lastmod}</lastmod>` +
@@ -248,7 +266,7 @@ module.exports = function setupRoutes(deps) {
     // /.well-known/api-catalog — RFC 9727. Lists the agent-facing endpoints
     // so tools that follow the well-known convention can introspect us.
     if (parsed.pathname === "/.well-known/api-catalog") {
-      const host = "https://radio.ninja-portal.com";
+      const host = publicOrigin(req);
       const linkset = {
         linkset: [{
           anchor: host + "/",
@@ -284,7 +302,7 @@ module.exports = function setupRoutes(deps) {
     // an empty-but-present discovery doc is friendlier than a 404 when
     // an OAuth-aware client probes.
     if (parsed.pathname === "/.well-known/oauth-authorization-server") {
-      const host = "https://radio.ninja-portal.com";
+      const host = publicOrigin(req);
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300" });
       res.end(JSON.stringify({
         issuer: host,
