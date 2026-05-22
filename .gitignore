@@ -44,6 +44,12 @@ workspace/news-broadcast-state.json
 workspace/gossip-broadcast-state.json
 workspace/showcase-state.json
 workspace/recently-played.json
+workspace/news-teaser-state.json
+workspace/news-teaser-fingerprint.json
+workspace/override-state.json
+
+# Live counters written by the running service (listener uniques, etc.)
+data/listener-totals.json
 
 # Oracle-side runtime scripts — the production box has its own copies of
 # cron wrappers (prune-cron, run-push-nats) that source local env files.
