@@ -1495,11 +1495,64 @@ class VoiceDJ {
    *                                     ELEVENLABS_VOICE_ID env var.
    * @param {string}  [opts.modelId]   — defaults to "eleven_turbo_v2_5".
    */
+  /**
+   * Re-encode an MP3 in place to 44.1 kHz stereo 128 kbps — the format the
+   * icecast-source pipeline expects. Voice files come out of edge-tts as
+   * 24 kHz mono and out of ElevenLabs as 44.1 kHz mono; either causes the
+   * downstream decoder to throw `Invalid data found when processing input`
+   * on the voice→music boundary (#33). Normalizing here makes every chunk
+   * an interchangeable broadcast frame.
+   */
+  _normalizeMp3(mp3Path, cb) {
+    if (!mp3Path || typeof mp3Path !== "string") return cb(new Error("missing path"));
+    if (!mp3Path.toLowerCase().endsWith(".mp3")) return cb(null); // Only normalize MP3s
+    const tmp = mp3Path + ".norm.mp3";
+    const args = [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-i", mp3Path,
+      "-ar", "44100",
+      "-ac", "2",
+      "-c:a", "libmp3lame",
+      "-b:a", "128k",
+      tmp,
+    ];
+    execFile("ffmpeg", args, { timeout: 20000 }, (err) => {
+      if (err) {
+        try { fs.unlinkSync(tmp); } catch {}
+        return cb(err);
+      }
+      try {
+        fs.renameSync(tmp, mp3Path);
+        cb(null);
+      } catch (e) {
+        try { fs.unlinkSync(tmp); } catch {}
+        cb(e);
+      }
+    });
+  }
+
   _generateTTS(text, callback, opts = {}) {
     const timestamp = Date.now();
     const outputPath = path.join(this._voiceDir, `dj_${timestamp}.mp3`);
     const voiceDir = this._voiceDir;
     const wantsElevenLabs = (opts.elevenLabs || opts.voiceId) && process.env.ELEVENLABS_API_KEY;
+
+    // Wrap the TTS callback so every produced MP3 is re-encoded to match the
+    // music stream's format (44.1 kHz stereo 128 kbps). Without this the
+    // icecast ffmpeg sees a parameter change on every voice→music transition
+    // — edge-tts ships 24 kHz mono — and floods the journal with ~3k/week
+    // `Invalid data found when processing input` errors (#33).
+    const normalizedCallback = (err, finalPath, finalText) => {
+      if (err || !finalPath) return callback(err, finalPath, finalText);
+      this._normalizeMp3(finalPath, (normErr) => {
+        if (normErr) {
+          // Normalization is best-effort — keep original file on failure so
+          // the show goes on, just log the noise we're not catching.
+          console.warn(`   [tts] normalize failed for ${path.basename(finalPath)}: ${normErr.message}`);
+        }
+        callback(null, finalPath, finalText);
+      });
+    };
 
     if (wantsElevenLabs) {
       const voiceId = opts.voiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM"; // Rachel
@@ -1507,7 +1560,7 @@ class VoiceDJ {
       generateElevenLabs(text, voiceId, modelId, outputPath, (err, finalPath) => {
         if (!err && finalPath && fs.existsSync(finalPath)) {
           console.log(`   \u{1F5E3} TTS (ElevenLabs/${voiceId.slice(0, 6)}) generated: ${path.basename(finalPath)}`);
-          return callback(null, finalPath, text);
+          return normalizedCallback(null, finalPath, text);
         }
         console.warn(`   [tts] ElevenLabs failed (${err && err.message || "unknown"}) — falling back to edge-tts`);
         fallbackToEdgeTTS();
@@ -1567,7 +1620,7 @@ class VoiceDJ {
       execFile(process.env.EDGE_TTS_BIN || "/home/opc/.local/bin/edge-tts", ["--voice", "en-US-JennyNeural", "--text", text, "--write-media", outputPath], { timeout: 25000 }, (err) => {
         if (!err && fs.existsSync(outputPath)) {
           console.log(`   \u{1F5E3} TTS (Edge) generated: ${path.basename(outputPath)}`);
-          return callback(null, outputPath, text);
+          return normalizedCallback(null, outputPath, text);
         }
 
         // Approach 3: Use PowerShell SAPI (Windows built-in)
@@ -1581,10 +1634,10 @@ class VoiceDJ {
               try { fs.unlinkSync(wavPath); } catch {}
               if (!ffErr && fs.existsSync(outputPath)) {
                 console.log(`   \u{1F5E3} TTS (SAPI) generated: ${path.basename(outputPath)}`);
-                return callback(null, outputPath, text);
+                return normalizedCallback(null, outputPath, text);
               }
               if (fs.existsSync(wavPath)) {
-                return callback(null, wavPath, text);
+                return normalizedCallback(null, wavPath, text);
               }
               callback(new Error('TTS generation failed'));
             });
