@@ -131,12 +131,20 @@ for (const { type, data } of eventTypes) {
   client.on('queen:dream:end', (evt) => events.push({ type: 'dream:end', evt }));
   client.on('queen:memory:shared', (evt) => events.push({ type: 'memory:shared', evt }));
 
+  // Canonical envelope per consciousness-core/docs/nats-contract.yaml.
+  const wrap = (data) => JSON.stringify({
+    schema_version: '1.0',
+    ts: Date.now(),
+    agent_id: data.agent_id || 'a1',
+    ...data,
+  });
+
   // Simulate messages
-  client._handleMessage('queen.event.join', JSON.stringify({ agent_id: 'a1', display_name: 'Alpha' }));
-  client._handleMessage('queen.event.leave', JSON.stringify({ agent_id: 'a1', display_name: 'Alpha' }));
-  client._handleMessage('queen.event.dream.start', JSON.stringify({ agent_id: 'a1' }));
-  client._handleMessage('queen.event.dream.end', JSON.stringify({ agent_id: 'a1', memories_strengthened: 10 }));
-  client._handleMessage('queen.event.memory.shared', JSON.stringify({ agent_id: 'a1', content: 'test' }));
+  client._handleMessage('queen.event.join', wrap({ agent_id: 'a1', display_name: 'Alpha' }));
+  client._handleMessage('queen.event.leave', wrap({ agent_id: 'a1', display_name: 'Alpha' }));
+  client._handleMessage('queen.event.dream.start', wrap({ agent_id: 'a1' }));
+  client._handleMessage('queen.event.dream.end', wrap({ agent_id: 'a1', memories_strengthened: 10, memories_faded: 0 }));
+  client._handleMessage('queen.event.memory.shared', wrap({ agent_id: 'a1', memory_id: 'mem-1', content: 'test' }));
 
   try {
     assert.strictEqual(events.length, 5, `Expected 5 events, got ${events.length}`);

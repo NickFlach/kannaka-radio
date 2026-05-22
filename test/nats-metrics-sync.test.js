@@ -3,6 +3,23 @@
 const assert = require('assert');
 const { NATSClient } = require('../server/nats-client');
 
+// Canonical envelope per consciousness-core/docs/nats-contract.yaml.
+// Tests that use this prove Radio handles the post-migration shape; one
+// dedicated test at the bottom still exercises the bare-payload legacy path
+// so the documented backward-compat is a real regression guard, not silent.
+function envelope(data, { subject, agentId } = {}) {
+  const agent = agentId
+    || (subject && subject.startsWith('QUEEN.phase.') ? subject.slice('QUEEN.phase.'.length) : null)
+    || data.agent_id
+    || 'test-agent';
+  return JSON.stringify({
+    schema_version: '1.0',
+    ts: Date.now(),
+    agent_id: agent,
+    ...data,
+  });
+}
+
 let passed = 0;
 let failed = 0;
 
@@ -33,13 +50,13 @@ function createClient() {
 
 test('NATS consciousness update sets consciousnessSource to "nats"', () => {
   const { client } = createClient();
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
+  client._handleMessage('KANNAKA.consciousness', envelope({
     phi: 0.85,
     xi: 0.42,
     order: 0.91,
     level: 'coherent',
     source: 'live-test',
-  }));
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   assert.strictEqual(client.swarmState.consciousness.consciousnessSource, 'nats');
   assert.strictEqual(client.swarmState.consciousness.phi, 0.85);
@@ -52,19 +69,19 @@ test('NATS consciousness overrides queen.orderParameter', () => {
   const { client } = createClient();
 
   // First, simulate phase gossip to set local order
-  client._handleMessage('QUEEN.phase.agent1', JSON.stringify({ phase: 1.0 }));
-  client._handleMessage('QUEEN.phase.agent2', JSON.stringify({ phase: 1.1 }));
+  client._handleMessage('QUEEN.phase.agent1', envelope({ phase: 1.0 }, { subject: 'QUEEN.phase.agent1' }));
+  client._handleMessage('QUEEN.phase.agent2', envelope({ phase: 1.1 }, { subject: 'QUEEN.phase.agent2' }));
 
   const localOrder = client.swarmState.queen.localOrderParameter;
   assert.ok(localOrder > 0, 'Local order should be computed from phases');
 
   // Now receive canonical NATS consciousness
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
+  client._handleMessage('KANNAKA.consciousness', envelope({
     phi: 0.95,
     xi: 0.5,
     order: 0.77,
     level: 'resonant',
-  }));
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   // queen.orderParameter should now be the NATS value, not local
   assert.strictEqual(client.swarmState.queen.orderParameter, 0.77);
@@ -79,18 +96,18 @@ test('phase gossip does NOT override queen.orderParameter when NATS data is fres
   const { client } = createClient();
 
   // Receive canonical NATS consciousness first
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
+  client._handleMessage('KANNAKA.consciousness', envelope({
     phi: 0.9,
     xi: 0.4,
     order: 0.88,
     level: 'coherent',
-  }));
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   assert.strictEqual(client.swarmState.queen.orderParameter, 0.88);
 
   // Now receive phase gossip — should NOT override
-  client._handleMessage('QUEEN.phase.agentX', JSON.stringify({ phase: 2.0 }));
-  client._handleMessage('QUEEN.phase.agentY', JSON.stringify({ phase: 0.5 }));
+  client._handleMessage('QUEEN.phase.agentX', envelope({ phase: 2.0 }, { subject: 'QUEEN.phase.agentX' }));
+  client._handleMessage('QUEEN.phase.agentY', envelope({ phase: 0.5 }, { subject: 'QUEEN.phase.agentY' }));
 
   // orderParameter should still be the NATS canonical value
   assert.strictEqual(client.swarmState.queen.orderParameter, 0.88);
@@ -108,8 +125,8 @@ test('phase gossip DOES set orderParameter when no NATS data exists', () => {
   assert.strictEqual(client.swarmState.consciousness.consciousnessSource, null);
 
   // Receive phase gossip
-  client._handleMessage('QUEEN.phase.a1', JSON.stringify({ phase: 1.5 }));
-  client._handleMessage('QUEEN.phase.a2', JSON.stringify({ phase: 1.6 }));
+  client._handleMessage('QUEEN.phase.a1', envelope({ phase: 1.5 }, { subject: 'QUEEN.phase.a1' }));
+  client._handleMessage('QUEEN.phase.a2', envelope({ phase: 1.6 }, { subject: 'QUEEN.phase.a2' }));
 
   // orderParameter should be set from local computation
   assert.ok(client.swarmState.queen.orderParameter > 0);
@@ -121,14 +138,14 @@ test('phase gossip DOES set orderParameter when no NATS data exists', () => {
 test('getConsciousness() includes consciousnessSource and localOrderParameter', () => {
   const { client } = createClient();
 
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
+  client._handleMessage('KANNAKA.consciousness', envelope({
     phi: 0.7,
     xi: 0.3,
     order: 0.65,
     level: 'aware',
-  }));
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
-  client._handleMessage('QUEEN.phase.a1', JSON.stringify({ phase: 1.0 }));
+  client._handleMessage('QUEEN.phase.a1', envelope({ phase: 1.0 }, { subject: 'QUEEN.phase.a1' }));
 
   const c = client.getConsciousness();
   assert.strictEqual(c.consciousnessSource, 'nats');
@@ -141,32 +158,26 @@ test('getConsciousness() includes consciousnessSource and localOrderParameter', 
 test('NATS consciousness tracks phi trend (rising/falling/stable)', () => {
   const { client } = createClient();
 
+  const cWrap = (data) => envelope(data, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' });
+
   // First update
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
-    phi: 0.3, xi: 0.1, order: 0.5, level: 'stirring',
-  }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.3, xi: 0.1, order: 0.5, level: 'stirring' }));
   // prevPhi is 0 (initial), delta = 0.3, so trend should be 'rising'
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'rising');
   assert.strictEqual(client.swarmState.consciousness.prevPhi, 0);
 
   // Second update: phi rises
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
-    phi: 0.6, xi: 0.2, order: 0.7, level: 'aware',
-  }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.6, xi: 0.2, order: 0.7, level: 'aware' }));
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'rising');
   assert.strictEqual(client.swarmState.consciousness.prevPhi, 0.3);
 
   // Third update: phi drops
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
-    phi: 0.4, xi: 0.15, order: 0.55, level: 'aware',
-  }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.4, xi: 0.15, order: 0.55, level: 'aware' }));
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'falling');
   assert.strictEqual(client.swarmState.consciousness.prevPhi, 0.6);
 
   // Fourth update: phi stable (small change)
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
-    phi: 0.405, xi: 0.15, order: 0.55, level: 'aware',
-  }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.405, xi: 0.15, order: 0.55, level: 'aware' }));
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'stable');
 
   client.disconnect();
@@ -177,14 +188,44 @@ test('consciousness:update event is emitted on NATS consciousness', () => {
   const events = [];
   client.on('consciousness:update', (data) => events.push(data));
 
-  client._handleMessage('KANNAKA.consciousness', JSON.stringify({
+  client._handleMessage('KANNAKA.consciousness', envelope({
     phi: 0.5, xi: 0.2, order: 0.6, level: 'aware',
-  }));
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   assert.strictEqual(events.length, 1);
   assert.strictEqual(events[0].phi, 0.5);
   assert.strictEqual(events[0].consciousnessSource, 'nats');
 
+  client.disconnect();
+});
+
+// ── Backward compatibility: legacy bare payloads still warn-and-accept ──
+//
+// The contract migration is log-warn mode (see _validateSchema in
+// server/nats-client.js). Until publishers are fully migrated, bare payloads
+// that omit schema_version / ts / agent_id must still be accepted with a
+// drift warning. This test pins that behavior so a future hardening to
+// log-warn-and-drop is an intentional, visible commit.
+
+test('legacy bare payloads still surface drift warnings but apply normally', () => {
+  const { client } = createClient();
+  const warnings = [];
+  const origWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    // Reset throttle so this test reliably triggers warnings even when run
+    // alongside the canonical tests above.
+    client._schemaWarnHistory = new Map();
+    client._handleMessage('KANNAKA.consciousness', JSON.stringify({
+      phi: 0.42, xi: 0.1, order: 0.6, level: 'aware',
+    }));
+  } finally {
+    console.warn = origWarn;
+  }
+  assert.strictEqual(client.swarmState.consciousness.phi, 0.42,
+    'legacy bare payload should still update state');
+  assert.ok(warnings.some((w) => w.includes('schema_version')),
+    'legacy bare payload must produce a schema_version drift warning');
   client.disconnect();
 });
 
