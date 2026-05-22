@@ -29,6 +29,9 @@ const {
   fetchNasaEonet,
   fetchNoaaSpaceWeather,
   fetchSmithsonianVolcanoes,
+  fetchNdbcBuoys,
+  fetchUsgsWater,
+  fetchArxiv,
   composeViaKannakaAsk,
 } = require("./lib/scheduler-helpers");
 
@@ -267,11 +270,14 @@ class NewsBroadcast {
     // Gene is told to pattern-find ACROSS them and the Flux interpretation,
     // not parrot each one. All fetches run in parallel with hard timeouts;
     // any one (or all) can return null and Gene still gets the Flux baseline.
-    const [usgs, eonet, swpc, volcanoes] = await Promise.all([
+    const [usgs, eonet, swpc, volcanoes, buoys, water, arxiv] = await Promise.all([
       fetchUsgsEarthquakes().catch(() => null),
       fetchNasaEonet().catch(() => null),
       fetchNoaaSpaceWeather().catch(() => null),
       fetchSmithsonianVolcanoes().catch(() => null),
+      fetchNdbcBuoys().catch(() => null),
+      fetchUsgsWater().catch(() => null),
+      fetchArxiv().catch(() => null),
     ]);
 
     const supplemental = [];
@@ -310,6 +316,29 @@ class NewsBroadcast {
       supplemental.push(
         `Smithsonian Weekly Volcanic Activity (${volcanoes.count} volcanoes reported):\n${volLines}`,
       );
+    }
+    if (buoys && buoys.recent.length) {
+      const buoyLines = buoys.recent.map((b) => {
+        const wind = b.wsKt != null ? `wind ${b.wsKt}kt` : "wind ?";
+        const gust = b.gustKt != null ? `/g${b.gustKt}` : "";
+        const wave = b.waveM != null ? `, waves ${b.waveM}m` : "";
+        const water = b.tempC != null ? `, water ${b.tempC}\u00B0C` : "";
+        const pres = b.presHpa != null ? `, ${b.presHpa}hPa` : "";
+        return `    ${b.basin} (${b.station}): ${wind}${gust}${wave}${water}${pres}`;
+      }).join("\n");
+      supplemental.push(`NOAA NDBC offshore buoys (most-recent ob each):\n${buoyLines}`);
+    }
+    if (water && water.recent.length) {
+      const waterLines = water.recent.map((w) =>
+        `    ${w.name}: ${w.cfs.toLocaleString()} cfs (obs ${(w.observedAt || "").slice(0, 16)})`
+      ).join("\n");
+      supplemental.push(`USGS Water Resources — instantaneous streamflow:\n${waterLines}`);
+    }
+    if (arxiv && arxiv.recent.length) {
+      const arxLines = arxiv.recent.slice(0, 4)
+        .map((p) => `    [${arxiv.category}] ${p.title}\n      ${p.summary}`)
+        .join("\n");
+      supplemental.push(`arXiv ${arxiv.category} — new papers (${arxiv.count}):\n${arxLines}`);
     }
     const supplementalBlock = supplemental.length
       ? "\n\nINDEPENDENT DATA STREAMS — synthesize patterns across these and the Flux interpretation above. Don't just list them.\n\n" + supplemental.join("\n\n")
