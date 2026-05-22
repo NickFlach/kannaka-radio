@@ -100,12 +100,22 @@ if [ "$MATCHES" -lt 200 ]; then
     exit 0
 fi
 
-echo "$LOG_TAG cycling kannaka-memory + kannaka-radio for prune"
-sudo systemctl stop kannaka-memory kannaka-radio
-# Kill any straggler readers/writers.
-for pid in $(pgrep -f 'kannaka (status|swarm|hear|recall|observe|export)' 2>/dev/null); do
-    sudo kill -9 "$pid" 2>/dev/null || true
-done
+echo "$LOG_TAG cycling HRM daemons for prune (radio stays up — #34)"
+# Stop ONLY the long-running HRM writers. Radio interacts with the HRM
+# via short-lived `kannaka hear` subprocesses, not a held file handle, so
+# keeping it up just makes the next `hear` call queue briefly during the
+# prune-prefix lock instead of dropping the stream for 5–10 seconds.
+DAEMONS="kannaka-memory kannaka-substrate kannaka-attention kannaka-swarm-serve"
+sudo systemctl stop $DAEMONS
+# Straggler readers/writers — TERM first, then escalate to KILL after 3s
+# (previous unconditional `kill -9` showed up as `Failed with result
+# 'signal'` in journal every cycle, masking real failures).
+STRAGGLERS=$(pgrep -f 'kannaka (status|swarm|hear|recall|observe|export)' 2>/dev/null || true)
+if [ -n "$STRAGGLERS" ]; then
+    for pid in $STRAGGLERS; do sudo kill -TERM "$pid" 2>/dev/null || true; done
+    sleep 3
+    for pid in $STRAGGLERS; do sudo kill -9 "$pid" 2>/dev/null || true; done
+fi
 sleep 1
 
 OUT=$("$KANNAKA" prune-prefix \
@@ -115,10 +125,8 @@ OUT=$("$KANNAKA" prune-prefix \
     2>&1 | tail -3)
 echo "$LOG_TAG $OUT"
 
-sudo systemctl start kannaka-memory
-sleep 2
-sudo systemctl start kannaka-radio
-echo "$LOG_TAG services restarted"
+sudo systemctl start $DAEMONS
+echo "$LOG_TAG daemons restarted (radio was never stopped)"
 
 # Force the observatory to drop its stale sidecar so the next /api/hrm/observe
 # rebuilds against the slimmer HRM.
