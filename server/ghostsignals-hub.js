@@ -425,8 +425,18 @@ class GhostSignalsHub {
    */
   async _resolveExpiredMarkets() {
     return new Promise((resolve) => {
+      // expires_at is stored as ISO-8601 from `new Date().toISOString()`
+      // (e.g. "2026-05-22T14:00:00.000Z"). datetime('now') returns
+      // "2026-05-22 15:00:00" (space, no millis, no Z). Lex comparison
+      // between those two formats is wrong on the same day — at char 11
+      // the space sorts before 'T', so a market that expired earlier
+      // today compares as NOT less than `datetime('now')` and never
+      // gets resolved (#43). Fix: pass an identically-formatted ISO
+      // string from JS so the lex comparison is consistent.
+      const nowIso = new Date().toISOString();
       this.db.all(
-        `SELECT * FROM markets WHERE resolved = 0 AND expires_at < datetime('now')`,
+        `SELECT * FROM markets WHERE resolved = 0 AND expires_at < ?`,
+        [nowIso],
         async (err, rows) => {
           if (err) return resolve();
           for (const row of rows) {

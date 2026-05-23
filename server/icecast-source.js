@@ -258,12 +258,24 @@ class IcecastSource {
       const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
       const writer = fs.createWriteStream(tmpPath);
       const req = lib.get(url, (res) => {
-        // Follow one level of redirect — common on CDNs.
+        // Follow one level of redirect — common on CDNs. Resolve the
+        // Location header against the originating URL so relative
+        // targets like "/final.mp3" work the same as absolute
+        // "https://cdn/final.mp3" (#42). Without this, audio CDNs that
+        // emit relative 302s throw ERR_INVALID_URL inside the recursive
+        // call and the track is silently skipped.
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
           writer.end();
           fs.unlink(tmpPath, () => {});
-          this._fetchUrlTrack(res.headers.location).then(finish);
+          let nextUrl;
+          try {
+            nextUrl = new URL(res.headers.location, url).toString();
+          } catch (e) {
+            console.warn(`[icecast-source] redirect resolve failed: ${e.message} (from ${url} → ${res.headers.location})`);
+            return finish(null);
+          }
+          this._fetchUrlTrack(nextUrl).then(finish);
           return;
         }
         if (res.statusCode !== 200) {
