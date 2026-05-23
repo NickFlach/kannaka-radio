@@ -42,6 +42,15 @@ if [ "$USE_NUM" -lt "$THRESHOLD" ]; then
   exit 0
 fi
 
+# Fallback alarm: always echo a WARN-prefixed line to stderr so the
+# message appears in journalctl regardless of whether NATS is reachable.
+# Without this, a NATS outage during a real disk-pressure event would
+# silently swallow the alert — which is exactly what happened on
+# 2026-05-22→23 when the disk-monitor cron itself was permission-denied
+# and nobody noticed for 24+ hours.
+echo "[WARN] disk-pressure root=${PCT} avail=${AVAIL} band-trigger" >&2
+logger -t kannaka-disk-monitor -p user.warn "root=${PCT} avail=${AVAIL}" 2>/dev/null || true
+
 # Throttle: only publish once per hour per threshold band. Bands are
 # {threshold..89, 90..94, 95..99, 100} so a worsening trend produces a new
 # alert even within the same hour.
