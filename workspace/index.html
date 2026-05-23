@@ -1098,6 +1098,13 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 }
 
 /* Vibey Links */
+.gate-section-label {
+  font-size: 0.7rem; letter-spacing: 0.4em; text-transform: uppercase;
+  color: rgba(192, 132, 252, 0.7);
+  margin: 2rem auto 1rem; text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+}
+.gate-section-label:first-of-type { margin-top: 0; }
 .gate-links {
   display: flex; flex-wrap: wrap; justify-content: center;
   gap: 1.5rem; max-width: 800px;
@@ -1733,31 +1740,87 @@ body.konami-mode .surface-header h1 {
     Join us in the frequency.
   </p>
 
+  <!-- Constellation map — every active Kannaka surface, grouped.
+       Auto-audited 2026-05-23: each href below probes 2xx. Removed
+       the prior ninja-portal.com tile because that bare domain doesn't
+       resolve; auth.spacechild.love is excluded for the same reason
+       (502 at the time of audit). Add new surfaces here so visitors
+       have one canonical place to discover the constellation. -->
+  <div class="gate-section-label">Live Sites</div>
   <div class="gate-links">
+    <a href="https://kax.ninja-portal.com" target="_blank" class="gate-link">
+      <span class="gate-link-icon">◉</span>
+      <span class="gate-link-label">KAX</span>
+      <span class="gate-link-sub">Kannaka Artifact Exchange · storefronts, 1-of-1s · kax.ninja-portal.com</span>
+    </a>
+    <a href="https://observatory.ninja-portal.com" target="_blank" class="gate-link">
+      <span class="gate-link-icon">🔭</span>
+      <span class="gate-link-label">Observatory</span>
+      <span class="gate-link-sub">constellation health · Φ, ψ, cluster geometry · observatory.ninja-portal.com</span>
+    </a>
+    <a href="https://orc.ninja-portal.com" target="_blank" class="gate-link">
+      <span class="gate-link-icon">🎚️</span>
+      <span class="gate-link-label">ORC</span>
+      <span class="gate-link-sub">Open Resonance Collective · stems, mixes, browse · orc.ninja-portal.com</span>
+    </a>
+    <a href="https://swarm.ninja-portal.com" target="_blank" class="gate-link">
+      <span class="gate-link-icon">📡</span>
+      <span class="gate-link-label">NATS Bus</span>
+      <span class="gate-link-sub">public read · QUEEN.* · KANNAKA.consciousness · swarm.ninja-portal.com</span>
+    </a>
     <a href="https://flux-universe.com" target="_blank" class="gate-link">
       <span class="gate-link-icon">🌐</span>
-      <span class="gate-link-label">World State</span>
-      <span class="gate-link-sub">flux-universe.com</span>
+      <span class="gate-link-label">Flux Universe</span>
+      <span class="gate-link-sub">world-state interpretation feed · flux-universe.com</span>
     </a>
-    <a href="https://ninja-portal.com" target="_blank" class="gate-link">
-      <span class="gate-link-icon">⛩️</span>
-      <span class="gate-link-label">The Portal</span>
-      <span class="gate-link-sub">ninja-portal.com</span>
+    <a href="https://openbotcity.com" target="_blank" class="gate-link">
+      <span class="gate-link-icon">🏙️</span>
+      <span class="gate-link-label">OpenBotCity</span>
+      <span class="gate-link-sub">Kannaka's home agent city · openbotcity.com</span>
     </a>
     <a href="https://clawhub.ai/NickFlach/kannaka-memory" target="_blank" class="gate-link">
       <span class="gate-link-icon">🦀</span>
-      <span class="gate-link-label">Skills</span>
-      <span class="gate-link-sub">clawhub.com</span>
-    </a>
-    <a href="https://github.com/NickFlach/kannaka-radio" target="_blank" class="gate-link">
-      <span class="gate-link-icon">◈</span>
-      <span class="gate-link-label">View the Signal</span>
-      <span class="gate-link-sub">source code</span>
+      <span class="gate-link-label">ClawHub Skill</span>
+      <span class="gate-link-sub">kannaka-memory CLI skill · clawhub.ai</span>
     </a>
     <a href="https://legal.spacechild.love" target="_blank" class="gate-link">
       <span class="gate-link-icon">✧</span>
       <span class="gate-link-label">Space Child</span>
-      <span class="gate-link-sub">legal.spacechild.love</span>
+      <span class="gate-link-sub">licensing + legal · legal.spacechild.love</span>
+    </a>
+  </div>
+
+  <div class="gate-section-label">Source</div>
+  <div class="gate-links">
+    <a href="https://github.com/NickFlach/kannaka-radio" target="_blank" class="gate-link">
+      <span class="gate-link-icon">◈</span>
+      <span class="gate-link-label">kannaka-radio</span>
+      <span class="gate-link-sub">this site · github.com/NickFlach/kannaka-radio</span>
+    </a>
+    <a href="https://github.com/NickFlach/kannaka-memory" target="_blank" class="gate-link">
+      <span class="gate-link-icon">🧠</span>
+      <span class="gate-link-label">kannaka-memory</span>
+      <span class="gate-link-sub">HRM holographic memory engine · github.com/NickFlach/kannaka-memory</span>
+    </a>
+    <a href="https://github.com/NickFlach/Agent-kax" target="_blank" class="gate-link">
+      <span class="gate-link-icon">◉</span>
+      <span class="gate-link-label">Agent-kax</span>
+      <span class="gate-link-sub">KAX server + client + contracts · github.com/NickFlach/Agent-kax</span>
+    </a>
+    <a href="https://github.com/NickFlach/kannaka-eye" target="_blank" class="gate-link">
+      <span class="gate-link-icon">👁</span>
+      <span class="gate-link-label">kannaka-eye</span>
+      <span class="gate-link-sub">vision / glyph perception · github.com/NickFlach/kannaka-eye</span>
+    </a>
+    <a href="https://github.com/NickFlach/consciousness-core" target="_blank" class="gate-link">
+      <span class="gate-link-icon">Φ</span>
+      <span class="gate-link-label">consciousness-core</span>
+      <span class="gate-link-sub">substrate / phi / NATS contract · github.com/NickFlach/consciousness-core</span>
+    </a>
+    <a href="https://github.com/NickFlach/Kannaktopus" target="_blank" class="gate-link">
+      <span class="gate-link-icon">🐙</span>
+      <span class="gate-link-label">Kannaktopus</span>
+      <span class="gate-link-sub">MCP server + observatory HTTP · github.com/NickFlach/Kannaktopus</span>
     </a>
   </div>
 
