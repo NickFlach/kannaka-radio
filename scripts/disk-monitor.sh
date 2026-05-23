@@ -38,6 +38,42 @@ USE_NUM="${PCT%\%}"
 TS="$(date -Iseconds)"
 echo "[$TS] root=${PCT} used=${USED} avail=${AVAIL} threshold=${THRESHOLD}%"
 
+# Second line of defense — health-check the prune cron itself (#36 gap 2).
+# If /tmp/prune-cron.log hasn't been touched in PRUNE_STALE_HOURS, raise
+# an alert even when disk usage is still under the threshold. A wedged
+# prune cron is the failure mode that filled the disk on 2026-05-19 —
+# catching that BEFORE it manifests as 100%-full is the whole point.
+PRUNE_LOG="${PRUNE_LOG:-/tmp/prune-cron.log}"
+PRUNE_STALE_HOURS="${PRUNE_STALE_HOURS:-2}"
+if [ -f "$PRUNE_LOG" ]; then
+  PRUNE_AGE_S=$(( $(date +%s) - $(stat -c %Y "$PRUNE_LOG" 2>/dev/null || date +%s) ))
+  PRUNE_AGE_H=$(( PRUNE_AGE_S / 3600 ))
+  if [ "$PRUNE_AGE_H" -ge "$PRUNE_STALE_HOURS" ]; then
+    HOUR_TAG="$(date -u +%Y%m%d%H)"
+    PRUNE_STATE="${STATE_DIR}/disk-monitor.prune-stale.${HOUR_TAG}"
+    if [ ! -f "$PRUNE_STATE" ]; then
+      echo "[WARN] prune-cron log ${PRUNE_LOG} hasn't been touched in ${PRUNE_AGE_H}h" >&2
+      logger -t kannaka-disk-monitor -p user.warn "prune-cron stale (age=${PRUNE_AGE_H}h)" 2>/dev/null || true
+      if [ -n "$NATS_BIN" ]; then
+        AUTH_ARGS=()
+        if [ -n "${NATS_USER:-}" ] && [ -n "${NATS_PASSWORD:-}" ]; then
+          AUTH_ARGS=(--user "$NATS_USER" --password "$NATS_PASSWORD")
+        fi
+        STALE_PAYLOAD="{\"schema_version\":\"1.0\",\"ts\":$(date +%s%3N),\"agent_id\":\"${HOSTNAME_TAG}\",\"subject\":\"RADIO.alert.prune\",\"prune_log\":\"${PRUNE_LOG}\",\"age_hours\":${PRUNE_AGE_H}}"
+        if "$NATS_BIN" --server "$NATS_URL" "${AUTH_ARGS[@]}" pub "RADIO.alert.prune" "$STALE_PAYLOAD" >/dev/null 2>&1; then
+          touch "$PRUNE_STATE"
+        fi
+      else
+        touch "$PRUNE_STATE"
+      fi
+    fi
+  fi
+else
+  # Missing log = cron never ran since last log rotation. Treat as stale.
+  echo "[WARN] prune-cron log ${PRUNE_LOG} does not exist" >&2
+  logger -t kannaka-disk-monitor -p user.warn "prune-cron log missing: ${PRUNE_LOG}" 2>/dev/null || true
+fi
+
 if [ "$USE_NUM" -lt "$THRESHOLD" ]; then
   exit 0
 fi
