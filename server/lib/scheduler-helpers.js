@@ -435,30 +435,46 @@ function composeViaKannakaAsk(kannakabin, prompt, opts = {}) {
   const minLen = opts.minLen || 200;
   const timeoutMs = opts.timeoutMs || 600000;
   const label = opts.label || "compose";
+  const maxAttempts = opts.retries == null ? 2 : Math.max(1, opts.retries + 1);
   return new Promise((resolve) => {
     const args = ["ask", "--no-tools", "--quiet-tools", prompt];
-    execFile(
-      kannakabin,
-      args,
-      {
-        timeout: timeoutMs,
-        maxBuffer: 4 * 1024 * 1024,
-        env: { ...process.env, KANNAKA_QUIET: "1" },
-      },
-      (err, stdout, stderr) => {
-        if (err) {
-          const tail = (stderr || "").trim().slice(-400) || err.message;
-          console.warn(`   [${label}] error (code=${err.code || "?"}): ${tail}`);
-          return resolve(null);
+    let attempt = 0;
+    const tryOnce = () => {
+      attempt += 1;
+      execFile(
+        kannakabin,
+        args,
+        {
+          timeout: timeoutMs,
+          maxBuffer: 4 * 1024 * 1024,
+          env: { ...process.env, KANNAKA_QUIET: "1" },
+        },
+        (err, stdout, stderr) => {
+          if (err) {
+            const tail = (stderr || "").trim().slice(-400) || err.message;
+            // Transient: substrate is mid-write (HRM file partial), so
+            // the load reads a checksum mismatch / partial frame. Retry
+            // once after a short backoff — the substrate flushes within
+            // a couple seconds and the second attempt usually clears.
+            const transient = /checksum mismatch|file may be corrupted|partial.*frame/i.test(tail);
+            if (transient && attempt < maxAttempts) {
+              console.warn(`   [${label}] transient HRM read race (attempt ${attempt}/${maxAttempts}) — retrying in 3s`);
+              setTimeout(tryOnce, 3000);
+              return;
+            }
+            console.warn(`   [${label}] error (code=${err.code || "?"}): ${tail}`);
+            return resolve(null);
+          }
+          const text = String(stdout || "").trim();
+          if (!text || text.length < minLen) {
+            console.warn(`   [${label}] short/empty (${text.length} chars)`);
+            return resolve(null);
+          }
+          resolve(text);
         }
-        const text = String(stdout || "").trim();
-        if (!text || text.length < minLen) {
-          console.warn(`   [${label}] short/empty (${text.length} chars)`);
-          return resolve(null);
-        }
-        resolve(text);
-      }
-    );
+      );
+    };
+    tryOnce();
   });
 }
 
