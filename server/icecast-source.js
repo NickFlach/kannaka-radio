@@ -32,6 +32,30 @@ const https = require("https");
 const http = require("http");
 const crypto = require("crypto");
 
+// Return byte length of the leading ID3v2 tag in an mp3 file, or 0 if
+// none. Parses just the 10-byte header — synchsafe-encoded size in the
+// last 4 bytes. Used by _streamFileToFfmpeg to start the read past the
+// tag so the concatenated stdin pipe stays as clean mp3 frames.
+function id3v2Length(absPath) {
+  let fd = -1;
+  try {
+    fd = fs.openSync(absPath, "r");
+    const head = Buffer.alloc(10);
+    const n = fs.readSync(fd, head, 0, 10, 0);
+    if (n < 10) return 0;
+    if (head[0] !== 0x49 || head[1] !== 0x44 || head[2] !== 0x33) return 0;
+    // Synchsafe: 7 bits per byte, MSB always 0.
+    const size = (head[6] << 21) | (head[7] << 14) | (head[8] << 7) | head[9];
+    return 10 + size;
+  } catch (_) {
+    return 0;
+  } finally {
+    if (fd >= 0) {
+      try { fs.closeSync(fd); } catch (_) {}
+    }
+  }
+}
+
 const DEFAULTS = {
   icecastHost: "127.0.0.1",
   icecastPort: 8000,
@@ -365,7 +389,15 @@ class IcecastSource {
     return new Promise((resolve) => {
       const ff = this._ffmpeg;
       if (!ff || !ff.stdin || ff.killed) return resolve();
-      const r = fs.createReadStream(absPath);
+      // Skip any ID3v2 tag at the start of the file. ffmpeg's mp3 demuxer
+      // handles ID3 fine at file-open time but here we concatenate files
+      // onto one long-lived stdin pipe — at every boundary the demuxer
+      // expects a sync frame, and an ID3 header offsets it by ~32 bytes,
+      // emitting "Header missing" warnings each transition. Stripping
+      // before piping yields a pure stream of mp3 frames so boundaries
+      // are just a new sync word.
+      const skip = id3v2Length(absPath);
+      const r = fs.createReadStream(absPath, skip > 0 ? { start: skip } : undefined);
       r.pipe(ff.stdin, { end: false });
       let settled = false;
       // Hard watchdog: if neither finishGraceful nor finishImmediate has
