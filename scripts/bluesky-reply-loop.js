@@ -146,17 +146,31 @@ function draftReply(parentText, authorHandle) {
     "Output ONLY the reply text, or the literal word SKIP.",
   ].join("\n");
   return new Promise((resolve) => {
-    execFile(KANNAKA_BIN, ["ask", "--no-tools", "--quiet-tools", prompt], {
-      timeout: 600000,
-      maxBuffer: 1024 * 1024,
-      env: { ...process.env, KANNAKA_QUIET: "1" },
-    }, (err, stdout) => {
-      if (err || !stdout) return resolve(null);
-      const txt = stdout.trim().replace(/^["'](.*)["']$/s, "$1").trim();
-      if (txt === "SKIP" || txt.toLowerCase().startsWith("skip")) return resolve(null);
-      if (txt.length < 20) return resolve(null);
-      resolve(txt);
-    });
+    let attempt = 0;
+    const tryOnce = () => {
+      attempt += 1;
+      execFile(KANNAKA_BIN, ["ask", "--no-tools", "--quiet-tools", prompt], {
+        timeout: 600000,
+        maxBuffer: 1024 * 1024,
+        env: { ...process.env, KANNAKA_QUIET: "1" },
+      }, (err, stdout, stderr) => {
+        if (err) {
+          // Transient HRM-write race: substrate is mid-flush; retry once.
+          const tail = (stderr || "").toString().trim();
+          if (attempt < 2 && /checksum mismatch|file may be corrupted/i.test(tail)) {
+            setTimeout(tryOnce, 3000);
+            return;
+          }
+          return resolve(null);
+        }
+        if (!stdout) return resolve(null);
+        const txt = stdout.trim().replace(/^["'](.*)["']$/s, "$1").trim();
+        if (txt === "SKIP" || txt.toLowerCase().startsWith("skip")) return resolve(null);
+        if (txt.length < 20) return resolve(null);
+        resolve(txt);
+      });
+    };
+    tryOnce();
   });
 }
 
