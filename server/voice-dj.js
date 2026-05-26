@@ -1507,6 +1507,13 @@ class VoiceDJ {
     if (!mp3Path || typeof mp3Path !== "string") return cb(new Error("missing path"));
     if (!mp3Path.toLowerCase().endsWith(".mp3")) return cb(null); // Only normalize MP3s
     const tmp = mp3Path + ".norm.mp3";
+    // -id3v2_version 0 + -write_xing 0 strip the ID3v2 tag and the Xing
+    // VBR header. Without them the icecast-source ffmpeg's mp3 demuxer
+    // hits "Header missing" every time it crosses a voice-file boundary
+    // on its long-lived stdin pipe (the demuxer expects a sync frame at
+    // the boundary; an ID3 tag offsets the first frame by ~32 bytes).
+    // Music tracks have the same ID3 but boundaries are 3+ min apart so
+    // the noise is rare; voice clips fire every 6-7 s and flood the log.
     const args = [
       "-hide_banner", "-loglevel", "error", "-y",
       "-i", mp3Path,
@@ -1514,6 +1521,8 @@ class VoiceDJ {
       "-ac", "2",
       "-c:a", "libmp3lame",
       "-b:a", "128k",
+      "-id3v2_version", "0",
+      "-write_xing", "0",
       tmp,
     ];
     execFile("ffmpeg", args, { timeout: 20000 }, (err) => {
