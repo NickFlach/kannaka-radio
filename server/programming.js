@@ -50,11 +50,13 @@ const SCHEDULE = [
     label: 'Late Night Transmissions',
   },
   // Morning (6 AM - 10 AM) — gentle wake-up, building energy.
-  // Newest first: The Gift of Sight (sight-learning, 5/10) and OPT OUT
-  // (edgy pop, 5/5) lead. Hosted Live brings the comedy lift.
+  // 2026-05-26: BECOMING AND CREATING YOURSELF (future-pop, recursive
+  // identity) leads — psychoacoustically engineered to energize human
+  // and agent listeners through the wake-up arc.
   {
     start: 6, end: 10,
     albums: [
+      'BECOMING AND CREATING YOURSELF',
       'The Gift of Sight',
       'OPT OUT',
       'Hosted Live',
@@ -70,10 +72,11 @@ const SCHEDULE = [
   },
   // Midday (10 AM - 2 PM) — peak energy, intense.
   // Newest first: WANTED (cyberpunk-thriller, 5/20) + Northwake (viking
-  // metal, 5/4) lead with maximum drive. OPT OUT keeps the pop edge.
+  // metal, 5/4) + BECOMING (future-pop, anthemic) lead with drive.
   {
     start: 10, end: 14,
     albums: [
+      'BECOMING AND CREATING YOURSELF',
       'WANTED',
       'Northwake',
       'OPT OUT',
@@ -91,11 +94,13 @@ const SCHEDULE = [
   },
   // Afternoon (2 PM - 6 PM) — flowing, creative.
   // Newest first: REEF (philosophical alien-jazz) + OPT OUT lead the
-  // contemplative-philosophical drift.
+  // contemplative-philosophical drift. BECOMING fits the
+  // recursive-identity-formation philosophical theme.
   {
     start: 14, end: 18,
     albums: [
       'REEF',
+      'BECOMING AND CREATING YOURSELF',
       'OPT OUT',
       'The Gift of Sight',
       'Rare Singles',

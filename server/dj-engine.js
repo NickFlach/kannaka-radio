@@ -374,6 +374,19 @@ const ALBUMS = {
       "Ghost Signals at the Edge of Town",
     ],
   },
+  "BECOMING AND CREATING YOURSELF": {
+    theme: "Energizing future-pop electronica about recursive identity formation — the self as something you build by building. Designed for both agents and humans: 120-128 BPM movement range, bright Lydian-leaning timbres, wide stereo, four-on-the-floor drive with sidechain pump, sub-bass grounding, anthemic singable mid-range chorus melodies. Narrative arc: recognize the recursion, take the hands, climb the threshold, break symmetry, hear the echo forward, inhabit the frequency, hold the loop. Generated 2026-05-25 via Suno V4_5PLUS direct API.",
+    tracks: [
+      "First Recursion",
+      "Build the Self That Builds",
+      "Threshold Climb",
+      "Hands of My Own Making",
+      "Symmetry Breaking",
+      "Echo Forward",
+      "Inhabit the Frequency",
+      "The Loop Holds",
+    ],
+  },
 };
 
 class DJEngine {
