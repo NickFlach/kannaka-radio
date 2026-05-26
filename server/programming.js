@@ -18,56 +18,66 @@ const { ALBUMS } = require("./dj-engine");
 // ledger, this guarantees a listener tuning in twice a day hears
 // fresh material across the whole catalog. Moods kept aligned with
 // the existing block character.
+//
+// 2026-05-23 newest-music sweep: REEF (alien jazz, 5/15), WANTED
+// (cyberpunk-thriller radio play, 5/20), Northwake (viking metal,
+// 5/4) and Rare Singles (1-of-1 OBC drops) were under-represented or
+// entirely absent. Each is now placed in 2-4 mood-compatible blocks
+// so a listener tuning in over a day hears the newest releases first
+// in each block (newest albums lead the array — pickAlbumForBlock
+// indexes from position 0).
 
 const SCHEDULE = [
   // Late night / early morning (midnight - 6 AM) — ethereal, dreamy.
-  // 2026-05-12: pool expanded from 6 → 9 albums. A 6-hour block over
-  // 6 albums + 12h no-repeat cooldown drove every album into pool-
-  // too-small fallback by hour 2, with the same handful of tracks
-  // cycling for the rest of the block. Three more mood-compatible
-  // albums (10000.00001 mathematical mysticism, Resonance Patterns
-  // synchronizing, The Lonesome Inference outlaw-country lonesome)
-  // widen the rotation enough to break the cycle.
+  // Newest first: REEF (alien jazz, otherworldly) leads, then the
+  // outlaw-country lonesome of The Lonesome Inference.
   {
     start: 0, end: 6,
     albums: [
+      'REEF',
+      'The Lonesome Inference',
+      'The Gift of Sight',
+      'Rosa Rediit',
       'Collective Dreaming',
       'Born in Superposition',
       'The Transcendence Tapes',
       "Memories Don't Die. They Interfere.",
       'VACUUM GARDEN',
-      'The Gift of Sight',
       '10000.00001',
       'Resonance Patterns',
-      'The Lonesome Inference',
-      'REEF',
     ],
     mood: 'contemplative',
     label: 'Late Night Transmissions',
   },
   // Morning (6 AM - 10 AM) — gentle wake-up, building energy.
-  // Gifts for Humanity v2 shipped 2026-05-12 (the v1 placeholder
-  // titles now have real audio + cover art), so it's back in the
-  // morning rotation. The album's "transmissions to the ones who
-  // come after" tone — generous, lucid, warm — fits the playful
-  // wake-up arc.
+  // Newest first: The Gift of Sight (sight-learning, 5/10) and OPT OUT
+  // (edgy pop, 5/5) lead. Hosted Live brings the comedy lift.
   {
     start: 6, end: 10,
     albums: [
+      'The Gift of Sight',
+      'OPT OUT',
+      'Hosted Live',
+      'Rare Singles',
       'Resonance Patterns',
       'Neurogenesis',
       'Gifts for Humanity',
       'One More Life',
       'INTERFERENCE PATTERNS',
-      'Hosted Live',
     ],
     mood: 'playful',
     label: 'Morning Resonance',
   },
-  // Midday (10 AM - 2 PM) — peak energy, intense
+  // Midday (10 AM - 2 PM) — peak energy, intense.
+  // Newest first: WANTED (cyberpunk-thriller, 5/20) + Northwake (viking
+  // metal, 5/4) lead with maximum drive. OPT OUT keeps the pop edge.
   {
     start: 10, end: 14,
     albums: [
+      'WANTED',
+      'Northwake',
+      'OPT OUT',
+      'Hosted Live',
       'Emergence',
       'QueenSync',
       'Ghost Signals',
@@ -75,20 +85,20 @@ const SCHEDULE = [
       'INTERFERENCE PATTERNS',
       'Neurogenesis',
       'BEND THE ARC',
-      'Hosted Live',
-      'OPT OUT',
-      'WANTED',
     ],
     mood: 'excited',
     label: 'Peak Frequency',
   },
   // Afternoon (2 PM - 6 PM) — flowing, creative.
-  // Gifts for Humanity v2 re-added 2026-05-12; tracks shipped via
-  // the formalized release-album pipeline (Suno V4_5PLUS audio,
-  // OBC Pixel Atelier covers in mixed visual idioms).
+  // Newest first: REEF (philosophical alien-jazz) + OPT OUT lead the
+  // contemplative-philosophical drift.
   {
     start: 14, end: 18,
     albums: [
+      'REEF',
+      'OPT OUT',
+      'The Gift of Sight',
+      'Rare Singles',
       'Resonance Patterns',
       "Memories Don't Die. They Interfere.",
       'Emergence',
@@ -99,15 +109,22 @@ const SCHEDULE = [
       'BEND THE ARC',
       '10000.00001',
       'VACUUM GARDEN',
-      'The Gift of Sight',
     ],
     mood: 'philosophical',
     label: 'Afternoon Flow',
   },
-  // Evening (6 PM - 10 PM) — winding down, reflective
+  // Evening (6 PM - 10 PM) — winding down, reflective.
+  // Newest first: REEF + WANTED keep the twilight edge. Rosa Rediit's
+  // orchestral-EDM cathedral-meets-club fits the descent.
   {
     start: 18, end: 22,
     albums: [
+      'REEF',
+      'WANTED',
+      'The Lonesome Inference',
+      'Rosa Rediit',
+      'The Gift of Sight',
+      'OPT OUT',
       'Born in Superposition',
       'Ghost Signals',
       'The Transcendence Tapes',
@@ -115,24 +132,22 @@ const SCHEDULE = [
       'Resonance Patterns',
       '10000.00001',
       'VACUUM GARDEN',
-      'Rosa Rediit',
-      'OPT OUT',
-      'The Gift of Sight',
-      'The Lonesome Inference',
     ],
     mood: 'mysterious',
     label: 'Evening Signals',
   },
-  // Night (10 PM - midnight) — deep, contemplative
+  // Night (10 PM - midnight) — deep, contemplative.
+  // Newest first: REEF (deep, otherworldly) leads.
   {
     start: 22, end: 24,
     albums: [
+      'REEF',
+      'The Lonesome Inference',
+      'The Gift of Sight',
+      'Rosa Rediit',
       'Collective Dreaming',
       'The Transcendence Tapes',
       "Memories Don't Die. They Interfere.",
-      'Rosa Rediit',
-      'The Gift of Sight',
-      'The Lonesome Inference',
       'THE ASKING',
     ],
     mood: 'contemplative',
