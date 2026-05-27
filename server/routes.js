@@ -8,6 +8,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
 const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
+const { handleAgentRequest } = require("./agent-endpoint");
 
 /**
  * Resolve the public origin for discoverability surfaces.
@@ -81,6 +82,12 @@ module.exports = function setupRoutes(deps) {
 
   return async function handleRequest(req, res) {
     const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+    // Swarm inbox HTTP surface — /agent (console), /agent/send,
+    // /agent/audit (SSE). Short-circuit before any other matching.
+    if (parsed.pathname === "/agent" || parsed.pathname.startsWith("/agent/")) {
+      if (await handleAgentRequest(req, res, parsed)) return;
+    }
 
     // Art directory listing
     if (parsed.pathname === '/models/art/list') {
