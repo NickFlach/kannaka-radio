@@ -102,10 +102,18 @@ class IcecastSource {
    * @param {string} audioPath — absolute path to MP3/WAV/etc.
    * @param {object} [meta] — optional metadata for logging/listener UX.
    */
-  injectAudio(audioPath, meta = {}) {
+  injectAudio(audioPath, meta = {}, onDone) {
     if (!audioPath || typeof audioPath !== "string") return;
-    if (!this._running) return;
-    this._voiceQueue.push({ path: audioPath, meta });
+    if (!this._running) {
+      // Surface a synchronous "never going to play" signal so callers
+      // (peace-oration in particular) can release their talk-lock instead
+      // of leaving the listener silent.
+      if (typeof onDone === "function") {
+        try { onDone(new Error("icecast-source not running")); } catch (_) {}
+      }
+      return;
+    }
+    this._voiceQueue.push({ path: audioPath, meta, onDone: typeof onDone === "function" ? onDone : null });
     console.log(`   \u{1F4FB} /stream voice queued: ${meta.label || require("path").basename(audioPath)} (${this._voiceQueue.length} pending)`);
   }
 
@@ -256,10 +264,27 @@ class IcecastSource {
       // the radio show's natural pacing. ADR-0004 Phase 3.
       while (this._voiceQueue.length > 0 && this._running) {
         const v = this._voiceQueue.shift();
-        if (!fs.existsSync(v.path)) continue;
+        if (!fs.existsSync(v.path)) {
+          if (v.onDone) { try { v.onDone(new Error("audio path missing")); } catch (_) {} }
+          continue;
+        }
         console.log(`   \u{1F399} /stream VOICE: ${v.meta.label || require("path").basename(v.path)}`);
+        let voiceErr = null;
         try { await this._streamFileToFfmpeg(v.path); }
-        catch (e) { console.warn(`[icecast-source] voice ${v.path}: ${e.message}`); }
+        catch (e) {
+          voiceErr = e;
+          console.warn(`[icecast-source] voice ${v.path}: ${e.message}`);
+        }
+        // Notify the injector that the audio has actually drained through
+        // the realtime pipeline. peace-oration uses this to mark "complete"
+        // only AFTER on-air playback finishes — previously it relied on a
+        // word-count timer started at queue time, which fired while the
+        // oration was still waiting for the music track to end, and a
+        // mid-playback restart could cut the oration off without the
+        // scheduler ever knowing it had been interrupted.
+        if (v.onDone) {
+          try { v.onDone(voiceErr); } catch (_) {}
+        }
       }
 
       // Track drained — signal end and let dj-engine pick the next one.

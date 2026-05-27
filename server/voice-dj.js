@@ -554,26 +554,54 @@ class VoiceDJ {
       // Feed it back through the ear so Kannaka hears her own speech.
       execFile(this._kannakabin, ['hear', audioPath], { timeout: 60000 }, () => {});
 
-      // ADR-0004 Phase 3: also inject the oration into the /stream
-      // Icecast source so /stream listeners hear it inline (between music
-      // tracks). The SPA's separate audio element is still used for the
-      // legacy /audio path.
-      try {
-        const ics = this._getIcecastSource && this._getIcecastSource();
-        if (ics && typeof ics.injectAudio === 'function') {
-          ics.injectAudio(audioPath, { label: 'Kannaka — Peace Oration' });
-        }
-      } catch (_) {}
-
       // Remember it as a "monologue" so subsequent intros don't echo it.
       this._rememberMonologue(spokenText || text);
 
-      this._talkSegmentTimer = setTimeout(() => {
+      // ADR-0004 Phase 3: inject into /stream so listeners hear it inline
+      // (between music tracks). The actual playback-complete signal from
+      // the icecast-source is what releases the talk lock — using a
+      // word-count timer here was the cause of "oration logged complete
+      // 3.5 min before actual playback started" (2026-05-26). The
+      // setTimeout below is a 720s belt-and-suspenders ceiling in case
+      // the inject never resolves (icecast-source died, file unlinked,
+      // etc.) — much longer than the soft estimate so it never fires
+      // before a normal completion.
+      let released = false;
+      const release = (reason) => {
+        if (released) return;
+        released = true;
+        if (this._talkSegmentTimer) {
+          clearTimeout(this._talkSegmentTimer);
+          this._talkSegmentTimer = null;
+        }
         this._inTalkSegment = false;
-        this._talkSegmentTimer = null;
-        console.log(`   \u{1F3A4} Oration ended — resuming programming`);
+        console.log(`   \u{1F3A4} Oration ended — resuming programming${reason ? ` (${reason})` : ""}`);
         if (onDone) onDone();
-      }, estimatedDurationMs + 2000);
+      };
+      let injected = false;
+      try {
+        const ics = this._getIcecastSource && this._getIcecastSource();
+        if (ics && typeof ics.injectAudio === 'function') {
+          ics.injectAudio(audioPath, { label: 'Kannaka — Peace Oration' }, (err) => {
+            release(err ? `inject error: ${err.message}` : null);
+          });
+          injected = true;
+        }
+      } catch (_) {}
+
+      if (injected) {
+        // 720s safety ceiling — far past any real oration. If the
+        // icecast-source callback fires first, this is cancelled.
+        this._talkSegmentTimer = setTimeout(() => {
+          release("safety timer fired — inject callback never returned");
+        }, 720000);
+      } else {
+        // No icecast-source available — fall back to the legacy timer
+        // path so the talk lock still gets released on time.
+        this._talkSegmentTimer = setTimeout(() => {
+          release("no icecast-source — legacy timer");
+        }, estimatedDurationMs + 2000);
+      }
     }, ttsOpts);
     return true;
   }
