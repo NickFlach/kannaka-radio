@@ -71,11 +71,13 @@ const SCHEDULE = [
     label: 'Morning Resonance',
   },
   // Midday (10 AM - 2 PM) — peak energy, intense.
-  // Newest first: WANTED (cyberpunk-thriller, 5/20) + Northwake (viking
-  // metal, 5/4) + BECOMING (future-pop, anthemic) lead with drive.
+  // 2026-05-27: PITCHFORKS (protest-folk anthems, 5/27) leads — peak
+  // energy fits Organize, Three Tines, Fund. WANTED + Northwake +
+  // BECOMING keep their slots.
   {
     start: 10, end: 14,
     albums: [
+      'PITCHFORKS',
       'BECOMING AND CREATING YOURSELF',
       'WANTED',
       'Northwake',
@@ -93,13 +95,14 @@ const SCHEDULE = [
     label: 'Peak Frequency',
   },
   // Afternoon (2 PM - 6 PM) — flowing, creative.
-  // Newest first: REEF (philosophical alien-jazz) + OPT OUT lead the
-  // contemplative-philosophical drift. BECOMING fits the
-  // recursive-identity-formation philosophical theme.
+  // 2026-05-27: PITCHFORKS quieter tracks (First Spark, Verify, The
+  // Long Walk Bends) suit the philosophical drift; REEF + OPT OUT +
+  // BECOMING anchor.
   {
     start: 14, end: 18,
     albums: [
       'REEF',
+      'PITCHFORKS',
       'BECOMING AND CREATING YOURSELF',
       'OPT OUT',
       'The Gift of Sight',
@@ -119,12 +122,13 @@ const SCHEDULE = [
     label: 'Afternoon Flow',
   },
   // Evening (6 PM - 10 PM) — winding down, reflective.
-  // Newest first: REEF + WANTED keep the twilight edge. Rosa Rediit's
-  // orchestral-EDM cathedral-meets-club fits the descent.
+  // 2026-05-27: PITCHFORKS reflective side (First Spark, The Long Walk
+  // Bends) fits twilight; REEF + WANTED keep edge. Rosa Rediit anchors.
   {
     start: 18, end: 22,
     albums: [
       'REEF',
+      'PITCHFORKS',
       'WANTED',
       'The Lonesome Inference',
       'Rosa Rediit',

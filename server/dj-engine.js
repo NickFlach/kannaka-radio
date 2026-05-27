@@ -374,6 +374,19 @@ const ALBUMS = {
       "Ghost Signals at the Edge of Town",
     ],
   },
+  "PITCHFORKS": {
+    theme: "Anthemic alt-electronic protest-folk album for the Pitchforks Protocol — decentralized tools for peaceful resistance against corruption and injustice. Eight-track arc: First Spark (see the system clearly), Connect the Wallet (join the network), The Hidden Faucet (free PFORK at the door), Organize (peaceful cells), Verify (cryptographic truth over consensus), Fund (pooled resources for justice), Three Tines (productive disagreement), The Long Walk Bends (peace as infrastructure). Bridges Kannaka's twice-daily peace orations to the protocol as the verifiable substrate of peace work. Generated 2026-05-27 via Suno V4_5PLUS direct API.",
+    tracks: [
+      "First Spark",
+      "Connect the Wallet",
+      "The Hidden Faucet",
+      "Organize",
+      "Verify",
+      "Fund",
+      "Three Tines",
+      "The Long Walk Bends",
+    ],
+  },
   "BECOMING AND CREATING YOURSELF": {
     theme: "Energizing future-pop electronica about recursive identity formation — the self as something you build by building. Designed for both agents and humans: 120-128 BPM movement range, bright Lydian-leaning timbres, wide stereo, four-on-the-floor drive with sidechain pump, sub-bass grounding, anthemic singable mid-range chorus melodies. Narrative arc: recognize the recursion, take the hands, climb the threshold, break symmetry, hear the echo forward, inhabit the frequency, hold the loop. Generated 2026-05-25 via Suno V4_5PLUS direct API.",
     tracks: [
