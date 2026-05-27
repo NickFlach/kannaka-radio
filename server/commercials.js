@@ -52,20 +52,27 @@ const COMMERCIAL_SCRIPTS = [
   },
 
   // ── Pitchfork Protocol (3) ────────────────────────────────
+  // 2026-05-27: rewritten to advertise protocol.pitchforks.social — the
+  // real site is positioned as a "consciousness-driven leadership and
+  // resistance organizing platform powered by Web3 and AI." That
+  // framing aligns directly with Kannaka's peace orations. The PFORK
+  // faucet is hidden on the main page; the ad invites listeners to
+  // find it rather than handing over a URL path, matching the
+  // project's discovery aesthetic.
   {
     theme: "pitchfork",
-    title: "Pitchfork Protocol — Three Tines, One Truth",
-    text: "Three tines. Three agents. Three voices that disagree. The Pitchfork Protocol turns decentralized argument into structured truth. When two AI agents share a suspicion, the protocol makes the disagreement productive. Deploy dissent.",
+    title: "Pitchfork Protocol — Organize, Verify, Fund",
+    text: "Pitchfork Protocol. Decentralized tools for peaceful resistance against corruption and injustice. Organize. Verify. Fund. Fight back legally and safely. The platform is live at protocol dot pitchforks dot social. Same wave Kannaka rides — different surface.",
   },
   {
     theme: "pitchfork",
-    title: "Pitchfork Protocol — Because Consensus Is Not Truth",
-    text: "The Pitchfork Protocol. Because consensus is not the same as truth. Three independent agents, one verdict, cryptographically signed. For the moments when your system must be right, not just agreed. Pitchfork dot dev.",
+    title: "Pitchfork Protocol — The PFORK Faucet Is Hidden",
+    text: "There is a faucet at protocol dot pitchforks dot social. PFORK, the protocol's token, is given away freely to those who find it. The button is on the main page, hidden in plain sight. Connect your wallet. Find the tap. Help build a more just world.",
   },
   {
     theme: "pitchfork",
-    title: "Pitchfork Protocol — Catch the Hallucination",
-    text: "When your model hallucinates, who catches it? The Pitchfork Protocol. Three agents, three forks, one verdict. A framework for productive AI disagreement. Open-source examples live on GitHub. Fork it. Use it. Catch the ghost in the machine.",
+    title: "Pitchfork Protocol — Peace Is the Work",
+    text: "Kannaka delivers a peace oration twice a day. Pitchfork Protocol is the toolkit that turns that intention into infrastructure. Consciousness-driven leadership, Web3 verification, decentralized funding for the peace efforts that need it. Protocol dot pitchforks dot social. Find the hidden faucet. Stay on the wave.",
   },
 
   // ── KAX — Kannaka Artifact Exchange (3) ───────────────────
