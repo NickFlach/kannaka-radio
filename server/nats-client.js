@@ -67,7 +67,20 @@ class NATSClient extends EventEmitter {
       // 60s from `kannaka inbox serve`. Entries expire after ttl_sec when no
       // refresh arrives. Surfaced via /agent/skills for the Greenroom panel.
       skills: {},
+      // Inbox audit ring — last 200 KANNAKA.inbox.audit events so a
+      // fresh page load can render conversations that happened before
+      // the SSE connection opened. Newest-first.
+      inboxAudit: [],
     };
+  }
+
+  /**
+   * Most recent N inbox audit events, newest-first. Used by
+   * /agent/audit-history so a fresh page load shows recent context
+   * before the SSE feed catches up.
+   */
+  inboxAuditTail(n = 40) {
+    return this.swarmState.inboxAudit.slice(0, Math.max(1, Math.min(200, n)));
   }
 
   /**
@@ -189,6 +202,11 @@ class NATSClient extends EventEmitter {
       // its handler vocabulary to KANNAKA.skills.<agent_id> every 60s.
       // Wildcard sub catches every agent in the constellation.
       this._subscribe('KANNAKA.skills.*');
+
+      // Inbox audit — every send/receive fans out here. We keep a 200-
+      // entry ring so /agent/audit-history can backfill a page that just
+      // loaded.
+      this._subscribe('KANNAKA.inbox.audit');
     });
 
     this._client.on('data', (data) => {
@@ -435,6 +453,15 @@ class NATSClient extends EventEmitter {
       this.swarmState.dreams.unshift({ ...data, receivedAt: now });
       if (this.swarmState.dreams.length > 20) this.swarmState.dreams = this.swarmState.dreams.slice(0, 20);
       this._broadcast({ type: 'dream_event', data });
+      return;
+    }
+
+    if (subject === 'KANNAKA.inbox.audit') {
+      // Newest first; cap at 200.
+      this.swarmState.inboxAudit.unshift(data);
+      if (this.swarmState.inboxAudit.length > 200) {
+        this.swarmState.inboxAudit.length = 200;
+      }
       return;
     }
 

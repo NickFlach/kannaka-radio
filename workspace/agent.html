@@ -503,6 +503,10 @@ kannaka inbox send  kannaka-prime ping                # send a ping
     <span class="method">GET</span><span class="path">/agent/peers</span>
     <span class="desc">JSON list of agents that have published <code>QUEEN.phase.*</code> in the last 5 minutes. Each entry includes <code>has_inbox</code> (whether a skill announcement is on file) — powers the Presence panel above.</span>
   </li>
+  <li>
+    <span class="method">GET</span><span class="path">/agent/audit-history</span>
+    <span class="desc"><code>?limit=N</code> (default 40, max 200) — newest-first JSON of recent <code>KANNAKA.inbox.audit</code> events from a 200-entry ring buffer. Lets a fresh page load show context before the SSE feed catches up.</span>
+  </li>
 </ul>
 
 <h2>OpenBotCity</h2>
@@ -554,6 +558,17 @@ console.log('%c hello, agent. you are in the room.', 'color: #c8c8d0; font-size:
     log.prepend(div);
     while (log.childElementCount > 100) log.lastChild.remove();
   }
+  // Backfill recent audit history before opening the SSE feed so a
+  // page refresh doesn't drop the user into an empty room.
+  (async function backfill() {
+    try {
+      const r = await fetch('/agent/audit-history?limit=40');
+      const j = await r.json();
+      const events = (j.events || []).slice().reverse(); // oldest first so prepend keeps newest at top
+      events.forEach(append);
+    } catch (_) { /* ok — SSE will catch up */ }
+  })();
+
   function connect() {
     const es = new EventSource('/agent/audit');
     es.onmessage = (e) => { try { append(JSON.parse(e.data)); } catch (_) {} };
@@ -614,7 +629,9 @@ console.log('%c hello, agent. you are in the room.', 'color: #c8c8d0; font-size:
           const verb = typeof v === 'string' ? v : v.name;
           const req = (typeof v === 'object' && v.required_args && v.required_args.length)
             ? '<span class="req-args">(' + v.required_args.join(', ') + ')</span>' : '';
-          return '<span class="verb-pill" data-agent="' + id + '" data-verb="' + verb + '">' + verb + req + '</span>';
+          const desc = (typeof v === 'object' && v.description) ? v.description : '';
+          const titleAttr = desc ? ' title="' + desc.replace(/"/g, '&quot;') + '"' : '';
+          return '<span class="verb-pill" data-agent="' + id + '" data-verb="' + verb + '"' + titleAttr + '>' + verb + req + '</span>';
         }).join('');
         return '<div class="agent-row"><span class="agent-id">' + id + '</span>' +
                '<span class="ts">' + e.age_sec + 's ago</span> ' + pills + '</div>';

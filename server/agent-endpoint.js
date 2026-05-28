@@ -104,6 +104,15 @@ async function handleAgentRequest(req, res, parsed) {
     return true;
   }
 
+  if (parsed.pathname === "/agent/audit-history" && req.method === "GET") {
+    const n = Math.max(1, Math.min(200, parseInt(parsed.searchParams.get("limit") || "40", 10) || 40));
+    const events = _natsClient && typeof _natsClient.inboxAuditTail === "function"
+      ? _natsClient.inboxAuditTail(n)
+      : [];
+    json(res, 200, { events, count: events.length });
+    return true;
+  }
+
   if (parsed.pathname === "/agent/send" && req.method === "POST") {
     let body;
     try {
