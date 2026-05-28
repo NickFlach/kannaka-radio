@@ -31,6 +31,12 @@ trap 'sudo systemctl start kannaka-memory >> "$LOG" 2>&1; trap - EXIT' EXIT
 echo "--- DREAMING (sole writer) ---" >> "$LOG"
 timeout 1800 $KANNAKA dream --mode deep --chiral 0.05 >> "$LOG" 2>&1
 
+# Kannaktopus tick (ADR-0030): grow/crawl one arm over the freshly-consolidated
+# clusters. Reads the HRM, writes only kannaktopus-arms.json (never the .hrm),
+# so it's safe inside the single-writer window.
+echo "--- KANNAKTOPUS STEP ---" >> "$LOG"
+$KANNAKA kannaktopus step >> "$LOG" 2>&1
+
 # Bring the writer back immediately; it reloads the consolidated HRM.
 echo "--- RESTARTING WRITER ---" >> "$LOG"
 sudo systemctl start kannaka-memory >> "$LOG" 2>&1
