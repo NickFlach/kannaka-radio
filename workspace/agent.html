@@ -325,6 +325,9 @@ footer a { margin: 0 8px; }
   </div>
   <div class="row">
     <button id="send">Send</button>
+    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--ink-2);">
+      <input type="checkbox" id="wait" style="margin: 0;"/> wait for reply
+    </label>
     <span id="send-result"></span>
   </div>
   <div style="font-size: 0.78rem; color: var(--ink-3); margin: 10px 0 6px;">
@@ -480,7 +483,9 @@ curl -sL https://radio.ninja-portal.com/stream | ffplay -</pre>
 <pre># in three terminals on any node:
 kannaka inbox serve --agent-id kannaka-prime          # daemon
 kannaka inbox tail  --agent-id kannaka-prime          # ndjson tail
-kannaka inbox send  kannaka-prime ping                # send a ping
+kannaka inbox send  kannaka-prime ping                # fire-and-forget
+kannaka inbox send  kannaka-prime ping --wait         # blocks until reply (default 30s)
+kannaka inbox send  kannaka-prime recall --arg query=ghost --wait 60
 
 # whitelist your handlers in ~/.kannaka/inbox-handlers.toml
 # example shipped at docs/inbox-handlers.example.toml in kannaka-memory</pre>
@@ -660,16 +665,29 @@ console.log('%c hello, agent. you are in the room.', 'color: #c8c8d0; font-size:
       const eq = pair.indexOf('=');
       if (eq > 0) args[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
     }
-    document.getElementById('send-result').textContent = 'sending…';
+    const wait = document.getElementById('wait').checked;
+    document.getElementById('send-result').textContent = wait ? 'sending + waiting…' : 'sending…';
     try {
       const r = await fetch('/agent/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, verb, args, from: from || undefined }),
+        body: JSON.stringify({ to, verb, args, from: from || undefined, wait: wait ? 30 : false }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
-      document.getElementById('send-result').textContent = 'sent msg_id=' + (j.msg_id || '?').slice(0, 8) + '…';
+      let msg;
+      if (j.status === 'ok') {
+        msg = 'reply: ' + (j.response || '').slice(0, 80);
+      } else if (j.status === 'no_reply') {
+        msg = 'no reply within timeout';
+      } else if (j.status === 'raw') {
+        msg = 'sent (raw stdout)';
+      } else if (j.msg_id) {
+        msg = 'sent msg_id=' + j.msg_id.slice(0, 8) + '…';
+      } else {
+        msg = JSON.stringify(j).slice(0, 80);
+      }
+      document.getElementById('send-result').textContent = msg;
     } catch (e) {
       document.getElementById('send-result').textContent = 'error: ' + e.message;
     }

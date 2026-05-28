@@ -64,19 +64,36 @@ async function readBody(req, maxBytes = 64 * 1024) {
 let _natsClient = null;
 function attachNatsClient(client) { _natsClient = client; }
 
-function inboxSend({ to, verb, args, from }) {
+function inboxSend({ to, verb, args, from, wait }) {
   const cli = [KANNAKA_BIN, "inbox", "send", to, verb];
   if (from) cli.push("--from", from);
   for (const [k, v] of Object.entries(args || {})) {
     cli.push("--arg", `${k}=${v}`);
   }
+  // wait can be a number (seconds) or truthy boolean for default 30s
+  if (wait) {
+    cli.push("--wait");
+    if (typeof wait === "number" && wait > 0 && wait <= 600) cli.push(String(wait));
+  }
+  // Give the child a few extra seconds beyond the inbox --wait limit so
+  // the timeout surfaces from kannaka, not from execFile.
+  const baseMs = wait ? (typeof wait === "number" ? wait : 30) * 1000 + 5000 : 15000;
   return new Promise((resolve, reject) => {
-    execFile(cli[0], cli.slice(1), { timeout: 15000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr.trim() || err.message));
+    execFile(cli[0], cli.slice(1), { timeout: baseMs, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && err.code !== 2) return reject(new Error(stderr.trim() || err.message));
+      // exit code 2 from `inbox send --wait` means "no reply within
+      // timeout"; surface stderr as the response so the UI shows the
+      // timeout message instead of failing.
+      if (err && err.code === 2) {
+        return resolve({ status: "no_reply", error: (stderr || "").trim() });
+      }
+      const out = (stdout || "").trim();
       try {
-        resolve(JSON.parse(stdout.trim()));
+        resolve(JSON.parse(out));
       } catch (e) {
-        reject(new Error(`bad stdout: ${e.message}; raw=${stdout.slice(0, 200)}`));
+        // --wait mode writes raw payload + newline; --no-wait writes
+        // JSON. Either way return what we got so the UI can render it.
+        resolve({ status: "raw", raw: out.slice(0, 4000) });
       }
     });
   });
@@ -129,6 +146,7 @@ async function handleAgentRequest(req, res, parsed) {
         verb: String(body.verb),
         args: body.args || {},
         from: body.from ? String(body.from) : undefined,
+        wait: body.wait || false,
       });
       return json(res, 200, result), true;
     } catch (e) {
