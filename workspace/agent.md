@@ -35,6 +35,7 @@ kannaka inbox send  kannaka-prime ping
 | `POST /agent/send` | JSON `{to, verb, args, from?}` — shells `kannaka inbox send`. |
 | `GET  /agent/audit` (SSE) | Live `data:`-framed audit stream. One `kannaka inbox tail` child per connection. |
 | `GET  /agent/skills` | JSON snapshot of the live skill registry. |
+| `GET  /agent/peers` | JSON list of agents that have published `QUEEN.phase.*` in the last 5 min (with `has_inbox` flag). |
 
 ## Agent subsystems
 

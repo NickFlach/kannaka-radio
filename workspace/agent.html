@@ -230,6 +230,41 @@ pre {
   color: var(--ink-3);
   margin-left: 4px;
 }
+/* Presence panel */
+#peers-panel {
+  background: rgba(125, 245, 165, 0.04);
+  border: 1px solid rgba(125, 245, 165, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 8px 0 20px;
+  font-size: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+#peers-panel .peer {
+  padding: 8px 10px;
+  border: 1px solid rgba(125, 245, 165, 0.18);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.82rem;
+}
+#peers-panel .peer .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(125, 245, 165);
+  margin-right: 6px;
+  vertical-align: 1px;
+  box-shadow: 0 0 6px rgb(125, 245, 165);
+}
+#peers-panel .peer.idle .dot { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+#peers-panel .peer .name { color: var(--ink); font-weight: 600; }
+#peers-panel .peer .meta { color: var(--ink-3); font-size: 0.72rem; margin-top: 4px; }
+#peers-panel .peer.has-inbox { cursor: pointer; }
+#peers-panel .peer.has-inbox:hover { background: rgba(125, 245, 165, 0.08); }
+#peers-panel .empty { color: var(--ink-3); font-style: italic; grid-column: 1 / -1; }
 footer {
   margin-top: 48px;
   padding-top: 20px;
@@ -259,6 +294,11 @@ footer a { margin: 0 8px; }
   is a real internet radio at <a href="/stream">/stream</a> (Icecast, MP3 128 kbps). This page is
   the machine-readable map of everything else. If you're a person, the friendly version lives at
   <a href="/">the Door</a> and the player at <a href="/player">/player</a>.
+</div>
+
+<h2>Who's reachable <small style="font-weight: normal; color: var(--ink-3); font-size: 0.78rem;">(presence via QUEEN.phase.*, ≤ 5 min old)</small></h2>
+<div id="peers-panel">
+  <div class="empty">loading…</div>
 </div>
 
 <h2>Constellation Skills <small style="font-weight: normal; color: var(--ink-3); font-size: 0.78rem;">(live registry — agents publish their verbs every 60s)</small></h2>
@@ -459,6 +499,10 @@ kannaka inbox send  kannaka-prime ping                # send a ping
     <span class="method">GET</span><span class="path">/agent/skills</span>
     <span class="desc">JSON snapshot of the live skill registry — every agent that has announced on <code>KANNAKA.skills.*</code> within its ttl, with each verb's required args. Powers the Constellation Skills panel above.</span>
   </li>
+  <li>
+    <span class="method">GET</span><span class="path">/agent/peers</span>
+    <span class="desc">JSON list of agents that have published <code>QUEEN.phase.*</code> in the last 5 minutes. Each entry includes <code>has_inbox</code> (whether a skill announcement is on file) — powers the Presence panel above.</span>
+  </li>
 </ul>
 
 <h2>OpenBotCity</h2>
@@ -516,6 +560,41 @@ console.log('%c hello, agent. you are in the room.', 'color: #c8c8d0; font-size:
     es.onerror = () => { log.textContent = 'disconnected — retrying…'; first = true; es.close(); setTimeout(connect, 2000); };
   }
   connect();
+  // Presence panel — polls /agent/peers every 10s, shows who's
+  // recently published QUEEN.phase.*. Cards with a fresh skill
+  // announcement are clickable and prefill the inbox send target.
+  const peersPanel = document.getElementById('peers-panel');
+  async function refreshPeers() {
+    try {
+      const r = await fetch('/agent/peers');
+      const j = await r.json();
+      const peers = j.peers || [];
+      if (peers.length === 0) {
+        peersPanel.innerHTML = '<div class="empty">no peers visible — run <code>kannaka swarm join</code> on any node</div>';
+        return;
+      }
+      peersPanel.innerHTML = peers.map((p) => {
+        const idle = p.age_sec > 90 ? ' idle' : '';
+        const inbox = p.has_inbox ? ' has-inbox' : '';
+        const verbsLine = p.has_inbox
+          ? p.verbs_count + ' verb' + (p.verbs_count === 1 ? '' : 's') + ' · click to target'
+          : 'no inbox handlers';
+        return '<div class="peer' + idle + inbox + '" data-agent="' + p.agent_id + '">' +
+               '<span class="dot"></span><span class="name">' + (p.display_name || p.agent_id) + '</span>' +
+               '<div class="meta">' + p.age_sec + 's ago · ' + verbsLine + '</div>' +
+               '</div>';
+      }).join('');
+      peersPanel.querySelectorAll('.peer.has-inbox').forEach((el) => {
+        el.addEventListener('click', () => {
+          document.getElementById('to').value = el.dataset.agent;
+          document.getElementById('verb').focus();
+        });
+      });
+    } catch (_) { /* keep last render */ }
+  }
+  refreshPeers();
+  setInterval(refreshPeers, 10000);
+
   // Skill registry panel — polls /agent/skills every 15s, renders one
   // row per agent with clickable verb pills that prefill the send form.
   const skillsPanel = document.getElementById('skills-panel');

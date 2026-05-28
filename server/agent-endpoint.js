@@ -96,6 +96,14 @@ async function handleAgentRequest(req, res, parsed) {
     return true;
   }
 
+  if (parsed.pathname === "/agent/peers" && req.method === "GET") {
+    const peers = _natsClient && typeof _natsClient.peersSnapshot === "function"
+      ? _natsClient.peersSnapshot()
+      : [];
+    json(res, 200, { peers, count: peers.length });
+    return true;
+  }
+
   if (parsed.pathname === "/agent/send" && req.method === "POST") {
     let body;
     try {

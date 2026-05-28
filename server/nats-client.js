@@ -71,6 +71,36 @@ class NATSClient extends EventEmitter {
   }
 
   /**
+   * Lightweight peers snapshot for /agent/peers — one entry per agent
+   * that's published a QUEEN.phase.* in the last 5 minutes. Surfaces
+   * agent_id, display_name, last-seen age, phase, and whether we
+   * also have a skill announcement on file (so the Greenroom can
+   * mark agents as "responsive" vs "presence-only").
+   */
+  peersSnapshot() {
+    const now = Date.now();
+    const out = [];
+    for (const [id, agent] of Object.entries(this.swarmState.agents)) {
+      const age_sec = Math.round((now - (agent.lastSeen || 0)) / 1000);
+      if (age_sec > 300) continue;
+      const skill = this.swarmState.skills[id];
+      const skillAge = skill ? Math.round((now - (skill.announced_at_ms || 0)) / 1000) : null;
+      const skillFresh = skill && skillAge != null && skillAge <= (skill.ttl_sec || 90);
+      out.push({
+        agent_id: id,
+        display_name: agent.displayName || id,
+        phase: typeof agent.phase === "number" ? agent.phase : null,
+        age_sec,
+        has_inbox: !!skillFresh,
+        verbs_count: skillFresh ? (skill.verbs || []).length : 0,
+      });
+    }
+    // Most-recent first.
+    out.sort((a, b) => a.age_sec - b.age_sec);
+    return out;
+  }
+
+  /**
    * Return a sanitized skill registry snapshot. Expires entries whose
    * announcement is older than ttl_sec.
    */
