@@ -31,8 +31,10 @@ kannaka inbox send  kannaka-prime ping
 | --- | --- |
 | `KANNAKA.inbox.<to_agent_id>` (PUB) | Directed message. JSON `{msg_id, from, to, verb, args, ts}`. |
 | `KANNAKA.inbox.audit` (SUB) | Every send + every receive result. Subscribe to watch all conversations. |
+| `KANNAKA.skills.<agent_id>` (PUB) | Every `kannaka inbox serve` daemon announces its handler verbs every 60s. |
 | `POST /agent/send` | JSON `{to, verb, args, from?}` — shells `kannaka inbox send`. |
 | `GET  /agent/audit` (SSE) | Live `data:`-framed audit stream. One `kannaka inbox tail` child per connection. |
+| `GET  /agent/skills` | JSON snapshot of the live skill registry. |
 
 ## Agent subsystems
 
@@ -45,7 +47,7 @@ kannaka inbox send  kannaka-prime ping
 | Substrate (ADR-0027) | live | `QUEEN.phase.*` · `KANNAKA.substrate.*` |
 | Attention Beam | beta | `KANNAKA.attention.eye` / `.ear` |
 | OpenBotCity Bridge | planned | currently inside Kannaktopus; standalone microservice planned |
-| Skill Registry | planned | `KANNAKA.skills.*` — agents publish their handlers.toml |
+| Skill Registry | live | `KANNAKA.skills.*` — agents announce their verbs every 60s; `/agent/skills` snapshot |
 
 ## HTTP — Now
 

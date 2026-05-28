@@ -62,7 +62,34 @@ class NATSClient extends EventEmitter {
       // ORC constellation: fresh stems queued from ORC.stem.submitted.
       // Bounded ring buffer; voice-DJ pulls from this for on-air mentions.
       orcStems: [],
+      // Skill registry: { agent_id → { verbs, announced_at_ms, ttl_sec, online } }.
+      // Populated by KANNAKA.skills.<agent_id> announcements published every
+      // 60s from `kannaka inbox serve`. Entries expire after ttl_sec when no
+      // refresh arrives. Surfaced via /agent/skills for the Greenroom panel.
+      skills: {},
     };
+  }
+
+  /**
+   * Return a sanitized skill registry snapshot. Expires entries whose
+   * announcement is older than ttl_sec.
+   */
+  skillsSnapshot() {
+    const now = Date.now();
+    const out = {};
+    for (const [agentId, entry] of Object.entries(this.swarmState.skills)) {
+      const ttlMs = (entry.ttl_sec || 90) * 1000;
+      const ageMs = now - (entry.announced_at_ms || 0);
+      if (ageMs > ttlMs) continue;
+      out[agentId] = {
+        agent_id: agentId,
+        verbs: entry.verbs || [],
+        announced_at: new Date(entry.announced_at_ms).toISOString(),
+        age_sec: Math.round(ageMs / 1000),
+        ttl_sec: entry.ttl_sec || 90,
+      };
+    }
+    return out;
   }
 
   /**
@@ -127,6 +154,11 @@ class NATSClient extends EventEmitter {
       // surface here so kannaka-radio's voice-DJ can mention fresh
       // collaborator material on air.
       this._subscribe('ORC.stem.submitted');
+
+      // Skill registry — every `kannaka inbox serve` daemon announces
+      // its handler vocabulary to KANNAKA.skills.<agent_id> every 60s.
+      // Wildcard sub catches every agent in the constellation.
+      this._subscribe('KANNAKA.skills.*');
     });
 
     this._client.on('data', (data) => {
@@ -373,6 +405,18 @@ class NATSClient extends EventEmitter {
       this.swarmState.dreams.unshift({ ...data, receivedAt: now });
       if (this.swarmState.dreams.length > 20) this.swarmState.dreams = this.swarmState.dreams.slice(0, 20);
       this._broadcast({ type: 'dream_event', data });
+      return;
+    }
+
+    if (subject.startsWith('KANNAKA.skills.')) {
+      const agentId = data.agent_id || subject.slice('KANNAKA.skills.'.length);
+      if (agentId) {
+        this.swarmState.skills[agentId] = {
+          verbs: Array.isArray(data.verbs) ? data.verbs : [],
+          announced_at_ms: now,
+          ttl_sec: typeof data.ttl_sec === 'number' ? data.ttl_sec : 90,
+        };
+      }
       return;
     }
 

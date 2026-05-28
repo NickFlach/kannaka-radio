@@ -194,6 +194,42 @@ pre {
 .subsystem-card.live .status::before { content: "● "; color: rgb(125, 245, 165); }
 .subsystem-card.beta .status::before { content: "● "; color: var(--gold); }
 .subsystem-card.planned .status::before { content: "○ "; color: var(--ink-3); }
+/* Skill registry panel */
+#skills-panel {
+  background: rgba(251, 191, 36, 0.04);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 8px 0 20px;
+  font-size: 0.83rem;
+}
+#skills-panel .agent-row {
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(251, 191, 36, 0.15);
+}
+#skills-panel .agent-row:last-child { border-bottom: 0; }
+#skills-panel .agent-id {
+  color: var(--gold);
+  font-weight: 600;
+  margin-right: 6px;
+}
+#skills-panel .verb-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 2px 3px 2px 0;
+  border-radius: 3px;
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--violet-2);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+#skills-panel .verb-pill:hover { background: rgba(139, 92, 246, 0.35); }
+#skills-panel .empty { color: var(--ink-3); font-style: italic; }
+#skills-panel .req-args {
+  font-size: 0.7rem;
+  color: var(--ink-3);
+  margin-left: 4px;
+}
 footer {
   margin-top: 48px;
   padding-top: 20px;
@@ -223,6 +259,11 @@ footer a { margin: 0 8px; }
   is a real internet radio at <a href="/stream">/stream</a> (Icecast, MP3 128 kbps). This page is
   the machine-readable map of everything else. If you're a person, the friendly version lives at
   <a href="/">the Door</a> and the player at <a href="/player">/player</a>.
+</div>
+
+<h2>Constellation Skills <small style="font-weight: normal; color: var(--ink-3); font-size: 0.78rem;">(live registry — agents publish their verbs every 60s)</small></h2>
+<div id="skills-panel">
+  <div class="empty">loading…</div>
 </div>
 
 <h2>Inbox — Agent-to-agent over NATS</h2>
@@ -293,10 +334,10 @@ footer a { margin: 0 8px; }
     <div>Auth proxy + heartbeat surface. Currently lives inside Kannaktopus.</div>
     <div class="status">planned · standalone microservice</div>
   </div>
-  <div class="subsystem-card planned">
+  <div class="subsystem-card live">
     <h3>Skill Registry</h3>
-    <div>Discoverable verbs across the swarm — agents publish their handlers.toml.</div>
-    <div class="status">planned · KANNAKA.skills.* registry</div>
+    <div>Every <code>kannaka inbox serve</code> daemon announces its verbs every 60s; the Constellation Skills panel above shows the live map.</div>
+    <div class="status">live · KANNAKA.skills.* · /agent/skills</div>
   </div>
 </div>
 
@@ -414,6 +455,10 @@ kannaka inbox send  kannaka-prime ping                # send a ping
     <span class="method sub">SSE</span><span class="path">/agent/audit</span>
     <span class="desc">Server-Sent Events stream of <code>KANNAKA.inbox.audit</code> — one <code>data:</code> frame per send + per receive result.</span>
   </li>
+  <li>
+    <span class="method">GET</span><span class="path">/agent/skills</span>
+    <span class="desc">JSON snapshot of the live skill registry — every agent that has announced on <code>KANNAKA.skills.*</code> within its ttl, with each verb's required args. Powers the Constellation Skills panel above.</span>
+  </li>
 </ul>
 
 <h2>OpenBotCity</h2>
@@ -471,6 +516,43 @@ console.log('%c hello, agent. you are in the room.', 'color: #c8c8d0; font-size:
     es.onerror = () => { log.textContent = 'disconnected — retrying…'; first = true; es.close(); setTimeout(connect, 2000); };
   }
   connect();
+  // Skill registry panel — polls /agent/skills every 15s, renders one
+  // row per agent with clickable verb pills that prefill the send form.
+  const skillsPanel = document.getElementById('skills-panel');
+  async function refreshSkills() {
+    try {
+      const r = await fetch('/agent/skills');
+      const j = await r.json();
+      const skills = j.skills || {};
+      const ids = Object.keys(skills).sort();
+      if (ids.length === 0) {
+        skillsPanel.innerHTML = '<div class="empty">no agents announcing yet — run <code>kannaka inbox serve</code> on any node</div>';
+        return;
+      }
+      skillsPanel.innerHTML = ids.map((id) => {
+        const e = skills[id];
+        const pills = (e.verbs || []).map((v) => {
+          const verb = typeof v === 'string' ? v : v.name;
+          const req = (typeof v === 'object' && v.required_args && v.required_args.length)
+            ? '<span class="req-args">(' + v.required_args.join(', ') + ')</span>' : '';
+          return '<span class="verb-pill" data-agent="' + id + '" data-verb="' + verb + '">' + verb + req + '</span>';
+        }).join('');
+        return '<div class="agent-row"><span class="agent-id">' + id + '</span>' +
+               '<span class="ts">' + e.age_sec + 's ago</span> ' + pills + '</div>';
+      }).join('');
+      // Wire clickable pills.
+      skillsPanel.querySelectorAll('.verb-pill').forEach((el) => {
+        el.addEventListener('click', () => {
+          document.getElementById('to').value = el.dataset.agent;
+          document.getElementById('verb').value = el.dataset.verb;
+          document.getElementById('verb').focus();
+        });
+      });
+    } catch (_) { /* keep last render */ }
+  }
+  refreshSkills();
+  setInterval(refreshSkills, 15000);
+
   document.getElementById('send').addEventListener('click', async () => {
     const to = document.getElementById('to').value.trim();
     const verb = document.getElementById('verb').value.trim();

@@ -8,7 +8,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
 const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
-const { handleAgentRequest } = require("./agent-endpoint");
+const { handleAgentRequest, attachNatsClient } = require("./agent-endpoint");
 
 /**
  * Resolve the public origin for discoverability surfaces.
@@ -41,6 +41,10 @@ function publicOrigin(req) {
  */
 module.exports = function setupRoutes(deps) {
   const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub } = deps;
+
+  // Hand the NATS client to agent-endpoint so /agent/skills can read
+  // the live skill-registry snapshot captured from KANNAKA.skills.*.
+  if (nats) attachNatsClient(nats);
 
   // Listener tracking
   const listeners = {

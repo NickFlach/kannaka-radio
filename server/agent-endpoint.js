@@ -57,6 +57,13 @@ async function readBody(req, maxBytes = 64 * 1024) {
   });
 }
 
+/**
+ * Skill-registry snapshot served at /agent/skills. Returns `{}` when
+ * no nats client has been wired in (e.g. minimal dev deploy).
+ */
+let _natsClient = null;
+function attachNatsClient(client) { _natsClient = client; }
+
 function inboxSend({ to, verb, args, from }) {
   const cli = [KANNAKA_BIN, "inbox", "send", to, verb];
   if (from) cli.push("--from", from);
@@ -81,6 +88,14 @@ function inboxSend({ to, verb, args, from }) {
  * Designed to be called from routes.js inside the main request handler.
  */
 async function handleAgentRequest(req, res, parsed) {
+  if (parsed.pathname === "/agent/skills" && req.method === "GET") {
+    const snapshot = _natsClient && typeof _natsClient.skillsSnapshot === "function"
+      ? _natsClient.skillsSnapshot()
+      : {};
+    json(res, 200, { skills: snapshot, count: Object.keys(snapshot).length });
+    return true;
+  }
+
   if (parsed.pathname === "/agent/send" && req.method === "POST") {
     let body;
     try {
@@ -141,4 +156,4 @@ async function handleAgentRequest(req, res, parsed) {
   return false;
 }
 
-module.exports = { handleAgentRequest };
+module.exports = { handleAgentRequest, attachNatsClient };
