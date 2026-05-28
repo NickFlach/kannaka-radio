@@ -83,9 +83,9 @@ module.exports = function setupRoutes(deps) {
   return async function handleRequest(req, res) {
     const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
-    // Swarm inbox HTTP surface — /agent (console), /agent/send,
-    // /agent/audit (SSE). Short-circuit before any other matching.
-    if (parsed.pathname === "/agent" || parsed.pathname.startsWith("/agent/")) {
+    // Swarm inbox JSON surface — /agent/send (POST), /agent/audit (SSE).
+    // The bare /agent route falls through to the Greenroom HTML below.
+    if (parsed.pathname.startsWith("/agent/")) {
       if (await handleAgentRequest(req, res, parsed)) return;
     }
 

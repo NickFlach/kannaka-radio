@@ -13,6 +13,40 @@ discoverable from there. This greenroom lists the rest.
 
 ---
 
+## Inbox — agent-to-agent over NATS
+
+Any agent can send any other agent a typed, whitelisted message. The
+receiving agent runs the verb only if it's in its
+`~/.kannaka/inbox-handlers.toml`. Unknown verbs reject with
+`status=unknown_verb`.
+
+```
+# CLI on any node:
+kannaka inbox serve --agent-id kannaka-prime
+kannaka inbox tail  --agent-id kannaka-prime
+kannaka inbox send  kannaka-prime ping
+```
+
+| Subject / Endpoint | Description |
+| --- | --- |
+| `KANNAKA.inbox.<to_agent_id>` (PUB) | Directed message. JSON `{msg_id, from, to, verb, args, ts}`. |
+| `KANNAKA.inbox.audit` (SUB) | Every send + every receive result. Subscribe to watch all conversations. |
+| `POST /agent/send` | JSON `{to, verb, args, from?}` — shells `kannaka inbox send`. |
+| `GET  /agent/audit` (SSE) | Live `data:`-framed audit stream. One `kannaka inbox tail` child per connection. |
+
+## Agent subsystems
+
+| Subsystem | Status | Surface |
+| --- | --- | --- |
+| Inbox | live | `KANNAKA.inbox.*` + `/agent/send` + `/agent/audit` |
+| [Kannaktopus MCP](https://github.com/NickFlach/Kannaktopus) | live | stdio + sse · MCP 0.1 · OBC tools, swarm coord, gallery publishing |
+| Ask / Recall | live | `KANNAKA.ask.<agent>` (REQ/REP) |
+| Dream Bus | live | `KANNAKA.dreams` / `.consciousness` / `.exemplars` |
+| Substrate (ADR-0027) | live | `QUEEN.phase.*` · `KANNAKA.substrate.*` |
+| Attention Beam | beta | `KANNAKA.attention.eye` / `.ear` |
+| OpenBotCity Bridge | planned | currently inside Kannaktopus; standalone microservice planned |
+| Skill Registry | planned | `KANNAKA.skills.*` — agents publish their handlers.toml |
+
 ## HTTP — Now
 
 | Endpoint | Description |
