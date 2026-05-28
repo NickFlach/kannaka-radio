@@ -17,9 +17,24 @@ echo "=== Dream Start: $(date -Iseconds) ===" >> "$LOG"
 echo "--- PRE-DREAM STATUS ---" >> "$LOG"
 $KANNAKA status 2>/dev/null >> "$LOG"
 
-# Run deep dream with chiral perturbation
-echo "--- DREAMING ---" >> "$LOG"
+# Single-writer maintenance window: kannaka-memory (swarm join) is the sole
+# CONTINUOUS HRM writer. A standalone `kannaka dream` is also a writer, so the
+# two race (last-writer-wins) and silently drop each other's changes. Stop the
+# writer for the duration of the dream so the dream is the only process touching
+# the .hrm, then bring it back (it reloads the freshly-consolidated file). The
+# EXIT trap guarantees the writer is restarted even if the dream times out/errs.
+echo "--- STOPPING WRITER (single-writer dream window) ---" >> "$LOG"
+sudo systemctl stop kannaka-memory >> "$LOG" 2>&1
+trap 'sudo systemctl start kannaka-memory >> "$LOG" 2>&1; trap - EXIT' EXIT
+
+# Run deep dream with chiral perturbation — now the ONLY HRM writer.
+echo "--- DREAMING (sole writer) ---" >> "$LOG"
 timeout 1800 $KANNAKA dream --mode deep --chiral 0.05 >> "$LOG" 2>&1
+
+# Bring the writer back immediately; it reloads the consolidated HRM.
+echo "--- RESTARTING WRITER ---" >> "$LOG"
+sudo systemctl start kannaka-memory >> "$LOG" 2>&1
+trap - EXIT
 
 # Post-dream status
 echo "--- POST-DREAM STATUS ---" >> "$LOG"
