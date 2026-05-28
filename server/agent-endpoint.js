@@ -121,6 +121,14 @@ async function handleAgentRequest(req, res, parsed) {
     return true;
   }
 
+  if (parsed.pathname === "/agent/inbox-stats" && req.method === "GET") {
+    const snapshot = _natsClient && typeof _natsClient.inboxStatsSnapshot === "function"
+      ? _natsClient.inboxStatsSnapshot()
+      : { sent: 0, received: 0 };
+    json(res, 200, snapshot);
+    return true;
+  }
+
   if (parsed.pathname === "/agent/audit-history" && req.method === "GET") {
     const n = Math.max(1, Math.min(200, parseInt(parsed.searchParams.get("limit") || "40", 10) || 40));
     const events = _natsClient && typeof _natsClient.inboxAuditTail === "function"

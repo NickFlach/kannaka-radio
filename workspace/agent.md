@@ -37,6 +37,7 @@ kannaka inbox send  kannaka-prime ping
 | `GET  /agent/skills` | JSON snapshot of the live skill registry. |
 | `GET  /agent/peers` | JSON list of agents that have published `QUEEN.phase.*` in the last 5 min (with `has_inbox` flag). |
 | `GET  /agent/audit-history` | `?limit=N` (default 40, max 200) — newest-first recent audit events from the 200-entry ring. |
+| `GET  /agent/inbox-stats` | Roll-up of the audit ring: sent, received, ok-rate, top verbs, top senders. |
 
 ## Agent subsystems
 

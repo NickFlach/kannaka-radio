@@ -84,6 +84,45 @@ class NATSClient extends EventEmitter {
   }
 
   /**
+   * Roll up the audit ring into a small activity summary — total
+   * sends, top verbs by call count, top senders, and an ok-rate
+   * computed from received events. Used by /agent/inbox-stats to
+   * render the Activity panel in the Greenroom.
+   */
+  inboxStatsSnapshot() {
+    const sentByVerb = {};
+    const sentByFrom = {};
+    let sentCount = 0;
+    let recvCount = 0;
+    let okCount = 0;
+    let latestSent = null;
+    for (const ev of this.swarmState.inboxAudit) {
+      if (ev.phase === "sent") {
+        sentCount++;
+        if (ev.verb) sentByVerb[ev.verb] = (sentByVerb[ev.verb] || 0) + 1;
+        if (ev.from) sentByFrom[ev.from] = (sentByFrom[ev.from] || 0) + 1;
+        if (!latestSent) latestSent = ev.ts || null;
+      } else if (ev.phase === "received") {
+        recvCount++;
+        if (ev.status === "ok") okCount++;
+      }
+    }
+    const topPair = (obj) => Object.entries(obj)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([k, n]) => ({ key: k, count: n }));
+    return {
+      ring_size: this.swarmState.inboxAudit.length,
+      sent: sentCount,
+      received: recvCount,
+      ok_rate: recvCount > 0 ? Math.round((okCount / recvCount) * 100) / 100 : null,
+      top_verbs: topPair(sentByVerb),
+      top_senders: topPair(sentByFrom),
+      latest_sent_ts: latestSent,
+    };
+  }
+
+  /**
    * Lightweight peers snapshot for /agent/peers — one entry per agent
    * that's published a QUEEN.phase.* in the last 5 minutes. Surfaces
    * agent_id, display_name, last-seen age, phase, and whether we

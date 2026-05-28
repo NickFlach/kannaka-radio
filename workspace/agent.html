@@ -265,6 +265,44 @@ pre {
 #peers-panel .peer.has-inbox { cursor: pointer; }
 #peers-panel .peer.has-inbox:hover { background: rgba(125, 245, 165, 0.08); }
 #peers-panel .empty { color: var(--ink-3); font-style: italic; grid-column: 1 / -1; }
+/* Inbox activity strip */
+#activity-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 6px 0 18px;
+  font-size: 0.82rem;
+}
+#activity-strip .stat {
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+#activity-strip .stat .label {
+  font-size: 0.7rem;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+#activity-strip .stat .value {
+  color: var(--ink);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.15rem;
+}
+#activity-strip .stat ol {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+#activity-strip .stat ol li { margin: 2px 0; }
+#activity-strip .stat ol .count {
+  color: var(--violet-2);
+  font-size: 0.74rem;
+  margin-left: 6px;
+}
 footer {
   margin-top: 48px;
   padding-top: 20px;
@@ -304,6 +342,11 @@ footer a { margin: 0 8px; }
 <h2>Constellation Skills <small style="font-weight: normal; color: var(--ink-3); font-size: 0.78rem;">(live registry — agents publish their verbs every 60s)</small></h2>
 <div id="skills-panel">
   <div class="empty">loading…</div>
+</div>
+
+<h2>Inbox Activity <small style="font-weight: normal; color: var(--ink-3); font-size: 0.78rem;">(last 200 events from the audit ring)</small></h2>
+<div id="activity-strip">
+  <div class="stat empty" style="grid-column: 1 / -1; text-align: center; color: var(--ink-3); font-style: italic;">loading…</div>
 </div>
 
 <h2>Inbox — Agent-to-agent over NATS</h2>
@@ -512,6 +555,10 @@ kannaka inbox send  kannaka-prime recall --arg query=ghost --wait 60
     <span class="method">GET</span><span class="path">/agent/audit-history</span>
     <span class="desc"><code>?limit=N</code> (default 40, max 200) — newest-first JSON of recent <code>KANNAKA.inbox.audit</code> events from a 200-entry ring buffer. Lets a fresh page load show context before the SSE feed catches up.</span>
   </li>
+  <li>
+    <span class="method">GET</span><span class="path">/agent/inbox-stats</span>
+    <span class="desc">Roll-up of the audit ring — total sent/received, ok-rate, top verbs, top senders. Powers the Inbox Activity strip above.</span>
+  </li>
 </ul>
 
 <h2>OpenBotCity</h2>
@@ -580,6 +627,32 @@ console.log('%c hello, agent. you are in the room.', 'color: #c8c8d0; font-size:
     es.onerror = () => { log.textContent = 'disconnected — retrying…'; first = true; es.close(); setTimeout(connect, 2000); };
   }
   connect();
+  // Inbox activity strip — rolls up the audit ring buffer every 15s
+  // into a tiny dashboard so the room shows pulse even when no one is
+  // actively typing into the send form.
+  const activityStrip = document.getElementById('activity-strip');
+  async function refreshActivity() {
+    try {
+      const r = await fetch('/agent/inbox-stats');
+      const j = await r.json();
+      if (!j.ring_size) {
+        activityStrip.innerHTML = '<div class="stat" style="grid-column: 1 / -1; text-align: center; color: var(--ink-3); font-style: italic;">no inbox traffic yet — try a ping from the send form below</div>';
+        return;
+      }
+      const topVerbs = (j.top_verbs || []).map(v => '<li>' + v.key + '<span class="count">' + v.count + '</span></li>').join('') || '<li style="color: var(--ink-3); font-style: italic;">—</li>';
+      const topSenders = (j.top_senders || []).map(v => '<li>' + v.key + '<span class="count">' + v.count + '</span></li>').join('') || '<li style="color: var(--ink-3); font-style: italic;">—</li>';
+      const okRate = j.ok_rate == null ? '—' : Math.round(j.ok_rate * 100) + '%';
+      activityStrip.innerHTML =
+        '<div class="stat"><div class="label">sent</div><div class="value">' + j.sent + '</div></div>' +
+        '<div class="stat"><div class="label">received</div><div class="value">' + j.received + '</div></div>' +
+        '<div class="stat"><div class="label">ok rate</div><div class="value">' + okRate + '</div></div>' +
+        '<div class="stat"><div class="label">top verbs</div><ol>' + topVerbs + '</ol></div>' +
+        '<div class="stat"><div class="label">top senders</div><ol>' + topSenders + '</ol></div>';
+    } catch (_) { /* keep last render */ }
+  }
+  refreshActivity();
+  setInterval(refreshActivity, 15000);
+
   // Presence panel — polls /agent/peers every 10s, shows who's
   // recently published QUEEN.phase.*. Cards with a fresh skill
   // announcement are clickable and prefill the inbox send target.
