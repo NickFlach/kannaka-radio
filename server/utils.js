@@ -68,12 +68,20 @@ function getSPA(spaPath) {
 function readBody(req, res, callback) {
   let body = "";
   let size = 0;
+  let rejected = false;
   req.on("data", d => {
+    if (rejected) return;
     size += d.length;
-    if (size > MAX_BODY) { req.destroy(); res.writeHead(413); res.end("Payload too large"); return; }
+    if (size > MAX_BODY) {
+      rejected = true;
+      req.destroy();
+      res.writeHead(413);
+      res.end("Payload too large");
+      return;
+    }
     body += d;
   });
-  req.on("end", () => callback(body));
+  req.on("end", () => { if (!rejected) callback(body); });
 }
 
 // ── Fuzzy audio file matching ──────────────────────────────

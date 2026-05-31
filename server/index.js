@@ -49,7 +49,7 @@ const BASE_DIR = path.join(__dirname, "..");
 
 const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
-const PORT = portIdx >= 0 ? parseInt(args[portIdx + 1]) || 8888 : 8888;
+const PORT = parseInt(process.env.PORT || (portIdx >= 0 ? args[portIdx + 1] : '')) || 8888;
 const musicIdx = args.indexOf("--music-dir");
 
 let MUSIC_DIR = musicIdx >= 0
