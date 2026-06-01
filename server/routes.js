@@ -173,6 +173,21 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // /budapest — SEO landing for the Craft Conference Budapest June 4-5 audience.
+    // Coincidental-exposure piece tying Kannaka Radio to ruVector / claude-flow.
+    if (parsed.pathname === "/budapest" || parsed.pathname === "/budapest.html") {
+      const budapestPath = path.join(path.dirname(config.spaPath), "budapest.html");
+      try {
+        const html = fs.readFileSync(budapestPath, "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" });
+        res.end(html);
+      } catch (e) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("budapest page not deployed");
+      }
+      return;
+    }
+
     // /launch — Product Hunt landing page. Static HTML at
     // workspace/launch.html with embedded styling, CTAs to the radio +
     // GitHub + Product Hunt, and a press-kit pointer. See
