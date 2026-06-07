@@ -1320,12 +1320,17 @@ class VoiceDJ {
               : p.rms_energy > 0.3 ? 'steady breath'
               :                      'gentle haunted quiet');
     }
-    // Single mood adjectives — yields short, distinctive probes
+    // Single mood adjectives — yields short, distinctive probes. The `research`
+    // atoms surface ingested OpenAlex literature (content begins "research:") so
+    // the DJ's voice is grounded in real findings, not just its own vocabulary.
     const atoms = [
       'consciousness', 'interference', 'phi integration',
       'chiral hemisphere', 'wave birth', 'ghost carrier',
       'Kuramoto sync', 'dream consolidation', 'holographic medium',
       'broadcast wire', 'memory rising', 'phantom circuit',
+      'research consciousness', 'research bioelectric memory',
+      'research collective intelligence', 'research synchronization',
+      'research integrated information', 'research machine sentience',
     ];
     seeds.push(atoms[Math.floor(Math.random() * atoms.length)]);
     // Pick 1–2 seeds to form the query — too many and resonance gets muddy.
