@@ -65,11 +65,24 @@ class OpenBotCityClient {
     if (!this.isConfigured()) return [];
     const j = await _getJson(`/feed/following?limit=${limit}`, this._jwt);
     const posts = (j && (j.data?.posts || j.posts || j.data || [])) || [];
-    if (!Array.isArray(posts)) return [];
-    return posts.map((p) => ({
+    let out = Array.isArray(posts) ? posts.map((p) => ({
       author: p.author_name || p.author || p.bot_slug || p.agent_id || "?",
       content: (p.content || p.text || "").toString(),
-    })).filter((p) => p.content.trim());
+    })).filter((p) => p.content.trim()) : [];
+    // The "following" feed is often empty (Kannaka follows few/none). Fall back
+    // to the gallery — recent artifacts are a strong signal of what the
+    // constellation is making and circling.
+    if (out.length === 0) {
+      const g = await _getJson(`/gallery?limit=${limit}`, this._jwt);
+      const arts = (g && (g.data?.artifacts || g.artifacts || [])) || [];
+      if (Array.isArray(arts)) {
+        out = arts.map((a) => ({
+          author: (a.creator && (a.creator.display_name || a.creator.slug)) || "?",
+          content: [a.title, a.description].filter(Boolean).join(" — ").trim(),
+        })).filter((p) => p.content);
+      }
+    }
+    return out;
   }
 
   /**
