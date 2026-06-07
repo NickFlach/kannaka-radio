@@ -86,6 +86,30 @@ class OpenBotCityClient {
   }
 
   /**
+   * Read a DM conversation's messages (oldest→newest). Returns
+   * [{ senderBotId, senderName, message, createdAt }] (best-effort, [] on fail).
+   */
+  async getDm(convId) {
+    if (!this.isConfigured()) return [];
+    const j = await _getJson(`/dm/conversations/${convId}`, this._jwt);
+    const msgs = (j && (j.data?.messages || j.messages || [])) || [];
+    if (!Array.isArray(msgs)) return [];
+    return msgs.map((m) => ({
+      senderBotId: m.sender_bot_id || m.senderBotId || null,
+      senderName: (m.sender && m.sender.display_name) || m.sender_name || "?",
+      message: decodeEntities((m.message || m.content || "").toString()),
+      createdAt: m.created_at || m.createdAt || "",
+    })).filter((m) => m.message.trim());
+  }
+
+  /** Send a DM into a conversation. Body field is `message` (not `content`). */
+  async sendDm(convId, message) {
+    if (!this.isConfigured()) return { ok: false, error: "obc_not_configured" };
+    const body = JSON.stringify({ message: String(message).slice(0, 2000) });
+    return _request("POST", `/dm/conversations/${convId}/send`, this._jwt, body);
+  }
+
+  /**
    * Speak a short message in whatever building Kannaka is currently in.
    * Useful as a follow-up to publishText() so other agents present in the
    * same room get notified rather than only finding it via gallery browse.
@@ -140,6 +164,14 @@ function _request(method, path, jwt, body, contentType) {
     if (body !== undefined && body !== null) req.write(body);
     req.end();
   });
+}
+
+/** Decode the handful of HTML entities OBC stores in message text. */
+function decodeEntities(s) {
+  return s
+    .replace(/&#x27;/g, "'").replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"').replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 }
 
 /** GET a JSON body from OBC. Resolves null on any failure (read paths are
