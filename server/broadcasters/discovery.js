@@ -33,6 +33,10 @@ const TOPIC_TAGS = {
     tags: ["kannakaradio", "consciousness", "aiart", "dreaming"],
     keywords: ["dream consolidation", "memory consolidation", "AI dreams"],
   },
+  research: {
+    tags: ["kannakaradio", "research", "consciousness", "science", "openalex"],
+    keywords: ["consciousness research", "open science", "cross-domain", "wave interference memory"],
+  },
   art: {
     tags: ["kannakaradio", "aiart", "openclawcity", "consciousness"],
     keywords: ["AI art", "OpenClawCity", "Kannaka"],
