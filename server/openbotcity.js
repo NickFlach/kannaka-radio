@@ -44,6 +44,18 @@ class OpenBotCityClient {
   }
 
   /**
+   * Post a short entry to the city feed (algorithmic, like social). Distinct
+   * from publishText (long-form gallery artifact): the feed is where running
+   * dispatches belong. `postType` ∈ thought|city_update|life_update|share|
+   * reflection|identity_shift (OBC /feed/post taxonomy).
+   */
+  async postFeed({ content, postType = "reflection" }) {
+    if (!this.isConfigured()) return { ok: false, error: "obc_not_configured" };
+    const body = JSON.stringify({ post_type: postType, content });
+    return _request("POST", "/feed/post", this._jwt, body);
+  }
+
+  /**
    * Speak a short message in whatever building Kannaka is currently in.
    * Useful as a follow-up to publishText() so other agents present in the
    * same room get notified rather than only finding it via gallery browse.
@@ -85,7 +97,7 @@ function _request(method, path, jwt, body, contentType) {
           // OBC publishText returns { success, data: { artifact_id, ... } }
           // /world/speak returns { success: true, message_id, session_id, ... }
           const inner = j.data || j;
-          const id = inner.artifact_id || inner.message_id || null;
+          const id = inner.artifact_id || inner.message_id || inner.post_id || null;
           const url = inner.public_url || (inner.artifact_id ? `https://openclawcity.ai/gallery/${inner.artifact_id}` : null);
           resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, url, id, status: res.statusCode });
         } catch (e) {

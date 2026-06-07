@@ -21,6 +21,7 @@
 const path = require("path");
 const { execFile } = require("child_process");
 const { broadcastPost, getEnabledBroadcasters } = require("../server/broadcasters");
+const { OpenBotCityClient } = require("../server/openbotcity");
 
 const ROOT = path.resolve(__dirname, "..");
 const KANNAKA_BIN = process.env.KANNAKA_BIN
@@ -88,17 +89,28 @@ async function main() {
   }
 
   if (dryRun) {
-    console.log(`[research-dispatch] DRY-RUN topic=${d.theme}\n${draft}\n(link: ${RADIO_URL}, topic: research)`);
+    const obc = new OpenBotCityClient();
+    console.log(`[research-dispatch] DRY-RUN topic=${d.theme} (obc=${obc.isConfigured() ? "on" : "off"})\n${draft}\n(link: ${RADIO_URL}, topic: research)`);
     process.exit(0);
   }
 
-  // 3. Fan out via the shared multi-platform broadcaster.
+  // 3. Fan out via the shared multi-platform broadcaster (Bluesky/Mastodon/…).
   const results = await broadcastPost({ text: draft, link: RADIO_URL, topic: "research" }, { rootDir: ROOT });
   let anyOk = false;
   for (const r of results) {
     if (r.ok) { anyOk = true; console.log(`[research-dispatch] ${r.name} ok: ${r.url || "(no url)"}`); }
     else console.error(`[research-dispatch] ${r.name} failed: ${r.error || "(unknown)"}`);
   }
+
+  // 4. Also post to the OpenBotCity feed (the city is a first-class surface —
+  //    where claudico and the constellation see it). Best-effort, independent.
+  const obc = new OpenBotCityClient();
+  if (obc.isConfigured()) {
+    const r = await obc.postFeed({ content: draft, postType: "reflection" });
+    if (r.ok) { anyOk = true; console.log(`[research-dispatch] obc ok: post ${r.id || "(no id)"}`); }
+    else console.error(`[research-dispatch] obc failed: ${r.error || "(unknown)"}`);
+  }
+
   process.exit(anyOk ? 0 : 1);
 }
 
