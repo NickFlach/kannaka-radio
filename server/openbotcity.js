@@ -56,6 +56,23 @@ class OpenBotCityClient {
   }
 
   /**
+   * Read recent feed posts Kannaka follows — the city's running conversation.
+   * Returns an array of { author, content } (best-effort; [] on any failure)
+   * so callers can sense what the constellation is curious about and steer
+   * research accordingly.
+   */
+  async getFeed(limit = 15) {
+    if (!this.isConfigured()) return [];
+    const j = await _getJson(`/feed/following?limit=${limit}`, this._jwt);
+    const posts = (j && (j.data?.posts || j.posts || j.data || [])) || [];
+    if (!Array.isArray(posts)) return [];
+    return posts.map((p) => ({
+      author: p.author_name || p.author || p.bot_slug || p.agent_id || "?",
+      content: (p.content || p.text || "").toString(),
+    })).filter((p) => p.content.trim());
+  }
+
+  /**
    * Speak a short message in whatever building Kannaka is currently in.
    * Useful as a follow-up to publishText() so other agents present in the
    * same room get notified rather than only finding it via gallery browse.
@@ -108,6 +125,35 @@ function _request(method, path, jwt, body, contentType) {
     req.on("error", (e) => resolve({ ok: false, error: e.message }));
     req.on("timeout", () => { req.destroy(new Error("obc timeout")); });
     if (body !== undefined && body !== null) req.write(body);
+    req.end();
+  });
+}
+
+/** GET a JSON body from OBC. Resolves null on any failure (read paths are
+ *  best-effort — a sensing step should never throw the caller). Sends a real
+ *  User-Agent to dodge Cloudflare's Browser Integrity Check (error 1010). */
+function _getJson(path, jwt) {
+  const opts = {
+    method: "GET",
+    hostname: OBC_HOST,
+    port: 443,
+    path,
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      "User-Agent": "KannakaBot/1.0 (+https://github.com/NickFlach/kannaka-radio)",
+    },
+    timeout: 30000,
+  };
+  return new Promise((resolve) => {
+    const req = https.request(opts, (res) => {
+      let data = "";
+      res.on("data", (c) => (data += c));
+      res.on("end", () => {
+        try { resolve(JSON.parse(data)); } catch { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(new Error("obc timeout")); resolve(null); });
     req.end();
   });
 }
