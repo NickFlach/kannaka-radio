@@ -46,6 +46,11 @@ trap - EXIT
 echo "--- POST-DREAM STATUS ---" >> "$LOG"
 $KANNAKA status 2>/dev/null >> "$LOG"
 
+# Record this dream into dream-history.json so the observatory Dreams tab
+# reflects the autonomous nightly dream (not just observatory-triggered ones).
+echo "--- RECORDING DREAM HISTORY ---" >> "$LOG"
+node /home/opc/kannaka-radio/scripts/record-dream.js --log "$LOG" >> "$LOG" 2>&1
+
 # Push fresh metrics to NATS
 cd /home/opc/kannaka-radio && node push-nats.js >> "$LOG" 2>&1
 
