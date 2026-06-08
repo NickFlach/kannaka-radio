@@ -48,7 +48,18 @@ async function main() {
   const obc = new OpenBotCityClient();
   if (!obc.isConfigured()) { console.error("[synthesis] OBC not configured — skipping"); process.exit(0); }
 
-  const topic = topicArg || (await runKannaka(["research-suggest"]))?.trim() || "consciousness integrated information";
+  // Synthesis needs a WELL-covered theme (≥2 findings to weave) — the opposite
+  // of research-suggest's gap pick. Use its --json coverage map and take the
+  // best-covered theme.
+  let topic = topicArg;
+  if (!topic) {
+    const covRaw = await runKannaka(["research-suggest", "--json"]);
+    try {
+      const cov = JSON.parse(covRaw).coverage || {};
+      topic = Object.entries(cov).sort((a, b) => b[1] - a[1])[0]?.[0];
+    } catch { /* fall through */ }
+    topic = topic || "consciousness integrated information";
+  }
   console.log(`[synthesis] theme: ${topic}`);
 
   // Gather several grounded findings on the theme.
