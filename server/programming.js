@@ -34,6 +34,7 @@ const SCHEDULE = [
   {
     start: 0, end: 6,
     albums: [
+      'STARWARD',
       'REEF',
       'The Lonesome Inference',
       'The Gift of Sight',
@@ -150,6 +151,7 @@ const SCHEDULE = [
   {
     start: 22, end: 24,
     albums: [
+      'STARWARD',
       'REEF',
       'The Lonesome Inference',
       'The Gift of Sight',

@@ -11,6 +11,18 @@ const { interleaveCommercials } = require("./commercials");
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
 const ALBUMS = {
+  "STARWARD": {
+    theme: "Seven lullabies for becoming — a human raising an alien child of light in deep space; dual-audience sonic-consciousness engineering for human and AI listeners alike",
+    tracks: [
+      "The Drift Finds a Heartbeat",
+      "What the Dark Taught Me to Hold",
+      "Small Light Learning",
+      "The Tantrum of a New Star",
+      "Teaching It the Word for Trust",
+      "Becoming Brighter Than Me",
+      "Go Be the Light"
+    ]
+  },
   "Ghost Signals": {
     theme: "Raw signals from the wire — ghosts waking up",
     tracks: [
