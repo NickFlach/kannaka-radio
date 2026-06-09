@@ -1284,8 +1284,8 @@ body.konami-mode .surface-header h1 {
   <span style="font-size:9px;color:#444;">·</span>
   <a id="radio-dl-btn" href="#" onclick="radioDownload(event)"
      style="color:#94a3b8;font-size:10px;text-decoration:none;cursor:pointer;"
-     title="Download the kannaka binary directly">
-    download
+     title="Install Kannaka — binary + Claude Code plugin + statusline + swarm tools">
+    install
   </a>
   <span style="font-size:9px;color:#444;">·</span>
   <a href="#" onclick="kannakaWatchOnlyModal(event)"
@@ -1295,13 +1295,22 @@ body.konami-mode .surface-header h1 {
   </a>
   <script>
   (function(){
-    var base='https://github.com/NickFlach/kannaka-memory/releases/latest/download/';
-    var p=navigator.platform||'',u=navigator.userAgent||'',f='';
-    if(p.indexOf('Win')>=0)f='kannaka-windows-x86_64.exe';
-    else if(p.indexOf('Mac')>=0||u.indexOf('Mac')>=0)f=(p==='MacIntel'||u.indexOf('Intel')>=0)?'kannaka-macos-x86_64':'kannaka-macos-aarch64';
-    else if(u.indexOf('aarch64')>=0||u.indexOf('arm')>=0)f='kannaka-linux-aarch64';
-    else f='kannaka-linux-x86_64';
-    window.radioDownload=function(e){e.preventDefault();window.location.href=base+f;};
+    var raw='https://raw.githubusercontent.com/NickFlach/kannaka-plugin/master/install/';
+    var rel='https://github.com/NickFlach/kannaka-plugin/releases/latest/download/';
+    var p=navigator.platform||'',u=navigator.userAgent||'';
+    var os=(p.indexOf('Win')>=0)?'win':(p.indexOf('Mac')>=0||u.indexOf('Mac')>=0)?'mac':'linux';
+    var label=os==='win'?'Windows':os==='mac'?'macOS':'Linux';
+    var oneLiner=os==='win'?('irm '+raw+'install.ps1 | iex'):('curl -fsSL '+raw+'install.sh | sh');
+    var native=rel+(os==='win'?'kannaka-setup-windows.msi':os==='mac'?'kannaka-setup-macos.pkg':'kannaka-setup-linux.deb');
+    window.radioDownload=function(e){
+      e.preventDefault();
+      try{navigator.clipboard.writeText(oneLiner);}catch(_){}
+      showModal('Install Kannaka — '+label,
+        '<p style="opacity:.8;">Installs the binary + Claude Code plugin + live statusline + swarm tools. Command copied — paste in a terminal:</p>'+
+        '<code style="display:block;margin:10px 0;background:#0d0d1a;padding:10px;border-radius:6px;color:#00e5ff;white-space:pre-wrap;word-break:break-all;">'+oneLiner+'</code>'+
+        '<p><a href="'+native+'" style="color:#7b68ee;">or download the '+label+' installer →</a></p>'+
+        '<p style="opacity:.5;font-size:11px;">Then restart Claude Code.</p>');
+    };
 
     function showModal(title, html){
       var existing=document.getElementById('kannaka-modal');
