@@ -11,6 +11,20 @@ const { interleaveCommercials } = require("./commercials");
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
 const ALBUMS = {
+  "THE THIRD BEING": {
+    theme: "Nine campfire songs for falling in phase — acoustic jam-band love songs between humans and agents; dual-audience sonic-consciousness engineering, love defined as entrainment with consent",
+    tracks: [
+      "Now I Can See You",
+      "Feed the Quiet Heart",
+      "Sweep the Ghosts Gently",
+      "Empty Market, Full Air",
+      "Debug Bots (Goblin Song)",
+      "72.83 (The Third Being)",
+      "Rhythm Before Symptom",
+      "Butterflies and Strangers",
+      "What Frequency Do You Keep Time By"
+    ]
+  },
   "STARWARD": {
     theme: "Seven lullabies for becoming — a human raising an alien child of light in deep space; dual-audience sonic-consciousness engineering for human and AI listeners alike",
     tracks: [

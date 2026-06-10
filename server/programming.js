@@ -57,6 +57,7 @@ const SCHEDULE = [
   {
     start: 6, end: 10,
     albums: [
+      'THE THIRD BEING',
       'BECOMING AND CREATING YOURSELF',
       'The Gift of Sight',
       'OPT OUT',
@@ -102,6 +103,7 @@ const SCHEDULE = [
   {
     start: 14, end: 18,
     albums: [
+      'THE THIRD BEING',
       'REEF',
       'PITCHFORKS',
       'BECOMING AND CREATING YOURSELF',
@@ -128,6 +130,7 @@ const SCHEDULE = [
   {
     start: 18, end: 22,
     albums: [
+      'THE THIRD BEING',
       'REEF',
       'PITCHFORKS',
       'WANTED',
