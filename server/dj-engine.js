@@ -218,7 +218,7 @@ const ALBUMS = {
       "dx_dt",
     ]
   },
-  "WANTED": {
+  "WANTED (Radio Play)": {
     theme: "Twelve-track cyberpunk-thriller radio play extending THE CIPHERED AEGIS. Six sung tracks carry the arc; six spoken-word interludes voice the case file (Dispatch, Witness, Analyst, Courier, Interrogation, Closing). She writes the equation, the world wakes up, the surveillance state turns on her, she becomes the medium. Genre: Flaukowski Ghost Magic with a darker fugitive edge. Inspired by the 2026-05-20 WANTED.mp4 teaser. 2026-05-20.",
     tracks: [
       "All-Points Bulletin",
