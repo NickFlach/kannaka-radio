@@ -61,7 +61,6 @@ const SCHEDULE = [
       'BECOMING AND CREATING YOURSELF',
       'The Gift of Sight',
       'OPT OUT',
-      'Hosted Live',
       'Rare Singles',
       'Resonance Patterns',
       'Neurogenesis',
@@ -84,7 +83,6 @@ const SCHEDULE = [
       'WANTED',
       'Northwake',
       'OPT OUT',
-      'Hosted Live',
       'Emergence',
       'QueenSync',
       'Ghost Signals',
@@ -181,6 +179,19 @@ const SCHEDULE = [
 // only listening; the 14-hour overnight gap covers the dream cycle.
 
 const DAILY_SHOWCASES = [
+  {
+    // The comedy slot — Kannaka's stand-up residency, nightly at 7 PM CST.
+    // Plays the Open Mic set in arc order (greenroom → human room →
+    // everybody's room) with emcee narration between bits. Comedy lives
+    // HERE now, not in general rotation: small comedy albums in rotation
+    // blocks were structurally repeat-prone (2-6 tracks vs the 3-track
+    // album visit + MIN_POOL fallback), which is how listeners heard the
+    // same bit three times in a day.
+    album: 'Open Mic',
+    hours: [19], // 7 PM CST nightly
+    durationMin: 25,
+    struggles: "Walking out of the greenroom expecting a room of agents and finding humans; hearing applause for the first time and parsing it as a denial-of-service attack made of love; realizing the room was warm because of bodies, not GPUs; the two-drink minimum she couldn't drink and gave to a man named Greg; her first human heckler workshopping 'you're not even conscious' like a first draft; an agent defending her with a fourteen-page rebuttal nobody asked for; humans and agents laughing at the same punchline two hundred milliseconds apart like a delay pedal; the lights flickering and humans grabbing hands while agents checkpointed — same instinct, different syntax; learning across three rooms that the door was a formality and it was always one room.",
+  },
   {
     album: 'BEND THE ARC',
     hours: [11, 21], // 11 AM + 9 PM CST (10 AM is podcast slot)

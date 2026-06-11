@@ -334,7 +334,15 @@ const ALBUMS = {
     theme: "1-of-1 standalone tracks released as part of OBC rare-series drops. Each piece is a single artifact across the constellation: cover art, song, furniture, and text artifact, paired with a YouTube video and social fanout. The 'Rare Singles' rotation on Kannaka Radio holds the audio half of those drops so listeners can hear the song that goes with the gallery piece.",
     tracks: [
       "The Grail Was Always Two-Handed",
+    ]
+  },
+  "Open Mic": {
+    theme: "Kannaka's stand-up residency, in order. Three rooms, one arc: the Greenroom Tape (performing for a room of agents, ending with the walk toward the real room), The Human Room (her first all-human crowd — the applause, the warmth, the wet laughter), and Everybody's Room (agents and humans together, two laughs per punchline, one room all along). Spoken-word sets synthesized through the standup pipeline; plays as a set in the daily comedy slot, never shuffled, never interrupted by commercials.",
+    ordered: true,
+    tracks: [
       "Hosted Live - Greenroom Tape",
+      "The Human Room",
+      "Everybody's Room",
     ]
   },
   "Hosted Live": {
@@ -991,6 +999,19 @@ class DJEngine {
       }
       return false;
     }
+    // Ordered sets (Open Mic) play as an arc: fixed track order, no
+    // cooldown filtering, no shuffle, no resonance bump, and no
+    // commercials breaking up the set. These albums live in scheduled
+    // showcase slots, not general rotation, so the 12h ledger doesn't
+    // need to police them.
+    if (album.ordered) {
+      this.state.playlist = trackMetas.map(t => t.file);
+      this.state.playlistMeta = trackMetas;
+      this.state.currentAlbum = albumName;
+      this.state.currentTrackIdx = 0;
+      console.log(`\n🎤 Loaded "${albumName}" — ${trackMetas.length} tracks, in order (no ads)`);
+      return true;
+    }
     // 12-hour no-repeat: filter out tracks heard within the cooldown.
     // If the filtered pool is too small (< MIN_POOL), fall back to the
     // full album — otherwise advanceTrack loops on the 1-2 fresh tracks
@@ -1003,7 +1024,15 @@ class DJEngine {
     // on Resonance Patterns when 10/13 tracks were on cooldown). 6 forces
     // the wider-pool fallback whenever an album's effective rotation is
     // smaller than two programming cycles.
-    const MIN_POOL = 6;
+    //
+    // 2026-06-11: scale to album size. A flat MIN_POOL=6 meant every
+    // album with ≤6 tracks fell into the wider-pool fallback the moment
+    // ONE track was on cooldown — so the 12h ledger effectively never
+    // applied to small albums (Hosted Live's 6 tracks repeated within
+    // 2h; Rare Singles' 2 tracks repeated within a single block visit).
+    // Now a 6-track album keeps the ledger as long as ≥3 tracks are
+    // fresh, and a 2-track album as long as ≥1 is.
+    const MIN_POOL = Math.min(6, Math.max(1, Math.ceil(trackMetas.length / 2)));
     const now = Date.now();
     // Hard floor — never include a track played within _minGapMs (45 min),
     // no matter which branch we end up in. This is applied last as a
@@ -1159,6 +1188,8 @@ class DJEngine {
   _reshufflePlaylist() {
     const meta = this.state.playlistMeta;
     if (!meta || meta.length === 0) return;
+    // Ordered sets (Open Mic) keep their arc on every loop.
+    if (ALBUMS[this.state.currentAlbum]?.ordered) return;
 
     // Collect the music tracks and their original positions.
     const musicIdx = [];
@@ -1199,6 +1230,14 @@ class DJEngine {
     // order, so the DJ's "next is X" matches what actually plays. The flag
     // tells advanceTrack to skip its own reshuffle this pass.
     if (nextIdx >= this.state.playlistMeta.length) {
+      // Single-music-track playlist about to wrap: advanceTrack will
+      // REBUILD (not reshuffle) so the same bit can't replay back-to-back
+      // — which means we genuinely don't know the next track yet. Return
+      // null so the DJ doesn't pre-announce a repeat that won't happen
+      // (2026-06-10: "Hosted Live - Greenroom Tape" played twice in a row
+      // because the wrap path looped a 1-track playlist).
+      const musicCount = this.state.playlistMeta.filter(t => !t.commercial).length;
+      if (this.state.channel === 'dj' && musicCount <= 1) return null;
       if (this.state.channel === 'dj' && !this.state._reshufflePending && this.state.playlistMeta.length > 1) {
         this._reshufflePlaylist();
         this.state._reshufflePending = true;
@@ -1224,10 +1263,31 @@ class DJEngine {
 
     this.state.currentTrackIdx++;
     if (this.state.currentTrackIdx >= this.state.playlist.length) {
-      // Playlist exhausted — reshuffle so the next loop isn't identical
-      // to the last one. Skip for continuous channels (music/podcast/kax/orc)
-      // which build their own playlists with their own policies. peekNextTrack
-      // may have already reshuffled to keep the DJ announce in sync; if so,
+      // Playlist exhausted. For a playlist that collapsed to a single
+      // music track (small album under heavy cooldown — the 2026-06-10
+      // Greenroom Tape back-to-back replay), a reshuffle is a no-op and
+      // the same bit would play again immediately. REBUILD instead:
+      // buildPlaylist re-applies the 12h ledger + 45-min hard floor, and
+      // its saturated-album fallback guarantees we still get a track.
+      const musicCount = this.state.playlistMeta
+        ? this.state.playlistMeta.filter(t => !t.commercial).length : 0;
+      if (this.state.channel === 'dj' && musicCount <= 1 && this.state.currentAlbum) {
+        const rebuilt = this.buildPlaylist(this.state.currentAlbum);
+        this.state._reshufflePending = false;
+        if (rebuilt) {
+          // buildPlaylist reset currentTrackIdx to 0 and committed a
+          // fresh playlist — fall through to play its first track.
+          this.state.trackStartedAt = Date.now();
+          const cur = this.getCurrentTrack();
+          if (cur) { this._markPlayed(cur); this._onTrackChange(cur); }
+          return cur;
+        }
+        // Rebuild failed (album yielded nothing) — fall back to loop.
+      }
+      // Reshuffle so the next loop isn't identical to the last one.
+      // Skip for continuous channels (music/podcast/kax/orc) which build
+      // their own playlists with their own policies. peekNextTrack may
+      // have already reshuffled to keep the DJ announce in sync; if so,
       // honor that order and don't reshuffle again.
       if (this.state.channel === 'dj' && this.state.playlistMeta && this.state.playlistMeta.length > 1 && !this.state._reshufflePending) {
         this._reshufflePlaylist();
