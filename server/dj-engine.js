@@ -1284,7 +1284,26 @@ class DJEngine {
 
     this.state.currentTrackIdx++;
     if (this.state.currentTrackIdx >= this.state.playlist.length) {
-      // Playlist exhausted. For a playlist that collapsed to a single
+      // Playlist exhausted — give the exhaustion hook first right of
+      // refusal. The podcast scheduler registers one so a finished
+      // episode restores the saved album SYNCHRONOUSLY at the wrap
+      // boundary. (2026-06-11: GSP-003 aired twice back-to-back — the
+      // single-episode playlist wrapped to [0] and restarted the same
+      // file before the scheduler's 5s end-poll could notice; the
+      // poll's restore then landed under the already-streaming repeat.)
+      if (this._onPlaylistExhausted) {
+        let replaced = false;
+        try { replaced = !!this._onPlaylistExhausted(); } catch (_) {}
+        if (replaced) {
+          // Hook swapped in a fresh playlist (currentTrackIdx reset by
+          // its loadAlbum) — play its first track.
+          this.state.trackStartedAt = Date.now();
+          const cur = this.getCurrentTrack();
+          if (cur) { this._markPlayed(cur); this._onTrackChange(cur); }
+          return cur;
+        }
+      }
+      // For a playlist that collapsed to a single
       // music track (small album under heavy cooldown — the 2026-06-10
       // Greenroom Tape back-to-back replay), a reshuffle is a no-op and
       // the same bit would play again immediately. REBUILD instead:

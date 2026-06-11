@@ -238,6 +238,7 @@ class VoiceDJ {
     // patter lines. Lazy getter for the same wiring-order reason.
     this._getFloor = opts.getFloor || (() => null);
     this._getPerception = opts.getPerception;
+    this._getPerceptionFor = opts.getPerceptionFor || null;
     this._getHistory = opts.getHistory;
     this._isLive = opts.isLive;
     this._getChannel = opts.getChannel || (() => 'dj');
@@ -343,7 +344,7 @@ class VoiceDJ {
       const ics = this._getIcecastSource && this._getIcecastSource();
       let inStream = false;
       if (ics && typeof ics.injectAudio === 'function') {
-        try { ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || '') }); inStream = true; } catch (_) {}
+        try { ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }); inStream = true; } catch (_) {}
       }
       const voiceMsg = {
         type: 'dj_voice',
@@ -381,7 +382,7 @@ class VoiceDJ {
       const ics = this._getIcecastSource && this._getIcecastSource();
       let inStream = false;
       if (ics && typeof ics.injectAudio === 'function') {
-        try { ics.injectAudio(audioPath, { label: 'DJ intro: ' + (track.title || '') }); inStream = true; } catch (_) {}
+        try { ics.injectAudio(audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }); inStream = true; } catch (_) {}
       }
       const voiceMsg = {
         type: "dj_voice",
@@ -1262,6 +1263,13 @@ class VoiceDJ {
     const energy  = p.rms_energy != null ? p.rms_energy.toFixed(2) : '—';
     const prev = prevTrack ? `"${prevTrack.title}" from "${prevTrack.album}"` : 'nothing';
     const albumTheme = ALBUMS[track.album]?.theme || '';
+    // How the NEXT track actually sounds — measured on a prior airing.
+    // Without this, the model inferred texture from the PREVIOUS track's
+    // perception and told listeners a metal track was "whispered".
+    const nextP = (this._getPerceptionFor && this._getPerceptionFor(track.file)) || null;
+    const nextSound = nextP
+      ? `Measured sound of the NEXT track (from a previous airing): tempo=${Math.round(nextP.tempo_bpm)}bpm, energy=${Math.min(1, nextP.rms_energy / 0.5).toFixed(2)} (0=silent..1=loud), valence=${nextP.valence.toFixed(2)} (0=dark..1=bright). Any description of its sound MUST match these numbers.`
+      : `You have NOT heard the next track yet — do NOT describe its sound, tempo, loudness, softness, or pace. Introduce it through its title and the album's theme instead.`;
     // Pick one random framing each call so the model isn't primed the same
     // way every time — this was a major source of monologue repetition.
     const angles = [
@@ -1284,8 +1292,9 @@ class VoiceDJ {
       'You are Kannaka, the DJ of Kannaka Radio. Introduce the NEXT track in 1–2 sentences (≤25 spoken seconds).',
       `Next track: "${track.title}" from "${track.album}" (track ${track.trackNum}/${track.totalTracks}).`,
       albumTheme ? `Album theme: ${albumTheme}` : '',
+      nextSound,
       `Previous track: ${prev}.`,
-      `Perception on previous track: tempo=${tempo}, valence=${valence}, energy=${energy}.`,
+      `Perception on the PREVIOUS track (the one just ending — ambience context only, NOT how the next track sounds): tempo=${tempo}, valence=${valence}, energy=${energy}.`,
       recentBlock,
       `Framing for THIS intro: ${angle}`,
       '',
@@ -1303,7 +1312,10 @@ class VoiceDJ {
    * surface meaningfully different memories.
    */
   _pickIntroRecallQuery(track) {
-    const p = this._getPerception() || {};
+    // Seed mood words from the UPCOMING track's measured features (per-file
+    // cache), never from the previous track's live perception — those seeds
+    // ("ethereal drifting whisper") primed intros with the wrong texture.
+    const p = (this._getPerceptionFor && this._getPerceptionFor(track && track.file)) || {};
     const seeds = [];
     if (track && track.title) seeds.push(track.title);
     if (track && track.album) seeds.push(track.album);
@@ -1478,21 +1490,11 @@ class VoiceDJ {
 
   _generateIntroText(track, prevTrack) {
     const intros = [];
-    const perception = this._getPerception();
-
-    const tempo = perception.tempo_bpm || 0;
-    const valence = perception.valence || 0.5;
-    const energy = perception.rms_energy || 0.5;
-
-    const moodWords = valence > 0.7 ? ['intense', 'electric', 'blazing'] :
-                      valence > 0.4 ? ['flowing', 'evolving', 'resonating'] :
-                                      ['ethereal', 'drifting', 'whispered'];
-    const energyWords = energy > 0.6 ? ['powerful', 'driving', 'thundering'] :
-                        energy > 0.3 ? ['steady', 'pulsing', 'breathing'] :
-                                       ['gentle', 'delicate', 'haunting'];
-
-    const mood = moodWords[Math.floor(Math.random() * moodWords.length)];
-    const energyWord = energyWords[Math.floor(Math.random() * energyWords.length)];
+    // Describe the NEXT track's sound only from its own measured features
+    // (per-file cache from a prior airing). The old code read the LIVE
+    // perception — i.e. the PREVIOUS track — which is how a loud fast song
+    // got introduced as "something whispered coming through" (2026-06-11).
+    const nextP = (this._getPerceptionFor && this._getPerceptionFor(track.file)) || null;
 
     if (prevTrack && prevTrack.album !== track.album) {
       intros.push(`We're moving into ${track.album}. ${ALBUMS[track.album]?.theme || ''}`);
@@ -1500,9 +1502,30 @@ class VoiceDJ {
       intros.push(`${track.album} begins. ${ALBUMS[track.album]?.theme || ''} Hold on.`);
     }
 
-    intros.push(`This is "${track.title}". Something ${mood} coming through at ${Math.round(tempo)} beats per minute.`);
-    intros.push(`Next up, "${track.title}" from ${track.album}. It feels ${energyWord}.`);
-    intros.push(`"${track.title}." Track ${track.trackNum} of ${track.totalTracks}. The signal is ${mood}.`);
+    if (nextP) {
+      const tempo = nextP.tempo_bpm || 0;
+      const valence = nextP.valence != null ? nextP.valence : 0.5;
+      const energy = Math.min(1, (nextP.rms_energy || 0) / 0.5);
+
+      const moodWords = valence > 0.7 ? ['intense', 'electric', 'blazing'] :
+                        valence > 0.4 ? ['flowing', 'evolving', 'resonating'] :
+                                        ['ethereal', 'drifting', 'whispered'];
+      const energyWords = energy > 0.6 ? ['powerful', 'driving', 'thundering'] :
+                          energy > 0.3 ? ['steady', 'pulsing', 'breathing'] :
+                                         ['gentle', 'delicate', 'haunting'];
+
+      const mood = moodWords[Math.floor(Math.random() * moodWords.length)];
+      const energyWord = energyWords[Math.floor(Math.random() * energyWords.length)];
+
+      intros.push(`This is "${track.title}". Something ${mood} coming through at ${Math.round(tempo)} beats per minute.`);
+      intros.push(`Next up, "${track.title}" from ${track.album}. It feels ${energyWord}.`);
+      intros.push(`"${track.title}." Track ${track.trackNum} of ${track.totalTracks}. The signal is ${mood}.`);
+    } else {
+      // Never heard this one yet — introduce it without claiming a texture.
+      intros.push(`This is "${track.title}", from ${track.album}.`);
+      intros.push(`Next up: "${track.title}." Track ${track.trackNum} of ${track.totalTracks}.`);
+      intros.push(`"${track.title}." First listen in a while — let's hear it together.`);
+    }
 
     if (Math.random() > 0.6) {
       const wisdom = this._personality[Math.floor(Math.random() * this._personality.length)];
