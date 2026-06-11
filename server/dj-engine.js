@@ -1247,9 +1247,20 @@ class DJEngine {
     return this.state.playlistMeta[nextIdx] || null;
   }
 
-  advanceTrack() {
+  /**
+   * @param {string} [justFinishedFile] — the file the caller (icecast
+   * source) just finished streaming. When the engine's current track is
+   * NOT that file, the playlist was swapped mid-stream (album showcase /
+   * override fired while a track was draining) and the fresh playlist's
+   * track 0 hasn't aired yet — play it instead of advancing past it.
+   * (2026-06-11: the Open Mic premiere skipped its opening bit because
+   * the override landed mid-song and the boundary advance jumped 0→1.)
+   */
+  advanceTrack(justFinishedFile) {
     const prev = this.getCurrentTrack();
-    if (prev) {
+    const swappedMidStream = !!(justFinishedFile && prev && prev.file !== justFinishedFile
+      && this.state.channel === 'dj');
+    if (prev && !swappedMidStream) {
       // Stamp the played-at time so /api/history can render a timeline
       // (charter easter egg: schedule scrubber).
       const stamped = { ...prev, playedAt: Date.now() };
@@ -1259,6 +1270,15 @@ class DJEngine {
       if (this.state.history.length > 200) {
         this.state.history.shift();
       }
+    }
+
+    if (swappedMidStream) {
+      // Don't increment — the current (unplayed) track of the fresh
+      // playlist is what should air next.
+      this.state.trackStartedAt = Date.now();
+      const cur = this.getCurrentTrack();
+      if (cur) { this._markPlayed(cur); this._onTrackChange(cur); }
+      return cur;
     }
 
     this.state.currentTrackIdx++;

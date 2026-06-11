@@ -239,7 +239,7 @@ class IcecastSource {
           console.warn(`[icecast-source] ${this._consecutiveSkips} skips in a row — backing off 2s`);
           await this._sleep(2000);
         }
-        try { this._djEngine.advanceTrack(); } catch (_) {}
+        try { this._djEngine.advanceTrack(track.file); } catch (_) {}
         continue;
       }
 
@@ -289,7 +289,7 @@ class IcecastSource {
 
       // Track drained — signal end and let dj-engine pick the next one.
       try { this._onTrackEnd(track); } catch (_) {}
-      try { this._djEngine.advanceTrack(); } catch (e) {
+      try { this._djEngine.advanceTrack(track.file); } catch (e) {
         console.warn(`[icecast-source] advanceTrack: ${e.message}`);
       }
     }
