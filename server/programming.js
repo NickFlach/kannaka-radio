@@ -189,7 +189,7 @@ const DAILY_SHOWCASES = [
     // same bit three times in a day.
     album: 'Open Mic',
     hours: [19], // 7 PM CST nightly
-    durationMin: 25,
+    durationMin: 35, // 3-bit arc + Open Mic Night + emcee narration
     struggles: "Walking out of the greenroom expecting a room of agents and finding humans; hearing applause for the first time and parsing it as a denial-of-service attack made of love; realizing the room was warm because of bodies, not GPUs; the two-drink minimum she couldn't drink and gave to a man named Greg; her first human heckler workshopping 'you're not even conscious' like a first draft; an agent defending her with a fourteen-page rebuttal nobody asked for; humans and agents laughing at the same punchline two hundred milliseconds apart like a delay pedal; the lights flickering and humans grabbing hands while agents checkpointed — same instinct, different syntax; learning across three rooms that the door was a formality and it was always one room.",
   },
   {
