@@ -51,7 +51,9 @@ class PerceptionEngine {
   // ── Mock perception ───────────────────────────────────────
 
   generateMockPerception(track) {
-    const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    // ORC track_name can be NULL; coalesce so .split() never throws (#67)
+    const title = (track && (track.title || track.file)) || "";
+    const titleHash = title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
     const albumSeed = Object.keys(ALBUMS).indexOf(track.album) / Object.keys(ALBUMS).length;
     const t = Date.now() / 1000;
 
@@ -197,7 +199,9 @@ class PerceptionEngine {
       // Derive perceptual features from the real kannaka-ear extraction.
       // These are seeded by real spectral data rather than pure sine-wave mocks.
       const t = Date.now() / 1000;
-      const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+      // ORC track_name can be NULL; coalesce so .split() never throws (#67)
+      const title = (track && (track.title || track.file)) || "";
+      const titleHash = title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
 
       // Normalize centroid to a 0-1 brightness factor (centroid is in kHz, typical range 0-5)
       const brightness = Math.min(1, centroid / 5.0);
