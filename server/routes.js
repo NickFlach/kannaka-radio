@@ -5,10 +5,34 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
 const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
 const { handleAgentRequest, attachNatsClient } = require("./agent-endpoint");
+
+// Delete-token check (#69). If RADIO_DELETE_TOKEN is set, compare the
+// supplied password against it (constant-time when lengths match). If
+// unset, fall back to the historical literal but warn once so the deploy
+// is nudged toward the env var.
+let _warnedNoDeleteToken = false;
+function checkDeletePassword(password) {
+  const token = process.env.RADIO_DELETE_TOKEN;
+  const supplied = typeof password === "string" ? password : "";
+  if (token) {
+    if (supplied.length !== token.length) return false;
+    try {
+      return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(token));
+    } catch (_) {
+      return supplied === token;
+    }
+  }
+  if (!_warnedNoDeleteToken) {
+    _warnedNoDeleteToken = true;
+    console.warn("[routes] RADIO_DELETE_TOKEN unset — falling back to built-in delete password literal");
+  }
+  return supplied === "saintnick";
+}
 
 /**
  * Resolve the public origin for discoverability surfaces.
@@ -63,6 +87,8 @@ module.exports = function setupRoutes(deps) {
       timestamp: Date.now(),
       fulfilled: false,
     });
+    // Cap the in-memory request log so it can't grow unbounded. (#68)
+    if (listeners.requests.length > 500) listeners.requests.shift();
 
     console.log(`\u{1F4E1} Track request from ${from}: "${trackTitle || reqMessage}"`);
 
@@ -78,8 +104,9 @@ module.exports = function setupRoutes(deps) {
     return { found: !!file, file };
   }
 
-  // Expose pending request count for flux publisher
-  deps._getPendingRequestCount = () => listeners.requests.length;
+  // Expose pending request count for flux publisher — count unfulfilled
+  // only so the capped log doesn't misreport (#68)
+  deps._getPendingRequestCount = () => listeners.requests.filter(r => !r.fulfilled).length;
 
   // Expose handleTrackRequest for WS message handling
   deps._handleTrackRequest = handleTrackRequest;
@@ -1135,7 +1162,7 @@ module.exports = function setupRoutes(deps) {
       readBody(req, res, (body) => {
         try {
           const { password } = JSON.parse(body);
-          if (password !== "saintnick") {
+          if (!checkDeletePassword(password)) {
             res.writeHead(403, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "Forbidden: wrong password" }));
             return;
