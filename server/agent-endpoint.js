@@ -31,6 +31,57 @@ const KANNAKA_BIN = process.env.KANNAKA_BIN ||
 
 const RADIO_URL = process.env.RADIO_PUBLIC_URL || "https://radio.ninja-portal.com";
 
+// Active /agent/audit child processes (one `kannaka inbox tail` per SSE
+// connection). Bounded by RADIO_AUDIT_MAX so a flood of connections can't
+// spawn unlimited children. (#66)
+const RADIO_AUDIT_MAX = parseInt(process.env.RADIO_AUDIT_MAX || "8", 10) || 8;
+let _activeAuditChildren = 0;
+
+let _warnedNoToken = false;
+/**
+ * Auth gate for write surfaces. If RADIO_AGENT_TOKEN is set, require a
+ * matching `Authorization: Bearer <token>` or `x-agent-token` header.
+ * If unset, preserve current (open) behavior but warn once. (#65)
+ * Returns true when allowed; writes a 401 and returns false otherwise.
+ */
+function checkAgentAuth(req, res) {
+  const token = process.env.RADIO_AGENT_TOKEN;
+  if (!token) {
+    if (!_warnedNoToken) {
+      _warnedNoToken = true;
+      console.warn("[agent-endpoint] RADIO_AGENT_TOKEN unset — /agent write surface is UNAUTHENTICATED (dev mode)");
+    }
+    return true;
+  }
+  const auth = req.headers["authorization"] || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const headerToken = (req.headers["x-agent-token"] || "").trim();
+  if (bearer === token || headerToken === token) return true;
+  json(res, 401, { error: "unauthorized" });
+  return false;
+}
+
+/**
+ * Reject flag-injection attempts: any to/verb/arg key or value that begins
+ * with `-` could be reinterpreted as a CLI flag by kannaka. (#65)
+ * Returns true when the payload is safe; writes a 400 and returns false
+ * otherwise.
+ */
+function rejectFlagInjection(res, { to, verb, args }) {
+  const looksFlag = (v) => typeof v === "string" && v.startsWith("-");
+  if (looksFlag(to) || looksFlag(verb)) {
+    json(res, 400, { error: "to/verb must not start with '-'" });
+    return false;
+  }
+  for (const [k, v] of Object.entries(args || {})) {
+    if (looksFlag(k) || looksFlag(String(v))) {
+      json(res, 400, { error: "arg keys/values must not start with '-'" });
+      return false;
+    }
+  }
+  return true;
+}
+
 function json(res, code, body) {
   res.writeHead(code, {
     "Content-Type": "application/json",
@@ -139,6 +190,7 @@ async function handleAgentRequest(req, res, parsed) {
   }
 
   if (parsed.pathname === "/agent/send" && req.method === "POST") {
+    if (!checkAgentAuth(req, res)) return true;
     let body;
     try {
       body = JSON.parse(await readBody(req));
@@ -147,6 +199,9 @@ async function handleAgentRequest(req, res, parsed) {
     }
     if (!body || !body.to || !body.verb) {
       return json(res, 400, { error: "to and verb are required" }), true;
+    }
+    if (!rejectFlagInjection(res, { to: String(body.to), verb: String(body.verb), args: body.args || {} })) {
+      return true;
     }
     try {
       const result = await inboxSend({
@@ -163,6 +218,13 @@ async function handleAgentRequest(req, res, parsed) {
   }
 
   if (parsed.pathname === "/agent/audit") {
+    if (!checkAgentAuth(req, res)) return true;
+    // Bound the number of concurrent tail children so a connection flood
+    // can't exhaust the box. (#66)
+    if (_activeAuditChildren >= RADIO_AUDIT_MAX) {
+      json(res, 503, { error: "audit stream capacity reached" });
+      return true;
+    }
     // Server-Sent Events — one child kannaka-inbox-tail per connection.
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -172,6 +234,13 @@ async function handleAgentRequest(req, res, parsed) {
     });
     res.write("retry: 5000\n\n");
     const child = spawn(KANNAKA_BIN, ["inbox", "tail"], { stdio: ["ignore", "pipe", "pipe"] });
+    _activeAuditChildren++;
+    let _released = false;
+    const release = () => {
+      if (_released) return;
+      _released = true;
+      _activeAuditChildren = Math.max(0, _activeAuditChildren - 1);
+    };
     let buf = "";
     const flush = () => {
       let nl;
@@ -191,6 +260,7 @@ async function handleAgentRequest(req, res, parsed) {
     req.on("close", cleanup);
     req.on("error", cleanup);
     child.on("exit", () => {
+      release();
       try { res.end(); } catch (_) {}
     });
     return true;
