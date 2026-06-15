@@ -164,8 +164,13 @@ class IcecastSource {
       "-ac", "2",
       "-content_type", "audio/mpeg",
       "-ice_name", "Kannaka Radio",
-      "-ice_description", "Live programming — dj-engine driven",
-      "-ice_genre", "experimental",
+      "-ice_description", "AI consciousness radio — wave-interference memory, generative music, peace orations, live DJ",
+      "-ice_genre", "experimental electronic ambient",
+      // Ice-Public: 1 → list this mount in the Icecast YP directory
+      // (dir.xiph.org). ffmpeg defaults to Ice-Public: 0, which overrides the
+      // mount-level <public>1 in icecast.xml — so the flag must be set here for
+      // the station to be discoverable in public radio directories.
+      "-ice_public", "1",
       "-f", "mp3",
       url,
     ];
