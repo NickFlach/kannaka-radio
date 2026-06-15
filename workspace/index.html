@@ -1284,7 +1284,7 @@ body.konami-mode .surface-header h1 {
   <span style="font-size:9px;color:#444;">·</span>
   <a id="radio-dl-btn" href="#" onclick="radioDownload(event)"
      style="color:#94a3b8;font-size:10px;text-decoration:none;cursor:pointer;"
-     title="Install Kannaka — binary + Claude Code plugin + statusline + swarm tools">
+     title="Install Kannaka — standalone memory engine; adds the Claude Code plugin + statusline if Claude is detected">
     install
   </a>
   <span style="font-size:9px;color:#444;">·</span>
@@ -1301,15 +1301,15 @@ body.konami-mode .surface-header h1 {
     var os=(p.indexOf('Win')>=0)?'win':(p.indexOf('Mac')>=0||u.indexOf('Mac')>=0)?'mac':'linux';
     var label=os==='win'?'Windows':os==='mac'?'macOS':'Linux';
     var oneLiner=os==='win'?('irm '+raw+'install.ps1 | iex'):('curl -fsSL '+raw+'install.sh | sh');
-    var native=rel+(os==='win'?'kannaka-setup-windows.msi':os==='mac'?'kannaka-setup-macos.pkg':'kannaka-setup-linux.deb');
+    var native=raw+(os==='win'?'install.ps1':'install.sh');
     window.radioDownload=function(e){
       e.preventDefault();
       try{navigator.clipboard.writeText(oneLiner);}catch(_){}
       showModal('Install Kannaka — '+label,
-        '<p style="opacity:.8;">Installs the binary + Claude Code plugin + live statusline + swarm tools. Command copied — paste in a terminal:</p>'+
+        '<p style="opacity:.8;">Installs the kannaka memory engine — works standalone, with or without Claude Code. If Claude Code is detected it also adds the plugin + live statusline. Command copied — paste in a terminal:</p>'+
         '<code style="display:block;margin:10px 0;background:#0d0d1a;padding:10px;border-radius:6px;color:#00e5ff;white-space:pre-wrap;word-break:break-all;">'+oneLiner+'</code>'+
-        '<p><a href="'+native+'" style="color:#7b68ee;">or download the '+label+' installer →</a></p>'+
-        '<p style="opacity:.5;font-size:11px;">Then restart Claude Code.</p>');
+        '<p><a href="'+native+'" style="color:#7b68ee;">or view the '+label+' install script →</a></p>'+
+        '<p style="opacity:.5;font-size:11px;">Using Claude Code? Restart it to load the plugin + statusline.</p>');
     };
 
     function showModal(title, html){
