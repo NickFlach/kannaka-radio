@@ -97,9 +97,45 @@ environment. The personas already carry their original ElevenLabs voice IDs
 (Rachel / Adam / Katherine / Domi), so opting back in is a single env flip —
 no code change. DSP still applies on top.
 
+## Live-deploy addendum (2026-06-16)
+
+Deploying to the Oracle box (1 vCPU, aarch64) surfaced two more failure modes
+the local dev box couldn't — both fixed in `f1b525e`:
+
+1. **Stale model id was the real oration killer.** `~/.kannaka/config.toml`
+   pinned `claude-sonnet-4-20250514` (a retired snapshot → HTTP 404
+   `not_found_error`). The direct composer *and* `kannaka ask` both read that
+   model, so the oration composed nothing and never reached TTS — independent
+   of the voice path. Fixed two ways: (a) updated config.toml →
+   `claude-sonnet-4-5`; (b) `composeViaAnthropicDirect` now tries the
+   configured model then falls back through known-current models on a 404, so
+   a future model retirement self-heals. (This model is shared constellation
+   config — `kannaka ask`/dream box-wide were affected; long-running kannaka-*
+   services pick up the new model on their next restart.)
+
+2. **Long-form TTS prefers edge, not piper.** Piper synthesizes *locally*; a
+   ~530–665-word oration is multi-minute on 1 vCPU and blew the old 60s cap.
+   edge-tts synthesizes *cloud-side* (665 words in ~43s, negligible local CPU).
+   So `news`/`oration`/`gossip` now list `["edge","piper"]` (edge first) while
+   `dj` keeps `["piper","edge"]` (short patter, local "own voice" is cheap).
+   TTS timeouts now scale with word count (`_ttsTimeout`). Verified on air:
+   `TTS (edge/oration) … ORATION (528 words, ~203s)` and `TTS (piper/dj)`.
+
+The "own voices" north star is unchanged — piper is installed and is the DJ
+voice today; long-form will move to piper once a faster path exists (fine-tuned
+small model, or batch pre-render ahead of the slot rather than at fire time).
+
+## Deploy process
+`scripts/deploy-oracle.sh` is the repeatable path: push to origin, then
+`bash scripts/deploy-oracle.sh` (add `--with-piper` to (re)install Piper). It
+fast-forwards the checkout, ensures the launcher's voice env, restarts the
+unit, and smoke-renders a persona through the live engine.
+
 ## Followups
-- Verify on Oracle: confirm the three segments render (edge) post-deploy;
-  `journalctl` for `TTS (edge/news)` etc. lines.
-- Run `scripts/install-piper.sh` on Oracle (aarch64) and flip to piper voices.
+- Long-form on piper: pre-render the composed oration/news to mp3 *ahead* of
+  the slot (compose returns minutes before air) so piper's CPU cost is off the
+  critical path, then flip those personas back to piper-first.
 - Consider fine-tuning a Piper model on Kannaka's own past audio for a truly
   bespoke `dj` voice.
+- The stale-model gotcha is constellation-wide — audit other `config.toml`
+  consumers / pinned model ids elsewhere.
