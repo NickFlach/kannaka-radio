@@ -121,6 +121,15 @@ function compileDsp(dsp) {
   return parts.join(",");
 }
 
+// TTS timeout scaled by utterance length. A 600-word oration can't render in
+// the same window as a 12-word DJ line — especially piper on a 1-vCPU box
+// (local neural synth) vs. edge (cloud synth, mostly download time). Without
+// this, long-form silently fails both engines (the ADR-0012 oration outage).
+function _ttsTimeout(text, baseMs, perWordMs, capMs) {
+  const words = (text || "").trim().split(/\s+/).filter(Boolean).length;
+  return Math.min(capMs, baseMs + words * perWordMs);
+}
+
 function _atempoChain(t) {
   const out = [];
   let r = t;
@@ -180,9 +189,12 @@ function _pythonBin() {
 
 function renderEdge(text, voice, rawPath, cb) {
   const ec = _edgeCmd();
+  // edge does the synthesis cloud-side, so this is mostly download time —
+  // generous but bounded. ~60ms/word over a 30s base, capped at 3 min.
+  const timeout = _ttsTimeout(text, 30000, 60, 180000);
   const runWith = (cmd, pre) => {
     const args = [...pre, "--voice", voice, "--text", text, "--write-media", rawPath];
-    execFile(cmd, args, { timeout: 30000 }, (err) => {
+    execFile(cmd, args, { timeout, maxBuffer: 1 << 20 }, (err) => {
       if (!err && fs.existsSync(rawPath)) return cb(null, rawPath);
       // ENOENT on the `edge-tts` CLI → retry via python module.
       if (err && err.code === "ENOENT" && ec.fallbackPython && cmd !== _pythonBin()) {
@@ -221,10 +233,15 @@ function renderPiper(text, persona, rawWavPath, cb) {
   const bin = _piperBin();
   const model = _piperModelPath(persona.piper && persona.piper.model);
   if (!bin || !model) return cb(new Error("piper not available"));
+  // piper synthesizes locally; on a 1-vCPU box a multi-minute oration is CPU-
+  // bound and slow, so scale hard (~400ms/word over 60s, capped at 6 min).
+  // For long-form, voice-personas.json prefers edge first to keep this off the
+  // critical path; piper stays the fast choice for short DJ patter.
+  const timeout = _ttsTimeout(text, 60000, 400, 360000);
   const child = execFile(
     bin,
     ["--model", model, "--output_file", rawWavPath],
-    { timeout: 60000 },
+    { timeout },
     (err) => {
       if (!err && fs.existsSync(rawWavPath)) return cb(null, rawWavPath);
       cb(err || new Error("piper produced no file"));

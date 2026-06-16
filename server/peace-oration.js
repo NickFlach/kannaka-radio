@@ -17,6 +17,7 @@
 const { execFile } = require("child_process");
 const { broadcastPost, getEnabledBroadcasters } = require("./broadcasters");
 const { OpenBotCityClient } = require("./openbotcity");
+const { composeViaAnthropicDirect } = require("./lib/scheduler-helpers");
 
 // Spoken intro and outro — frame each oration so listeners aren't dropped
 // into / out of two minutes of speech with no warning. Composed in Kannaka's
@@ -175,71 +176,10 @@ class PeaceOration {
    * this helper — caller handles them.
    */
   _askAnthropicDirect(prompt, maxTokens = 4096) {
-    const fs = require("fs");
-    const os = require("os");
-    const https = require("https");
-    const path = require("path");
-
-    // Read kannaka config for the API key + model.
-    let apiKey = process.env.ANTHROPIC_API_KEY || process.env.KANNAKA_LLM_API_KEY || "";
-    let model = "claude-sonnet-4-5";
-    try {
-      const cfgPath = path.join(os.homedir(), ".kannaka", "config.toml");
-      if (fs.existsSync(cfgPath)) {
-        const cfg = fs.readFileSync(cfgPath, "utf8");
-        if (!apiKey) {
-          const m = cfg.match(/api_key\s*=\s*"([^"]+)"/);
-          if (m) apiKey = m[1];
-        }
-        const mm = cfg.match(/model\s*=\s*"([^"]+)"/);
-        if (mm) model = mm[1];
-      }
-    } catch (_) { /* fall through to env-only */ }
-    if (!apiKey) return Promise.resolve(null);
-
-    const body = JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    return new Promise((resolve) => {
-      const req = https.request({
-        hostname: "api.anthropic.com",
-        path: "/v1/messages",
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-        },
-      }, (res) => {
-        let chunks = "";
-        res.on("data", (c) => { chunks += c; });
-        res.on("end", () => {
-          if (res.statusCode !== 200) {
-            console.warn(`   [direct] anthropic ${res.statusCode}: ${chunks.slice(0, 300)}`);
-            return resolve(null);
-          }
-          try {
-            const j = JSON.parse(chunks);
-            const text = (j.content || []).map((b) => b.text || "").join("\n").trim();
-            resolve(text || null);
-          } catch (e) {
-            console.warn(`   [direct] parse: ${e.message}`);
-            resolve(null);
-          }
-        });
-      });
-      req.on("error", (e) => {
-        console.warn(`   [direct] request: ${e.message}`);
-        resolve(null);
-      });
-      req.setTimeout(180000, () => req.destroy(new Error("timeout")));
-      req.write(body);
-      req.end();
-    });
+    // Delegates to the shared resilient composer, which adds model fallback on
+    // a stale config model (ADR-0012). Kept as a method so _askDirectWithRetry
+    // and composeAlbumNarration call sites are unchanged.
+    return composeViaAnthropicDirect(prompt, { maxTokens, label: "oration" });
   }
 
   composeAlbumNarration(albumName, albumTheme, trackTitles, struggles) {

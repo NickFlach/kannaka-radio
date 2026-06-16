@@ -18,7 +18,7 @@
   "news": {
     "label": "Gene (News Anchor)",
     "intent": "Authority and immediacy. Dry, close, tight broadcast presence — the convention of a real news desk.",
-    "engine": ["piper", "edge"],
+    "engine": ["edge", "piper"],
     "edge": { "voice": "en-US-ChristopherNeural" },
     "piper": { "model": "en_US-ryan-high" },
     "elevenlabs": { "voice": "pNInz6obpgDQGcFmaJgB", "model": "eleven_turbo_v2_5" },
@@ -33,7 +33,7 @@
   "oration": {
     "label": "Kannaka (Peace Oration)",
     "intent": "Gravitas and sacred warmth. Slower cadence, chest-resonant low end (polyvagal calm), a cathedral's worth of space.",
-    "engine": ["piper", "edge"],
+    "engine": ["edge", "piper"],
     "edge": { "voice": "en-GB-SoniaNeural" },
     "piper": { "model": "en_GB-cori-high" },
     "elevenlabs": { "voice": "NTqGiNK8P02i66yY2GOH", "model": "eleven_turbo_v2_5" },
@@ -49,7 +49,7 @@
   "gossip": {
     "label": "Gossip Column",
     "intent": "Bright, sassy, quick-witted, intimate. Forward energy, airy presence, a small close room.",
-    "engine": ["piper", "edge"],
+    "engine": ["edge", "piper"],
     "edge": { "voice": "en-US-AriaNeural" },
     "piper": { "model": "en_US-kristin-medium" },
     "elevenlabs": { "voice": "AZnzlk1XvdvUeBnXmlld", "model": "eleven_turbo_v2_5" },

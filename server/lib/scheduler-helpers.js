@@ -493,19 +493,28 @@ function composeViaAnthropicDirect(prompt, opts = {}) {
   const maxTokens = opts.maxTokens || 4096;
 
   let apiKey = process.env.ANTHROPIC_API_KEY || process.env.KANNAKA_LLM_API_KEY || "";
-  let model = opts.model || "claude-sonnet-4-5";
+  let cfgModel = opts.model || "";
   try {
     const cfgPath = path.join(os.homedir(), ".kannaka", "config.toml");
     if (fs.existsSync(cfgPath)) {
       const cfg = fs.readFileSync(cfgPath, "utf8");
       if (!apiKey) { const m = cfg.match(/api_key\s*=\s*"([^"]+)"/); if (m) apiKey = m[1]; }
-      if (!opts.model) { const mm = cfg.match(/model\s*=\s*"([^"]+)"/); if (mm) model = mm[1]; }
+      if (!cfgModel) { const mm = cfg.match(/model\s*=\s*"([^"]+)"/); if (mm) cfgModel = mm[1]; }
     }
   } catch (_) { /* env-only */ }
   if (!apiKey) return Promise.resolve(null);
 
-  const body = JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] });
-  return new Promise((resolve) => {
+  // Candidate models: configured first, then known-current fallbacks. A stale
+  // config model (a retired snapshot id) 404s — advance to the next rather than
+  // failing the segment. This is exactly what masked the ADR-0012 oration
+  // outage: ~/.kannaka/config.toml pinned a retired sonnet-4 snapshot, so the
+  // direct composer (and `kannaka ask`) 404'd and the oration never spoke.
+  const FALLBACKS = ["claude-sonnet-4-5", "claude-haiku-4-5-20251001"];
+  const candidates = [];
+  for (const m of [cfgModel, ...FALLBACKS]) if (m && !candidates.includes(m)) candidates.push(m);
+
+  const tryModel = (model) => new Promise((resolve) => {
+    const body = JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] });
     const req = https.request({
       hostname: "api.anthropic.com",
       path: "/v1/messages",
@@ -520,22 +529,32 @@ function composeViaAnthropicDirect(prompt, opts = {}) {
       let chunks = "";
       res.on("data", (c) => { chunks += c; });
       res.on("end", () => {
-        if (res.statusCode !== 200) {
-          console.warn(`   [${opts.label || "direct"}] anthropic ${res.statusCode}: ${chunks.slice(0, 200)}`);
-          return resolve(null);
+        if (res.statusCode === 200) {
+          try {
+            const j = JSON.parse(chunks);
+            const text = (j.content || []).map((b) => b.text || "").join("\n").trim();
+            return resolve({ text: text || null });
+          } catch (e) { return resolve({ text: null }); }
         }
-        try {
-          const j = JSON.parse(chunks);
-          const text = (j.content || []).map((b) => b.text || "").join("\n").trim();
-          resolve(text || null);
-        } catch (e) { resolve(null); }
+        const notFound = res.statusCode === 404 && /not_found|model:/i.test(chunks);
+        console.warn(`   [${opts.label || "direct"}] anthropic ${res.statusCode} (${model})${notFound ? " — trying next model" : ""}: ${chunks.slice(0, 160)}`);
+        resolve({ text: null, notFound });
       });
     });
-    req.on("error", () => resolve(null));
+    req.on("error", () => resolve({ text: null }));
     req.setTimeout(180000, () => req.destroy(new Error("timeout")));
     req.write(body);
     req.end();
   });
+
+  return (async () => {
+    for (const model of candidates) {
+      const r = await tryModel(model);
+      if (r.text) return r.text;
+      if (!r.notFound) return null; // real error (auth/overload) — don't hammer other models
+    }
+    return null;
+  })();
 }
 
 /**
