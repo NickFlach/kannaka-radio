@@ -81,12 +81,17 @@ function compileDsp(dsp) {
   if (!dsp || typeof dsp !== "object") return "";
   const parts = [];
 
-  // Pitch (semitones) — asetrate scales pitch+speed by k; aresample brings
-  // it back to SR; we then restore duration with a compensating tempo factor.
+  // Pitch (semitones). asetrate works by REINTERPRETING the stream's sample
+  // rate, so it's only correct if the stream is at SR to begin with. Engine
+  // outputs are NOT at SR (edge ≈ 24 kHz, piper ≈ 22 kHz), so we must resample
+  // to SR FIRST — otherwise asetrate reinterprets e.g. 24 kHz audio as ~43 kHz
+  // and everything plays ~1.8× too fast and high (the chipmunk bug). After
+  // asetrate we resample back to SR and restore duration with a compensating
+  // tempo factor.
   let tempo = typeof dsp.rate === "number" ? dsp.rate : 1.0;
   if (typeof dsp.pitch === "number" && dsp.pitch !== 0) {
     const k = Math.pow(2, dsp.pitch / 12);
-    parts.push(`asetrate=${Math.round(SR * k)}`, `aresample=${SR}`);
+    parts.push(`aresample=${SR}`, `asetrate=${Math.round(SR * k)}`, `aresample=${SR}`);
     tempo = tempo / k; // undo the speed change asetrate introduced
   }
   // atempo only accepts 0.5–2.0; chain factors for anything outside.
