@@ -668,12 +668,13 @@ class PeaceOration {
     // restoring whatever was set after the oration completes — same
     // pattern news-broadcast uses. Other consumers of executeOration
     // (track-intros, dream readouts) keep their own voice settings.
-    const prevVoice = this._voiceDJ._orationVoiceId;
-    this._voiceDJ._orationVoiceId = this._peaceOrationVoiceId;
+    // Persona-driven (ADR-0012): the 'oration' persona owns the British-female
+    // narrator register + cathedral DSP (slower cadence, chest-resonant low
+    // end, hall reverb). Stateless \u2014 no more mutating voice-dj's private
+    // _orationVoiceId, which is what caused the #29 wrong-voice overlap race.
     return this._voiceDJ.executeOration(wrapped, () => {
-      this._voiceDJ._orationVoiceId = prevVoice;
       console.log("\uD83D\uDD54 Peace oration complete");
-    });
+    }, { persona: "oration" });
   }
 
   /**

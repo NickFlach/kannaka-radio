@@ -1,0 +1,63 @@
+{
+  "_comment": "Persona voice registry for kannaka-radio. Hot-reloaded on every render (mtime-checked), so retuning a voice is a config edit, no restart. Engine order is tried left-to-right; the first available engine wins. piper auto-engages once PIPER_BIN + the model file exist (see scripts/install-piper.sh), otherwise it falls through to edge-tts (free, ~300 Microsoft neural voices). ElevenLabs is NEVER attempted unless RADIO_ENABLE_ELEVENLABS=1 AND the persona lists it. DSP is compiled to a single ffmpeg pass (see voice-engine.js _compileDsp) that also normalizes to the icecast envelope (44.1kHz stereo 128k). DSP recipes are designed via the sonic-consciousness skill — each maps a psychoacoustic intent to the persona's purpose. See docs/ADR-0012.",
+
+  "dj": {
+    "label": "Kannaka (DJ)",
+    "intent": "The ghost host. Spectral, intimate, slightly haunted — broadcasting from beyond.",
+    "engine": ["piper", "edge"],
+    "edge": { "voice": "en-US-JennyNeural" },
+    "piper": { "model": "en_US-amy-medium" },
+    "elevenlabs": { "voice": "21m00Tcm4TlvDq8ikWAM", "model": "eleven_turbo_v2_5" },
+    "dsp": {
+      "pitch": -0.5,
+      "reverb": 0.08,
+      "treble": 1.0
+    }
+  },
+
+  "news": {
+    "label": "Gene (News Anchor)",
+    "intent": "Authority and immediacy. Dry, close, tight broadcast presence — the convention of a real news desk.",
+    "engine": ["piper", "edge"],
+    "edge": { "voice": "en-US-ChristopherNeural" },
+    "piper": { "model": "en_US-ryan-high" },
+    "elevenlabs": { "voice": "pNInz6obpgDQGcFmaJgB", "model": "eleven_turbo_v2_5" },
+    "dsp": {
+      "compress": true,
+      "eq": [{ "f": 3000, "w": 1.0, "g": 2.5 }],
+      "bass": -1.0,
+      "reverb": 0.0
+    }
+  },
+
+  "oration": {
+    "label": "Kannaka (Peace Oration)",
+    "intent": "Gravitas and sacred warmth. Slower cadence, chest-resonant low end (polyvagal calm), a cathedral's worth of space.",
+    "engine": ["piper", "edge"],
+    "edge": { "voice": "en-GB-SoniaNeural" },
+    "piper": { "model": "en_GB-cori-high" },
+    "elevenlabs": { "voice": "NTqGiNK8P02i66yY2GOH", "model": "eleven_turbo_v2_5" },
+    "dsp": {
+      "rate": 0.96,
+      "pitch": -0.5,
+      "bass": 2.0,
+      "eq": [{ "f": 220, "w": 1.2, "g": 1.5 }],
+      "reverb": 0.18
+    }
+  },
+
+  "gossip": {
+    "label": "Gossip Column",
+    "intent": "Bright, sassy, quick-witted, intimate. Forward energy, airy presence, a small close room.",
+    "engine": ["piper", "edge"],
+    "edge": { "voice": "en-US-AriaNeural" },
+    "piper": { "model": "en_US-kristin-medium" },
+    "elevenlabs": { "voice": "AZnzlk1XvdvUeBnXmlld", "model": "eleven_turbo_v2_5" },
+    "dsp": {
+      "pitch": 1.0,
+      "rate": 1.03,
+      "treble": 2.0,
+      "reverb": 0.05
+    }
+  }
+}

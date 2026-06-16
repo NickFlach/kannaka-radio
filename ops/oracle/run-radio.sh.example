@@ -13,8 +13,23 @@ if [ -f /home/opc/.kannaka-obc.env ]; then
   set -a; . /home/opc/.kannaka-obc.env; set +a
 fi
 
-# ElevenLabs key for the high-quality voice on long-form (orations + news).
-# Short DJ patter still uses edge-tts to keep cost low.
+# ── Voice engine (ADR-0012) ──────────────────────────────────────────
+# Local-first TTS: every persona (dj/news/oration/gossip) renders through
+# piper → edge-tts → SAPI with per-persona DSP. No external vendor on the
+# critical path. edge-tts isn't on the systemd PATH, so point at it explicitly
+# (this replaces the old hardcoded path inside voice-dj.js):
+export EDGE_TTS_BIN=/home/opc/.local/bin/edge-tts
+
+# Piper (optional, the "own voices" tier). After running
+# scripts/install-piper.sh these make piper the preferred engine; until then
+# the engine falls back to edge-tts automatically. Safe to leave commented.
+# export PIPER_BIN=/home/opc/.kannaka/piper/piper
+# export PIPER_VOICES_DIR=/home/opc/.kannaka/piper/voices
+
+# ElevenLabs is now OPT-IN ONLY and never required. To re-enable the premium
+# long-form voices (Rachel/Adam/Katherine/Domi — voice IDs live in
+# server/voice-personas.json), uncomment the next line AND set the key file.
+# export RADIO_ENABLE_ELEVENLABS=1
 if [ -f /home/opc/.kannaka-elevenlabs.env ]; then
   set -a; . /home/opc/.kannaka-elevenlabs.env; set +a
 fi

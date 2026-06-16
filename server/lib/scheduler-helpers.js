@@ -478,12 +478,91 @@ function composeViaKannakaAsk(kannakabin, prompt, opts = {}) {
   });
 }
 
+/**
+ * Compose via Anthropic's /v1/messages directly — bypasses `kannaka ask`,
+ * which has historically silent-failed once the HRM grows large (system-prompt
+ * construction busts the input-token ceiling without surfacing). Reads the
+ * api_key + model from env or ~/.kannaka/config.toml so it honors the same
+ * config as the rest of the constellation. Single round-trip; caller retries.
+ */
+function composeViaAnthropicDirect(prompt, opts = {}) {
+  const fs = require("fs");
+  const os = require("os");
+  const https = require("https");
+  const path = require("path");
+  const maxTokens = opts.maxTokens || 4096;
+
+  let apiKey = process.env.ANTHROPIC_API_KEY || process.env.KANNAKA_LLM_API_KEY || "";
+  let model = opts.model || "claude-sonnet-4-5";
+  try {
+    const cfgPath = path.join(os.homedir(), ".kannaka", "config.toml");
+    if (fs.existsSync(cfgPath)) {
+      const cfg = fs.readFileSync(cfgPath, "utf8");
+      if (!apiKey) { const m = cfg.match(/api_key\s*=\s*"([^"]+)"/); if (m) apiKey = m[1]; }
+      if (!opts.model) { const mm = cfg.match(/model\s*=\s*"([^"]+)"/); if (mm) model = mm[1]; }
+    }
+  } catch (_) { /* env-only */ }
+  if (!apiKey) return Promise.resolve(null);
+
+  const body = JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] });
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: "api.anthropic.com",
+      path: "/v1/messages",
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let chunks = "";
+      res.on("data", (c) => { chunks += c; });
+      res.on("end", () => {
+        if (res.statusCode !== 200) {
+          console.warn(`   [${opts.label || "direct"}] anthropic ${res.statusCode}: ${chunks.slice(0, 200)}`);
+          return resolve(null);
+        }
+        try {
+          const j = JSON.parse(chunks);
+          const text = (j.content || []).map((b) => b.text || "").join("\n").trim();
+          resolve(text || null);
+        } catch (e) { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.setTimeout(180000, () => req.destroy(new Error("timeout")));
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Resilient compose: try `kannaka ask` (HRM-grounded, preferred) first; if it
+ * returns null/short (silent HRM failure, overload, etc.), fall back to a
+ * direct Anthropic call so the segment still airs. This is how news + gossip
+ * stay on the air even when the medium is mid-write or the prompt is too big
+ * for `kannaka ask` — without losing HRM grounding on the happy path. (ADR-0012)
+ */
+async function composeResilient(kannakabin, prompt, opts = {}) {
+  const viaAsk = await composeViaKannakaAsk(kannakabin, prompt, opts);
+  if (viaAsk) return viaAsk;
+  console.warn(`   [${opts.label || "compose"}] kannaka ask returned empty — falling back to direct Anthropic`);
+  const minLen = opts.minLen || 200;
+  const direct = await composeViaAnthropicDirect(prompt, opts);
+  if (direct && direct.length >= minLen) return direct;
+  return direct || null;
+}
+
 module.exports = {
   pick,
   chicagoNow,
   keyForChicago,
   loadState,
   saveState,
+  composeViaAnthropicDirect,
+  composeResilient,
   fetchKnowledgeGeneInterpretation,
   fetchUsgsEarthquakes,
   fetchNasaEonet,
