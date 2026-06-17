@@ -59,6 +59,11 @@ class NATSClient extends EventEmitter {
       },
       dreams: [],
       agentEvents: [],
+      // agent_id → last time we surfaced a JOIN for it (ms). Agents like
+      // kannaka-witness-01 re-announce a join on a periodic loop; we dedupe so
+      // the on-air voice + UI feed don't repeat it. Presence/peers come from
+      // QUEEN.phase.* independently, so suppressing the repeat join is safe.
+      joinAnnouncedAt: {},
       // ORC constellation: fresh stems queued from ORC.stem.submitted.
       // Bounded ring buffer; voice-DJ pulls from this for on-air mentions.
       orcStems: [],
@@ -525,7 +530,19 @@ class NATSClient extends EventEmitter {
 
     // ── QueenSync lifecycle events (KR-2) ───────────────────
     if (subject === 'queen.event.join') {
-      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', display_name: data.display_name || data.displayName || data.agent_id || 'unknown', ...data, receivedAt: now };
+      const agentId = data.agent_id || data.agentId || 'unknown';
+      const evt = { agent_id: agentId, display_name: data.display_name || data.displayName || agentId, ...data, receivedAt: now };
+      // Dedupe re-joins. The witness loop (and any agent using `swarm join
+      // --once` on a tick) re-emits queen.event.join every few minutes;
+      // announcing each one spams the on-air voice and the UI event feed.
+      // Surface a given agent's join at most once per JOIN_DEDUP_MS. This only
+      // gates the *announcement* — QUEEN.phase.* still drives live presence.
+      const JOIN_DEDUP_MS = 6 * 60 * 60 * 1000; // 6h
+      const lastJoin = this.swarmState.joinAnnouncedAt[agentId] || 0;
+      if (now - lastJoin < JOIN_DEDUP_MS) {
+        return; // recently announced — suppress the repeat join
+      }
+      this.swarmState.joinAnnouncedAt[agentId] = now;
       this.swarmState.agentEvents.unshift(evt);
       if (this.swarmState.agentEvents.length > 50) this.swarmState.agentEvents = this.swarmState.agentEvents.slice(0, 50);
       this._broadcast({ type: 'queen_join', data: evt });

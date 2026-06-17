@@ -33,7 +33,7 @@ const {
   loadState,
   saveState,
   fetchKnowledgeGeneInterpretation,
-  composeViaKannakaAsk,
+  composeResilient,
 } = require("./lib/scheduler-helpers");
 
 const TEASE_FRAMINGS = [
@@ -236,19 +236,20 @@ class NewsTeaser {
       "",
       "Output ONLY the spoken tease — no headings, no quotes.",
     ].join("\n");
-    return composeViaKannakaAsk(this._kannakabin, prompt, { label: "tease", minLen: 80 });
+    return composeResilient(this._kannakabin, prompt, { label: "tease", minLen: 80 });
   }
 
   // ── Deliver ────────────────────────────────────────────────
   _say(text) {
     if (!this._voiceDJ || typeof this._voiceDJ.executeOration !== "function") return false;
     const wrapped = `${pick(TEASER_INTROS)}\n\n${text}\n\n${pick(TEASER_OUTROS)}`;
-    const prevVoice = this._voiceDJ._orationVoiceId;
-    this._voiceDJ._orationVoiceId = this._newsVoiceId;
+    // Persona-driven (ADR-0012): teasers share the 'news' persona (anchor
+    // voice + dry DSP). No more mutating voice-dj's _orationVoiceId — that
+    // field is no longer read, so the old pattern would have leaked the
+    // oration voice into the teaser.
     return this._voiceDJ.executeOration(wrapped, () => {
-      this._voiceDJ._orationVoiceId = prevVoice;
       console.log("📰 News teaser complete");
-    });
+    }, { persona: "news" });
   }
 }
 

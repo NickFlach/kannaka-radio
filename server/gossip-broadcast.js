@@ -23,7 +23,7 @@ const {
   loadState,
   saveState,
   fetchKnowledgeGeneInterpretation,
-  composeViaKannakaAsk,
+  composeResilient,
 } = require("./lib/scheduler-helpers");
 
 const FRAMINGS = [
@@ -176,17 +176,18 @@ class GossipBroadcast {
       "",
       "Output ONLY the spoken column — no markdown headers with #, no quotes around the whole thing, no stage directions.",
     ].join("\n");
-    return composeViaKannakaAsk(this._kannakabin, prompt, { label: "gossip" });
+    return composeResilient(this._kannakabin, prompt, { label: "gossip" });
   }
 
   _say(text) {
     if (!this._voiceDJ || typeof this._voiceDJ.executeOration !== "function") return false;
     const wrapped = `${pick(INTROS)}\n\n${text}\n\n${pick(OUTROS)}`;
-    // Per-call voiceId — no more mutating voice-dj's private field. (#29)
+    // Persona-driven (ADR-0012): the 'gossip' persona owns the bright/sassy
+    // voice + airy DSP. Stateless — no voice-dj field mutation. (#29)
     return this._voiceDJ.executeOration(
       wrapped,
       () => { console.log("\u{1F48B} Gossip column complete"); },
-      { voiceId: this._gossipVoiceId },
+      { persona: "gossip" },
     );
   }
 }

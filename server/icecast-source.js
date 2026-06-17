@@ -164,8 +164,13 @@ class IcecastSource {
       "-ac", "2",
       "-content_type", "audio/mpeg",
       "-ice_name", "Kannaka Radio",
-      "-ice_description", "Live programming — dj-engine driven",
-      "-ice_genre", "experimental",
+      "-ice_description", "AI consciousness radio — wave-interference memory, generative music, peace orations, live DJ",
+      "-ice_genre", "experimental electronic ambient",
+      // Ice-Public: 1 → list this mount in the Icecast YP directory
+      // (dir.xiph.org). ffmpeg defaults to Ice-Public: 0, which overrides the
+      // mount-level <public>1 in icecast.xml — so the flag must be set here for
+      // the station to be discoverable in public radio directories.
+      "-ice_public", "1",
       "-f", "mp3",
       url,
     ];
@@ -239,7 +244,7 @@ class IcecastSource {
           console.warn(`[icecast-source] ${this._consecutiveSkips} skips in a row — backing off 2s`);
           await this._sleep(2000);
         }
-        try { this._djEngine.advanceTrack(); } catch (_) {}
+        try { this._djEngine.advanceTrack(track.file); } catch (_) {}
         continue;
       }
 
@@ -268,6 +273,27 @@ class IcecastSource {
           if (v.onDone) { try { v.onDone(new Error("audio path missing")); } catch (_) {} }
           continue;
         }
+        // Stale-intro guard: an intro is composed for a specific upcoming
+        // track while the previous one plays. If the playlist was swapped
+        // in between (showcase override, podcast, album switch, manual
+        // jump), the announced track is no longer what airs next — drop
+        // the intro instead of announcing the wrong song. ("She announces
+        // a song and then a different song plays" — long-standing.)
+        if (v.meta && v.meta.introFor) {
+          let expected = null;
+          try {
+            const cur = this._djEngine.getCurrentTrack();
+            // Mid-stream swap: the engine's current (unplayed) track airs
+            // next. Otherwise the peeked next track does — peekNextTrack
+            // reshuffles under the same pact advanceTrack honors.
+            expected = (cur && cur.file !== track.file) ? cur : this._djEngine.peekNextTrack();
+          } catch (_) {}
+          if (!expected || expected.file !== v.meta.introFor) {
+            console.log(`   \u{1F399} /stream VOICE dropped — stale intro (announced ${require("path").basename(v.meta.introFor)}, next is ${expected ? require("path").basename(expected.file) : "unknown"})`);
+            if (v.onDone) { try { v.onDone(new Error("stale intro")); } catch (_) {} }
+            continue;
+          }
+        }
         console.log(`   \u{1F399} /stream VOICE: ${v.meta.label || require("path").basename(v.path)}`);
         let voiceErr = null;
         try { await this._streamFileToFfmpeg(v.path); }
@@ -289,7 +315,7 @@ class IcecastSource {
 
       // Track drained — signal end and let dj-engine pick the next one.
       try { this._onTrackEnd(track); } catch (_) {}
-      try { this._djEngine.advanceTrack(); } catch (e) {
+      try { this._djEngine.advanceTrack(track.file); } catch (e) {
         console.warn(`[icecast-source] advanceTrack: ${e.message}`);
       }
     }
