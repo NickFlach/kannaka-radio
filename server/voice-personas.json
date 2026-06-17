@@ -10,6 +10,7 @@
     "elevenlabs": { "voice": "21m00Tcm4TlvDq8ikWAM", "model": "eleven_turbo_v2_5" },
     "dsp": {
       "pitch": -0.5,
+      "rate": 1.05,
       "reverb": 0.08,
       "treble": 1.0
     }
@@ -23,6 +24,7 @@
     "piper": { "model": "en_US-ryan-high" },
     "elevenlabs": { "voice": "pNInz6obpgDQGcFmaJgB", "model": "eleven_turbo_v2_5" },
     "dsp": {
+      "rate": 1.06,
       "compress": true,
       "eq": [{ "f": 3000, "w": 1.0, "g": 2.5 }],
       "bass": -1.0,
@@ -38,7 +40,7 @@
     "piper": { "model": "en_GB-cori-high" },
     "elevenlabs": { "voice": "NTqGiNK8P02i66yY2GOH", "model": "eleven_turbo_v2_5" },
     "dsp": {
-      "rate": 0.96,
+      "rate": 0.99,
       "pitch": -0.5,
       "bass": 2.0,
       "eq": [{ "f": 220, "w": 1.2, "g": 1.5 }],
@@ -55,7 +57,7 @@
     "elevenlabs": { "voice": "AZnzlk1XvdvUeBnXmlld", "model": "eleven_turbo_v2_5" },
     "dsp": {
       "pitch": 1.0,
-      "rate": 1.03,
+      "rate": 1.08,
       "treble": 2.0,
       "reverb": 0.05
     }
