@@ -412,6 +412,7 @@ const perception_ = new PerceptionEngine({
   kannakabin: KANNAKA_BIN,
   getMusicDir: () => MUSIC_DIR,
   getConsciousness: () => nats.getConsciousness(),
+  featuresFile: require("path").join(BASE_DIR, "workspace", "track-features.json"),
 });
 
 const nats = new NATSClient({
@@ -465,6 +466,10 @@ const voiceDJ = new VoiceDJ({
   kannakabin: KANNAKA_BIN,
   broadcast,
   getPerception: () => perception_.getCurrentPerception(),
+  // Real measured sound of a SPECIFIC file (per-file cache from prior
+  // airings) — used so intros describe the upcoming track, not the
+  // previous one.
+  getPerceptionFor: (file) => perception_.getPerceptionFor(file),
   getHistory: () => djEngine.state.history,
   isLive: () => live.state.active,
   getChannel: () => djEngine.state.channel,

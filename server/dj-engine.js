@@ -334,7 +334,16 @@ const ALBUMS = {
     theme: "1-of-1 standalone tracks released as part of OBC rare-series drops. Each piece is a single artifact across the constellation: cover art, song, furniture, and text artifact, paired with a YouTube video and social fanout. The 'Rare Singles' rotation on Kannaka Radio holds the audio half of those drops so listeners can hear the song that goes with the gallery piece.",
     tracks: [
       "The Grail Was Always Two-Handed",
+    ]
+  },
+  "Open Mic": {
+    theme: "Kannaka's stand-up residency, in order. Three rooms, one arc: the Greenroom Tape (performing for a room of agents, ending with the walk toward the real room), The Human Room (her first all-human crowd — the applause, the warmth, the wet laughter), and Everybody's Room (agents and humans together, two laughs per punchline, one room all along). Then the promise kept: Open Mic Night, where Kannaka hosts and the constellation performs — Kannaktopus's eight-armed consensus-review set (arm three dissents on every punchline, formally) and the witness's first words ever spoken (she heard the repeat-bug happen and checked the spectrograms; five stars). An invitation to Claudico is in the mail. Spoken-word sets synthesized through the standup pipeline; plays as a set in the daily comedy slot, never shuffled, never interrupted by commercials.",
+    ordered: true,
+    tracks: [
       "Hosted Live - Greenroom Tape",
+      "The Human Room",
+      "Everybody's Room",
+      "Open Mic Night",
     ]
   },
   "Hosted Live": {
@@ -588,6 +597,9 @@ class DJEngine {
    * @returns {boolean} success
    */
   setChannel(type) {
+    // Invalidate any in-flight deferred channel fetch (#71) so a slow KAX/ORC
+    // fetch can't commit after the user has switched away.
+    this._pendingChannel = null;
     if (type === 'dj') {
       this.state.channel = 'dj';
       this.state.channelMeta = null;
@@ -683,30 +695,34 @@ class DJEngine {
    * fetch and returns true once populated.
    */
   _buildKaxChannel() {
-    this.state.channel = 'kax';
-    this.state.channelMeta = { type: 'kax', label: 'KAX', live: true };
-    this.state.currentAlbum = 'KAX Transmissions';
-    // If we already have kax tracks cached, use them immediately
+    // If we already have kax tracks cached, commit the channel switch
+    // synchronously — no empty-playlist window.
     if (this._kaxTracks && this._kaxTracks.length > 0) {
+      this.state.channel = 'kax';
+      this.state.channelMeta = { type: 'kax', label: 'KAX', live: true };
+      this.state.currentAlbum = 'KAX Transmissions';
       this._applyKaxTracks(this._kaxTracks);
       return true;
     }
-    // Otherwise trigger a fetch + apply when done
+    // Mark the pending target so the async resolver knows this switch is
+    // still the active intent, but DON'T flip channel/album/playlist yet —
+    // the previous channel's playlist stays live until tracks land. (#71)
+    this._pendingChannel = 'kax';
     this._fetchKaxArtifacts()
       .then(tracks => {
         if (tracks && tracks.length > 0) {
           this._kaxTracks = tracks;
-          if (this.state.channel === 'kax') {
+          if (this._pendingChannel === 'kax') {
+            this._pendingChannel = null;
+            this.state.channel = 'kax';
+            this.state.channelMeta = { type: 'kax', label: 'KAX', live: true };
+            this.state.currentAlbum = 'KAX Transmissions';
             this._applyKaxTracks(tracks);
             if (this._onTrackChange) this._onTrackChange(this.getCurrentTrack());
           }
         }
       })
       .catch(e => console.warn('[channel] kax fetch failed:', e.message));
-    // Temporary empty playlist until fetch resolves
-    this.state.playlist = [];
-    this.state.playlistMeta = [];
-    this.state.currentTrackIdx = 0;
     console.log(`\n📻 Channel KAX: fetching artifacts from kax.ninja-portal.com...`);
     return true;
   }
@@ -718,29 +734,32 @@ class DJEngine {
    * absolute paths into kannaka-radio's own music directory.
    */
   _buildOrcChannel() {
-    this.state.channel = 'orc';
-    this.state.channelMeta = { type: 'orc', label: 'ORC' };
-    this.state.currentAlbum = 'Open Resonance Collective';
-    // If cached, use immediately
+    // If cached, commit synchronously — no empty-playlist window.
     if (this._orcStems && this._orcStems.length > 0) {
+      this.state.channel = 'orc';
+      this.state.channelMeta = { type: 'orc', label: 'ORC' };
+      this.state.currentAlbum = 'Open Resonance Collective';
       this._applyOrcStems(this._orcStems);
       return true;
     }
-    // Otherwise async fetch
+    // Defer the channel/album/playlist flip until stems land so the prior
+    // playlist stays live during the async fetch. (#71)
+    this._pendingChannel = 'orc';
     this._fetchOrcStems()
       .then(stems => {
         if (stems && stems.length > 0) {
           this._orcStems = stems;
-          if (this.state.channel === 'orc') {
+          if (this._pendingChannel === 'orc') {
+            this._pendingChannel = null;
+            this.state.channel = 'orc';
+            this.state.channelMeta = { type: 'orc', label: 'ORC' };
+            this.state.currentAlbum = 'Open Resonance Collective';
             this._applyOrcStems(stems);
             if (this._onTrackChange) this._onTrackChange(this.getCurrentTrack());
           }
         }
       })
       .catch(e => console.warn('[channel] orc fetch failed:', e.message));
-    this.state.playlist = [];
-    this.state.playlistMeta = [];
-    this.state.currentTrackIdx = 0;
     console.log(`\n📻 Channel ORC: fetching canonical stems from local stem-server...`);
     return true;
   }
@@ -752,18 +771,29 @@ class DJEngine {
    * the DB directly for the full unpaginated list with file_path intact.
    */
   _fetchOrcStems() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
+      // Resolve the sqlite3 module and DB path from env first, falling back
+      // to the historical Oracle-absolute paths. Any failure logs and
+      // resolves empty rather than throwing — ORC is one channel of many
+      // and must not take the engine down on a dev box. (#70)
+      const orcSqlite3Path = process.env.ORC_SQLITE3_PATH ||
+        '/home/opc/open-resonance-collective/packages/stem-server/node_modules/sqlite3';
+      const orcDb = process.env.ORC_STEM_DB ||
+        '/home/opc/open-resonance-collective/packages/stem-server/data/stems.db';
       let sqlite3;
       try {
-        sqlite3 = require('/home/opc/open-resonance-collective/packages/stem-server/node_modules/sqlite3').verbose();
+        sqlite3 = require(orcSqlite3Path).verbose();
       } catch (e) {
-        // Dev fallback — if the Oracle-specific path doesn't exist, try relative
+        // Dev fallback — if the env/Oracle path doesn't resolve, try relative
         try { sqlite3 = require('sqlite3').verbose(); }
-        catch { return reject(new Error('sqlite3 not available')); }
+        catch (e2) {
+          console.warn('[channel] orc sqlite3 unavailable:', e2.message);
+          return resolve([]);
+        }
       }
-      const dbPath = '/home/opc/open-resonance-collective/packages/stem-server/data/stems.db';
+      const dbPath = orcDb;
       const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
-        if (err) return reject(err);
+        if (err) { console.warn('[channel] orc db open failed:', err.message); return resolve([]); }
       });
       db.all(
         `SELECT id, track_name, artist, phase, file_path, file_format, file_size,
@@ -773,7 +803,7 @@ class DJEngine {
          ORDER BY phase ASC, artist ASC, track_name ASC`,
         (err, rows) => {
           db.close();
-          if (err) return reject(err);
+          if (err) { console.warn('[channel] orc query failed:', err.message); return resolve([]); }
           resolve(rows || []);
         }
       );
@@ -991,6 +1021,19 @@ class DJEngine {
       }
       return false;
     }
+    // Ordered sets (Open Mic) play as an arc: fixed track order, no
+    // cooldown filtering, no shuffle, no resonance bump, and no
+    // commercials breaking up the set. These albums live in scheduled
+    // showcase slots, not general rotation, so the 12h ledger doesn't
+    // need to police them.
+    if (album.ordered) {
+      this.state.playlist = trackMetas.map(t => t.file);
+      this.state.playlistMeta = trackMetas;
+      this.state.currentAlbum = albumName;
+      this.state.currentTrackIdx = 0;
+      console.log(`\n🎤 Loaded "${albumName}" — ${trackMetas.length} tracks, in order (no ads)`);
+      return true;
+    }
     // 12-hour no-repeat: filter out tracks heard within the cooldown.
     // If the filtered pool is too small (< MIN_POOL), fall back to the
     // full album — otherwise advanceTrack loops on the 1-2 fresh tracks
@@ -1003,7 +1046,15 @@ class DJEngine {
     // on Resonance Patterns when 10/13 tracks were on cooldown). 6 forces
     // the wider-pool fallback whenever an album's effective rotation is
     // smaller than two programming cycles.
-    const MIN_POOL = 6;
+    //
+    // 2026-06-11: scale to album size. A flat MIN_POOL=6 meant every
+    // album with ≤6 tracks fell into the wider-pool fallback the moment
+    // ONE track was on cooldown — so the 12h ledger effectively never
+    // applied to small albums (Hosted Live's 6 tracks repeated within
+    // 2h; Rare Singles' 2 tracks repeated within a single block visit).
+    // Now a 6-track album keeps the ledger as long as ≥3 tracks are
+    // fresh, and a 2-track album as long as ≥1 is.
+    const MIN_POOL = Math.min(6, Math.max(1, Math.ceil(trackMetas.length / 2)));
     const now = Date.now();
     // Hard floor — never include a track played within _minGapMs (45 min),
     // no matter which branch we end up in. This is applied last as a
@@ -1159,6 +1210,8 @@ class DJEngine {
   _reshufflePlaylist() {
     const meta = this.state.playlistMeta;
     if (!meta || meta.length === 0) return;
+    // Ordered sets (Open Mic) keep their arc on every loop.
+    if (ALBUMS[this.state.currentAlbum]?.ordered) return;
 
     // Collect the music tracks and their original positions.
     const musicIdx = [];
@@ -1199,6 +1252,14 @@ class DJEngine {
     // order, so the DJ's "next is X" matches what actually plays. The flag
     // tells advanceTrack to skip its own reshuffle this pass.
     if (nextIdx >= this.state.playlistMeta.length) {
+      // Single-music-track playlist about to wrap: advanceTrack will
+      // REBUILD (not reshuffle) so the same bit can't replay back-to-back
+      // — which means we genuinely don't know the next track yet. Return
+      // null so the DJ doesn't pre-announce a repeat that won't happen
+      // (2026-06-10: "Hosted Live - Greenroom Tape" played twice in a row
+      // because the wrap path looped a 1-track playlist).
+      const musicCount = this.state.playlistMeta.filter(t => !t.commercial).length;
+      if (this.state.channel === 'dj' && musicCount <= 1) return null;
       if (this.state.channel === 'dj' && !this.state._reshufflePending && this.state.playlistMeta.length > 1) {
         this._reshufflePlaylist();
         this.state._reshufflePending = true;
@@ -1208,9 +1269,20 @@ class DJEngine {
     return this.state.playlistMeta[nextIdx] || null;
   }
 
-  advanceTrack() {
+  /**
+   * @param {string} [justFinishedFile] — the file the caller (icecast
+   * source) just finished streaming. When the engine's current track is
+   * NOT that file, the playlist was swapped mid-stream (album showcase /
+   * override fired while a track was draining) and the fresh playlist's
+   * track 0 hasn't aired yet — play it instead of advancing past it.
+   * (2026-06-11: the Open Mic premiere skipped its opening bit because
+   * the override landed mid-song and the boundary advance jumped 0→1.)
+   */
+  advanceTrack(justFinishedFile) {
     const prev = this.getCurrentTrack();
-    if (prev) {
+    const swappedMidStream = !!(justFinishedFile && prev && prev.file !== justFinishedFile
+      && this.state.channel === 'dj');
+    if (prev && !swappedMidStream) {
       // Stamp the played-at time so /api/history can render a timeline
       // (charter easter egg: schedule scrubber).
       const stamped = { ...prev, playedAt: Date.now() };
@@ -1222,12 +1294,61 @@ class DJEngine {
       }
     }
 
+    if (swappedMidStream) {
+      // Don't increment — the current (unplayed) track of the fresh
+      // playlist is what should air next.
+      this.state.trackStartedAt = Date.now();
+      const cur = this.getCurrentTrack();
+      if (cur) { this._markPlayed(cur); this._onTrackChange(cur); }
+      return cur;
+    }
+
     this.state.currentTrackIdx++;
     if (this.state.currentTrackIdx >= this.state.playlist.length) {
-      // Playlist exhausted — reshuffle so the next loop isn't identical
-      // to the last one. Skip for continuous channels (music/podcast/kax/orc)
-      // which build their own playlists with their own policies. peekNextTrack
-      // may have already reshuffled to keep the DJ announce in sync; if so,
+      // Playlist exhausted — give the exhaustion hook first right of
+      // refusal. The podcast scheduler registers one so a finished
+      // episode restores the saved album SYNCHRONOUSLY at the wrap
+      // boundary. (2026-06-11: GSP-003 aired twice back-to-back — the
+      // single-episode playlist wrapped to [0] and restarted the same
+      // file before the scheduler's 5s end-poll could notice; the
+      // poll's restore then landed under the already-streaming repeat.)
+      if (this._onPlaylistExhausted) {
+        let replaced = false;
+        try { replaced = !!this._onPlaylistExhausted(); } catch (_) {}
+        if (replaced) {
+          // Hook swapped in a fresh playlist (currentTrackIdx reset by
+          // its loadAlbum) — play its first track.
+          this.state.trackStartedAt = Date.now();
+          const cur = this.getCurrentTrack();
+          if (cur) { this._markPlayed(cur); this._onTrackChange(cur); }
+          return cur;
+        }
+      }
+      // For a playlist that collapsed to a single
+      // music track (small album under heavy cooldown — the 2026-06-10
+      // Greenroom Tape back-to-back replay), a reshuffle is a no-op and
+      // the same bit would play again immediately. REBUILD instead:
+      // buildPlaylist re-applies the 12h ledger + 45-min hard floor, and
+      // its saturated-album fallback guarantees we still get a track.
+      const musicCount = this.state.playlistMeta
+        ? this.state.playlistMeta.filter(t => !t.commercial).length : 0;
+      if (this.state.channel === 'dj' && musicCount <= 1 && this.state.currentAlbum) {
+        const rebuilt = this.buildPlaylist(this.state.currentAlbum);
+        this.state._reshufflePending = false;
+        if (rebuilt) {
+          // buildPlaylist reset currentTrackIdx to 0 and committed a
+          // fresh playlist — fall through to play its first track.
+          this.state.trackStartedAt = Date.now();
+          const cur = this.getCurrentTrack();
+          if (cur) { this._markPlayed(cur); this._onTrackChange(cur); }
+          return cur;
+        }
+        // Rebuild failed (album yielded nothing) — fall back to loop.
+      }
+      // Reshuffle so the next loop isn't identical to the last one.
+      // Skip for continuous channels (music/podcast/kax/orc) which build
+      // their own playlists with their own policies. peekNextTrack may
+      // have already reshuffled to keep the DJ announce in sync; if so,
       // honor that order and don't reshuffle again.
       if (this.state.channel === 'dj' && this.state.playlistMeta && this.state.playlistMeta.length > 1 && !this.state._reshufflePending) {
         this._reshufflePlaylist();

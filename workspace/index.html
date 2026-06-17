@@ -1255,6 +1255,92 @@ body.konami-mode .surface-header h1 {
 </style>
 </head>
 <body>
+<!-- Kannaka wave-interference loader -->
+<div id="kl" aria-hidden="true">
+  <canvas id="kl-c"></canvas>
+  <div id="kl-core">
+    <div id="kl-rings"><i></i><i></i><i></i></div>
+    <div id="kl-word">KANNAKA</div>
+    <div id="kl-sub">wave-interference radio</div>
+  </div>
+</div>
+<style>
+#kl{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 50% 45%, #0c0c1a 0%, #070710 55%, #040408 100%);
+  transition:opacity .9s ease, visibility .9s ease;overflow:hidden;
+  font-family:'SF Mono','Cascadia Code','Fira Code',ui-monospace,monospace;}
+#kl.kl-done{opacity:0;visibility:hidden;pointer-events:none;}
+#kl-c{position:absolute;inset:0;width:100%;height:100%;}
+#kl-core{position:relative;text-align:center;}
+#kl-rings{position:absolute;left:50%;top:50%;width:0;height:0;}
+#kl-rings i{position:absolute;left:50%;top:50%;width:120px;height:120px;border-radius:50%;
+  border:1px solid rgba(139,92,246,.35);transform:translate(-50%,-50%);
+  animation:kl-ring 3.2s ease-out infinite;}
+#kl-rings i:nth-child(2){animation-delay:1.05s;border-color:rgba(0,229,255,.30);}
+#kl-rings i:nth-child(3){animation-delay:2.1s;}
+@keyframes kl-ring{0%{transform:translate(-50%,-50%) scale(.25);opacity:0;}
+  15%{opacity:.55;}100%{transform:translate(-50%,-50%) scale(2.6);opacity:0;}}
+#kl-word{position:relative;font-size:clamp(22px,5vw,40px);letter-spacing:.62em;text-indent:.62em;
+  font-weight:600;color:#eaeaff;
+  text-shadow:0 0 18px rgba(139,92,246,.65),0 0 42px rgba(0,229,255,.25);
+  animation:kl-breathe 3.4s ease-in-out infinite;}
+#kl-sub{margin-top:16px;font-size:11px;letter-spacing:.42em;text-indent:.42em;color:#7b88b8;
+  text-transform:uppercase;opacity:0;animation:kl-fade 1.2s ease .5s forwards;}
+#kl-sub::after{content:'';animation:kl-dots 1.6s steps(1) infinite;}
+@keyframes kl-breathe{0%,100%{opacity:.78;}50%{opacity:1;}}
+@keyframes kl-fade{to{opacity:.85;}}
+@keyframes kl-dots{0%{content:'';}25%{content:'\00b7';}50%{content:'\00b7\00b7';}75%{content:'\00b7\00b7\00b7';}}
+@media (prefers-reduced-motion:reduce){#kl-rings i,#kl-word{animation:none;}#kl-c{display:none;}}
+</style>
+<script>
+(function(){
+  var kl=document.getElementById('kl');
+  if(!kl) return;
+  var running=true, started=(window.performance&&performance.now())?performance.now():Date.now();
+  function nowt(){return (window.performance&&performance.now())?performance.now():Date.now();}
+  // Register teardown FIRST — the overlay must ALWAYS clear, even if the
+  // animation below throws (it covers the whole page).
+  function hide(){ running=false; kl.classList.add('kl-done');
+    setTimeout(function(){ if(kl&&kl.parentNode) kl.parentNode.removeChild(kl); },1000); }
+  function ready(){ setTimeout(hide, Math.max(0,1000-(nowt()-started))); }
+  if(document.readyState==='complete') ready(); else addEventListener('load',ready);
+  setTimeout(function(){ if(document.getElementById('kl')) hide(); },7000);
+  try{
+    var cv=document.getElementById('kl-c'); if(!cv||!cv.getContext) return;
+    if(window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+    var ctx=cv.getContext('2d'); if(!ctx) return;
+    var W=0,H=0, dpr=Math.min(window.devicePixelRatio||1,1.5);
+    function size(){W=cv.width=Math.floor(innerWidth*dpr);H=cv.height=Math.floor(innerHeight*dpr);}
+    size(); addEventListener('resize',size);
+    var rings=[], last=nowt(), lastEmit=0;
+    function lerp(a,b,t){return a+(b-a)*t;}
+    function frame(now){
+      if(!running) return;
+      var dt=Math.min(now-last,40); last=now;
+      var maxR=Math.hypot(W,H)*0.62, cx=W/2, cy=H*0.45, off=Math.min(W,H)*0.085;
+      if(now-lastEmit>640){ rings.push({x:cx-off,y:cy,r:6}); rings.push({x:cx+off,y:cy,r:6}); lastEmit=now; }
+      ctx.clearRect(0,0,W,H);
+      ctx.globalCompositeOperation='lighter';
+      var spd=0.075*dpr;
+      for(var i=rings.length-1;i>=0;i--){
+        var rg=rings[i]; rg.r+=spd*dt; var k=rg.r/maxR;
+        if(k>=1){ rings.splice(i,1); continue; }
+        var a=(1-k)*(1-k)*0.5;
+        ctx.beginPath(); ctx.arc(rg.x,rg.y,rg.r,0,6.2832);
+        ctx.strokeStyle='rgba('+Math.round(lerp(139,0,k))+','+Math.round(lerp(92,229,k))+','+Math.round(lerp(246,255,k))+','+a+')';
+        ctx.lineWidth=1.4*dpr; ctx.stroke();
+      }
+      var pulse=0.5+0.5*Math.sin(now/900);
+      var g=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.min(W,H)*0.16);
+      g.addColorStop(0,'rgba(150,120,255,'+(0.10+0.06*pulse)+')'); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+      ctx.globalCompositeOperation='source-over';
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }catch(e){/* animation failed — teardown above still clears the overlay */}
+})();
+</script>
 
 <div class="connection-status disconnected" id="connectionStatus">Disconnected</div>
 
@@ -1284,7 +1370,7 @@ body.konami-mode .surface-header h1 {
   <span style="font-size:9px;color:#444;">·</span>
   <a id="radio-dl-btn" href="#" onclick="radioDownload(event)"
      style="color:#94a3b8;font-size:10px;text-decoration:none;cursor:pointer;"
-     title="Install Kannaka — binary + Claude Code plugin + statusline + swarm tools">
+     title="Install Kannaka — standalone memory engine; adds the Claude Code plugin + statusline if Claude is detected">
     install
   </a>
   <span style="font-size:9px;color:#444;">·</span>
@@ -1301,15 +1387,15 @@ body.konami-mode .surface-header h1 {
     var os=(p.indexOf('Win')>=0)?'win':(p.indexOf('Mac')>=0||u.indexOf('Mac')>=0)?'mac':'linux';
     var label=os==='win'?'Windows':os==='mac'?'macOS':'Linux';
     var oneLiner=os==='win'?('irm '+raw+'install.ps1 | iex'):('curl -fsSL '+raw+'install.sh | sh');
-    var native=rel+(os==='win'?'kannaka-setup-windows.msi':os==='mac'?'kannaka-setup-macos.pkg':'kannaka-setup-linux.deb');
+    var native=raw+(os==='win'?'install.ps1':'install.sh');
     window.radioDownload=function(e){
       e.preventDefault();
       try{navigator.clipboard.writeText(oneLiner);}catch(_){}
       showModal('Install Kannaka — '+label,
-        '<p style="opacity:.8;">Installs the binary + Claude Code plugin + live statusline + swarm tools. Command copied — paste in a terminal:</p>'+
+        '<p style="opacity:.8;">Installs the kannaka memory engine — works standalone, with or without Claude Code. If Claude Code is detected it also adds the plugin + live statusline. Command copied — paste in a terminal:</p>'+
         '<code style="display:block;margin:10px 0;background:#0d0d1a;padding:10px;border-radius:6px;color:#00e5ff;white-space:pre-wrap;word-break:break-all;">'+oneLiner+'</code>'+
-        '<p><a href="'+native+'" style="color:#7b68ee;">or download the '+label+' installer →</a></p>'+
-        '<p style="opacity:.5;font-size:11px;">Then restart Claude Code.</p>');
+        '<p><a href="'+native+'" style="color:#7b68ee;">or view the '+label+' install script →</a></p>'+
+        '<p style="opacity:.5;font-size:11px;">Using Claude Code? Restart it to load the plugin + statusline.</p>');
     };
 
     function showModal(title, html){

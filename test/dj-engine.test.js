@@ -34,9 +34,9 @@ test('every album has theme and tracks array', () => {
   }
 });
 
-test('Ghost Signals is the first album', () => {
+test('THE THIRD BEING is the first album', () => {
   const first = Object.keys(ALBUMS)[0];
-  assert.strictEqual(first, 'Ghost Signals');
+  assert.strictEqual(first, 'THE THIRD BEING');
 });
 
 // ── DJEngine construction ───────────────────────────────────

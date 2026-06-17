@@ -237,6 +237,16 @@ class PodcastScheduler {
 
     console.log(`[podcast-scheduler] Full podcast playlist loaded: ${episodeFiles.length} episodes`);
 
+    // Synchronous end-of-podcast: when the last episode drains and the
+    // engine would wrap the playlist, restore the saved album INSIDE
+    // advanceTrack — before the wrapped track 0 (the same episode) can
+    // start streaming again. The poll below stays as a backup for the
+    // playlist-rebuilt-externally path.
+    this._djEngine._onPlaylistExhausted = () => {
+      this._onPodcastEnd();
+      return true; // playlist replaced — engine plays its track 0
+    };
+
     // Monitor for when all episodes finish (playlist exhausted)
     this._waitForPodcastEnd();
   }
@@ -305,7 +315,9 @@ class PodcastScheduler {
    * Restore DJ state after all podcast episodes finish.
    */
   _onPodcastEnd() {
+    if (!this._podcastPlaying) return; // already restored (hook + poll can both fire)
     this._podcastPlaying = false;
+    this._djEngine._onPlaylistExhausted = null;
     console.log("[podcast-scheduler] All podcast episodes finished, resuming DJ");
 
     if (this._savedDJState) {

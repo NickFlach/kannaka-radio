@@ -32,7 +32,7 @@ const {
   fetchNdbcBuoys,
   fetchUsgsWater,
   fetchArxiv,
-  composeViaKannakaAsk,
+  composeResilient,
 } = require("./lib/scheduler-helpers");
 
 // Anti-repeat anchor framings — the prompt picks one per delivery.
@@ -370,22 +370,19 @@ class NewsBroadcast {
       "",
       "Output ONLY the spoken bulletin — no headings, no quotes, no stage directions, no track titles.",
     ].join("\n");
-    return composeViaKannakaAsk(this._kannakabin, prompt, { label: "news" });
+    return composeResilient(this._kannakabin, prompt, { label: "news" });
   }
 
   // ── Deliver ───────────────────────────────────────────────
   _say(text) {
     if (!this._voiceDJ || typeof this._voiceDJ.executeOration !== "function") return false;
     const wrapped = `${pick(NEWS_INTROS)}\n\n${text}\n\n${pick(NEWS_OUTROS)}`;
-    // Slot the news-anchor voice in for this delivery only. executeOration
-    // reads this._orationVoiceId on its host VoiceDJ; we set it, fire, and
-    // restore so peace orations keep their narrator voice.
-    const prevVoice = this._voiceDJ._orationVoiceId;
-    this._voiceDJ._orationVoiceId = this._newsVoiceId;
+    // Persona-driven (ADR-0012): the 'news' persona owns the anchor voice +
+    // dry broadcast DSP. No more mutating voice-dj's private _orationVoiceId
+    // (that overlap race was #29).
     return this._voiceDJ.executeOration(wrapped, () => {
-      this._voiceDJ._orationVoiceId = prevVoice;
       console.log("\uD83D\uDCF0 News broadcast complete");
-    });
+    }, { persona: "news" });
   }
 }
 

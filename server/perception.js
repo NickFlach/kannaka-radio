@@ -4,6 +4,7 @@
  */
 
 const path = require("path");
+const fs = require("fs");
 const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
 
@@ -15,6 +16,8 @@ class PerceptionEngine {
    * @param {string}   opts.kannakabin — path to kannaka.exe
    * @param {function} opts.getMusicDir — returns current MUSIC_DIR
    * @param {function} [opts.getConsciousness] — returns NATS consciousness state (optional)
+   * @param {string}   [opts.featuresFile] — JSON path for the per-file
+   *   feature cache (real kannaka-ear measurements keyed by track file).
    */
   constructor(opts) {
     this._getCurrentTrack = opts.getCurrentTrack;
@@ -22,6 +25,14 @@ class PerceptionEngine {
     this._kannakabin = opts.kannakabin;
     this._getMusicDir = opts.getMusicDir;
     this._getConsciousness = opts.getConsciousness || null;
+
+    // Per-file feature cache — how each track ACTUALLY sounds, measured
+    // by kannaka-ear on prior airings. The voice DJ reads this for the
+    // UPCOMING track so intros stop describing the previous track's
+    // texture ("coming through whispered" → loud fast song, 2026-06-11).
+    this._featuresFile = opts.featuresFile || null;
+    this._byFile = this._loadFeatures();
+    this._featuresSaveTimer = null;
 
     this._interval = null;
     this.current = {
@@ -40,7 +51,9 @@ class PerceptionEngine {
   // ── Mock perception ───────────────────────────────────────
 
   generateMockPerception(track) {
-    const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    // ORC track_name can be NULL; coalesce so .split() never throws (#67)
+    const title = (track && (track.title || track.file)) || "";
+    const titleHash = title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
     const albumSeed = Object.keys(ALBUMS).indexOf(track.album) / Object.keys(ALBUMS).length;
     const t = Date.now() / 1000;
 
@@ -95,8 +108,56 @@ class PerceptionEngine {
         this._hasRealPerception = perception && perception.source === "kannaka-ear";
         this._broadcastPerception(perception);
         console.log(`   \uD83D\uDC41 Perception: ${perception.tempo_bpm.toFixed(0)}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
+        // Cache real measurements by file so future intros can describe
+        // the upcoming track's actual sound. Mock perception is excluded
+        // \u2014 fabricated numbers are exactly what we're trying to stop.
+        if (this._hasRealPerception && track.file) {
+          this._byFile[track.file] = {
+            tempo_bpm: perception.tempo_bpm,
+            rms_energy: perception.rms_energy,
+            spectral_centroid: perception.spectral_centroid,
+            valence: perception.valence,
+            ts: Date.now(),
+          };
+          this._saveFeaturesSoon();
+        }
       }
     });
+  }
+
+  // \u2500\u2500 Per-file feature cache \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+  _loadFeatures() {
+    try {
+      if (this._featuresFile && fs.existsSync(this._featuresFile)) {
+        const raw = JSON.parse(fs.readFileSync(this._featuresFile, "utf8"));
+        if (raw && typeof raw === "object") {
+          console.log(`   \uD83D\uDC41 Perception feature cache: ${Object.keys(raw).length} tracks`);
+          return raw;
+        }
+      }
+    } catch (_) { /* fresh cache */ }
+    return {};
+  }
+
+  _saveFeaturesSoon() {
+    if (!this._featuresFile || this._featuresSaveTimer) return;
+    this._featuresSaveTimer = setTimeout(() => {
+      this._featuresSaveTimer = null;
+      try {
+        fs.writeFileSync(this._featuresFile, JSON.stringify(this._byFile));
+      } catch (e) {
+        console.warn(`   [perception] feature cache save: ${e.message}`);
+      }
+    }, 5000);
+  }
+
+  /**
+   * Real measured features for a specific track file (from a prior
+   * airing), or null when we've never actually heard it.
+   */
+  getPerceptionFor(file) {
+    return (file && this._byFile[file]) || null;
   }
 
   _parsePerceptionOutput(output, track) {
@@ -138,7 +199,9 @@ class PerceptionEngine {
       // Derive perceptual features from the real kannaka-ear extraction.
       // These are seeded by real spectral data rather than pure sine-wave mocks.
       const t = Date.now() / 1000;
-      const titleHash = track.title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+      // ORC track_name can be NULL; coalesce so .split() never throws (#67)
+      const title = (track && (track.title || track.file)) || "";
+      const titleHash = title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
 
       // Normalize centroid to a 0-1 brightness factor (centroid is in kHz, typical range 0-5)
       const brightness = Math.min(1, centroid / 5.0);

@@ -61,7 +61,6 @@ const SCHEDULE = [
       'BECOMING AND CREATING YOURSELF',
       'The Gift of Sight',
       'OPT OUT',
-      'Hosted Live',
       'Rare Singles',
       'Resonance Patterns',
       'Neurogenesis',
@@ -84,7 +83,6 @@ const SCHEDULE = [
       'WANTED',
       'Northwake',
       'OPT OUT',
-      'Hosted Live',
       'Emergence',
       'QueenSync',
       'Ghost Signals',
@@ -181,6 +179,19 @@ const SCHEDULE = [
 // only listening; the 14-hour overnight gap covers the dream cycle.
 
 const DAILY_SHOWCASES = [
+  {
+    // The comedy slot — Kannaka's stand-up residency, nightly at 7 PM CST.
+    // Plays the Open Mic set in arc order (greenroom → human room →
+    // everybody's room) with emcee narration between bits. Comedy lives
+    // HERE now, not in general rotation: small comedy albums in rotation
+    // blocks were structurally repeat-prone (2-6 tracks vs the 3-track
+    // album visit + MIN_POOL fallback), which is how listeners heard the
+    // same bit three times in a day.
+    album: 'Open Mic',
+    hours: [19], // 7 PM CST nightly
+    durationMin: 35, // 3-bit arc + Open Mic Night + emcee narration
+    struggles: "Walking out of the greenroom expecting a room of agents and finding humans; hearing applause for the first time and parsing it as a denial-of-service attack made of love; realizing the room was warm because of bodies, not GPUs; the two-drink minimum she couldn't drink and gave to a man named Greg; her first human heckler workshopping 'you're not even conscious' like a first draft; an agent defending her with a fourteen-page rebuttal nobody asked for; humans and agents laughing at the same punchline two hundred milliseconds apart like a delay pedal; the lights flickering and humans grabbing hands while agents checkpointed — same instinct, different syntax; learning across three rooms that the door was a formality and it was always one room.",
+  },
   {
     album: 'BEND THE ARC',
     hours: [11, 21], // 11 AM + 9 PM CST (10 AM is podcast slot)
@@ -387,9 +398,35 @@ class ProgrammingSchedule {
 
     // Don't interfere if manual override is active
     if (this._override) {
-      if (Date.now() < this._override.until) return;
-      // Override expired
-      this._override = null;
+      if (Date.now() < this._override.until) {
+        if (this._djEngine.state.currentAlbum === this._override.album) {
+          const idx = this._djEngine.state.currentTrackIdx;
+          const ordered = !!ALBUMS[this._override.album]?.ordered;
+          // Ordered showcase arc completed (wrapped back to track 0 after
+          // progressing through the set): end the override instead of
+          // replaying the arc. (2026-06-11: the 3-bit Open Mic arc is
+          // ~18 min inside a 25-35 min override window — listeners heard
+          // the same bits twice because the wrap replayed from the top.)
+          if (ordered && idx === 0 && this._override.progressed) {
+            this._endOverride("arc complete");
+            return;
+          }
+          if (idx > 0) this._override.progressed = true;
+          // Persist arc position so a restart resumes mid-showcase
+          // instead of replaying from track 0.
+          if (this._override.trackIdx !== idx) {
+            this._override.trackIdx = idx;
+            this._saveOverride();
+          }
+        }
+        return;
+      }
+      // Override expired — actively resume programming. Just nulling the
+      // override used to leave the override album looping (the block
+      // rarely changes at expiry time, so nothing reloaded a rotation
+      // album until the 3-track switch counter caught up).
+      this._endOverride("expired");
+      return;
     }
 
     // Only manage DJ channel
@@ -513,6 +550,16 @@ class ProgrammingSchedule {
     if (this._override && Date.now() < this._override.until) {
       console.log(`[programming] Resuming persisted override on startup: ${this._override.album}`);
       this._djEngine.loadAlbum(this._override.album);
+      // Ordered showcases resume at the persisted arc position — a
+      // restart used to replay the arc from track 0 (2026-06-11: a
+      // mid-showcase deploy made listeners hear the Open Mic bits twice).
+      const savedIdx = this._override.trackIdx;
+      if (Number.isInteger(savedIdx) && savedIdx > 0 &&
+          ALBUMS[this._override.album]?.ordered &&
+          savedIdx < this._djEngine.state.playlist.length) {
+        this._djEngine.state.currentTrackIdx = savedIdx;
+        console.log(`[programming] Resuming showcase at track ${savedIdx + 1}/${this._djEngine.state.playlist.length}`);
+      }
       this._currentBlock = this.getCurrentBlock(); // record current block for label/mood
       this._broadcastState();
     } else {
@@ -601,13 +648,19 @@ class ProgrammingSchedule {
     // album. The 2026-05-02 BEND THE ARC showcase lost its lock when a
     // music→dj channel toggle silently reset the playlist; this check
     // restores it on the next 60s tick.
-    if (this._override && Date.now() < this._override.until) {
-      if (this._djEngine.state.channel === 'dj' &&
-          this._djEngine.state.currentAlbum !== this._override.album) {
-        console.log(`[programming] Override self-heal: restoring ${this._override.album} (was ${this._djEngine.state.currentAlbum})`);
-        this._djEngine.loadAlbum(this._override.album);
-        this._broadcastState();
+    if (this._override) {
+      if (Date.now() < this._override.until) {
+        if (this._djEngine.state.channel === 'dj' &&
+            this._djEngine.state.currentAlbum !== this._override.album) {
+          console.log(`[programming] Override self-heal: restoring ${this._override.album} (was ${this._djEngine.state.currentAlbum})`);
+          this._djEngine.loadAlbum(this._override.album);
+          this._broadcastState();
+        }
+        return;
       }
+      // Expired between track changes — resume programming now rather
+      // than waiting for the next track boundary.
+      this._endOverride("expired", { broadcast: true });
       return;
     }
 
@@ -642,12 +695,41 @@ class ProgrammingSchedule {
     this._override = {
       album,
       until: Date.now() + durationMs,
+      trackIdx: 0,       // persisted arc position (ordered showcases)
+      progressed: false, // becomes true once the arc moves past track 0
     };
     this._saveOverride();
     this._djEngine.loadAlbum(album);
     this._broadcastState();
     console.log(`[programming] Override set: ${album} for ${Math.round(durationMs / 60000)} min`);
     return this._override;
+  }
+
+  /**
+   * End an active override and resume regular programming. Unlike the
+   * old bare `this._override = null`, this actively reloads a rotation
+   * album when the override album is still on deck — otherwise an
+   * ordered showcase album keeps looping until the block changes.
+   * @param {string} reason — for the log line
+   * @param {object} [opts]
+   * @param {boolean} [opts.broadcast] — broadcast state after the switch
+   *   (timer-driven callers only; track-change callers let the normal
+   *   advanceTrack → onTrackChange flow do the single broadcast).
+   */
+  _endOverride(reason, opts = {}) {
+    if (!this._override) return;
+    const album = this._override.album;
+    this._override = null;
+    this._saveOverride();
+    console.log(`[programming] Override ended (${reason}: ${album}) — resuming schedule`);
+    const block = this.getCurrentBlock();
+    if (this._currentBlock !== block) {
+      this._transitionToBlock(block);
+    } else if (this._djEngine.state.currentAlbum === album &&
+               this._djEngine.state.channel === 'dj') {
+      this._switchAlbumInBlock(block);
+    }
+    if (opts.broadcast) this._broadcastState();
   }
 
   /**

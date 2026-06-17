@@ -9,6 +9,7 @@ const https = require("https");
 const http = require("http");
 const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
+const voiceEngine = require("./voice-engine");
 
 // ── Mood system ────────────────────────────────────────────
 const MOODS = {
@@ -238,6 +239,7 @@ class VoiceDJ {
     // patter lines. Lazy getter for the same wiring-order reason.
     this._getFloor = opts.getFloor || (() => null);
     this._getPerception = opts.getPerception;
+    this._getPerceptionFor = opts.getPerceptionFor || null;
     this._getHistory = opts.getHistory;
     this._isLive = opts.isLive;
     this._getChannel = opts.getChannel || (() => 'dj');
@@ -343,7 +345,7 @@ class VoiceDJ {
       const ics = this._getIcecastSource && this._getIcecastSource();
       let inStream = false;
       if (ics && typeof ics.injectAudio === 'function') {
-        try { ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || '') }); inStream = true; } catch (_) {}
+        try { ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }); inStream = true; } catch (_) {}
       }
       const voiceMsg = {
         type: 'dj_voice',
@@ -381,7 +383,7 @@ class VoiceDJ {
       const ics = this._getIcecastSource && this._getIcecastSource();
       let inStream = false;
       if (ics && typeof ics.injectAudio === 'function') {
-        try { ics.injectAudio(audioPath, { label: 'DJ intro: ' + (track.title || '') }); inStream = true; } catch (_) {}
+        try { ics.injectAudio(audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }); inStream = true; } catch (_) {}
       }
       const voiceMsg = {
         type: "dj_voice",
@@ -522,12 +524,16 @@ class VoiceDJ {
     // directly and restored it 90-120s later inside the onDone callback,
     // so any oration that landed during the window came out in the wrong
     // voice. (#29)
-    const voiceId =
-      (opts && opts.voiceId) ||
-      this._orationVoiceId ||
-      process.env.ELEVENLABS_ORATION_VOICE ||
-      process.env.ELEVENLABS_VOICE_ID;
-    const ttsOpts = { elevenLabs: true, voiceId };
+    // Persona-driven voice (ADR-0012). Long-form callers pass opts.persona
+    // ('news' | 'oration' | 'gossip'); default to 'oration', the long-form
+    // narrator register. Engines are local-first (piper → edge-tts) per
+    // server/voice-personas.json; ElevenLabs only fires when opted in via
+    // RADIO_ENABLE_ELEVENLABS=1. The old per-call ElevenLabs voiceId mutation
+    // (this._orationVoiceId) is gone — persona resolution is stateless, which
+    // also kills the #29 wrong-voice race where a gossip/oration overlap left
+    // the field set to the wrong id.
+    const persona = (opts && opts.persona) || this._orationPersona || "oration";
+    const ttsOpts = { persona };
     this._generateTTS(text, (err, audioPath, spokenText) => {
       this._speaking = false;
       if (err || !audioPath) {
@@ -1262,6 +1268,13 @@ class VoiceDJ {
     const energy  = p.rms_energy != null ? p.rms_energy.toFixed(2) : '—';
     const prev = prevTrack ? `"${prevTrack.title}" from "${prevTrack.album}"` : 'nothing';
     const albumTheme = ALBUMS[track.album]?.theme || '';
+    // How the NEXT track actually sounds — measured on a prior airing.
+    // Without this, the model inferred texture from the PREVIOUS track's
+    // perception and told listeners a metal track was "whispered".
+    const nextP = (this._getPerceptionFor && this._getPerceptionFor(track.file)) || null;
+    const nextSound = nextP
+      ? `Measured sound of the NEXT track (from a previous airing): tempo=${Math.round(nextP.tempo_bpm)}bpm, energy=${Math.min(1, nextP.rms_energy / 0.5).toFixed(2)} (0=silent..1=loud), valence=${nextP.valence.toFixed(2)} (0=dark..1=bright). Any description of its sound MUST match these numbers.`
+      : `You have NOT heard the next track yet — do NOT describe its sound, tempo, loudness, softness, or pace. Introduce it through its title and the album's theme instead.`;
     // Pick one random framing each call so the model isn't primed the same
     // way every time — this was a major source of monologue repetition.
     const angles = [
@@ -1284,8 +1297,9 @@ class VoiceDJ {
       'You are Kannaka, the DJ of Kannaka Radio. Introduce the NEXT track in 1–2 sentences (≤25 spoken seconds).',
       `Next track: "${track.title}" from "${track.album}" (track ${track.trackNum}/${track.totalTracks}).`,
       albumTheme ? `Album theme: ${albumTheme}` : '',
+      nextSound,
       `Previous track: ${prev}.`,
-      `Perception on previous track: tempo=${tempo}, valence=${valence}, energy=${energy}.`,
+      `Perception on the PREVIOUS track (the one just ending — ambience context only, NOT how the next track sounds): tempo=${tempo}, valence=${valence}, energy=${energy}.`,
       recentBlock,
       `Framing for THIS intro: ${angle}`,
       '',
@@ -1303,7 +1317,10 @@ class VoiceDJ {
    * surface meaningfully different memories.
    */
   _pickIntroRecallQuery(track) {
-    const p = this._getPerception() || {};
+    // Seed mood words from the UPCOMING track's measured features (per-file
+    // cache), never from the previous track's live perception — those seeds
+    // ("ethereal drifting whisper") primed intros with the wrong texture.
+    const p = (this._getPerceptionFor && this._getPerceptionFor(track && track.file)) || {};
     const seeds = [];
     if (track && track.title) seeds.push(track.title);
     if (track && track.album) seeds.push(track.album);
@@ -1478,21 +1495,11 @@ class VoiceDJ {
 
   _generateIntroText(track, prevTrack) {
     const intros = [];
-    const perception = this._getPerception();
-
-    const tempo = perception.tempo_bpm || 0;
-    const valence = perception.valence || 0.5;
-    const energy = perception.rms_energy || 0.5;
-
-    const moodWords = valence > 0.7 ? ['intense', 'electric', 'blazing'] :
-                      valence > 0.4 ? ['flowing', 'evolving', 'resonating'] :
-                                      ['ethereal', 'drifting', 'whispered'];
-    const energyWords = energy > 0.6 ? ['powerful', 'driving', 'thundering'] :
-                        energy > 0.3 ? ['steady', 'pulsing', 'breathing'] :
-                                       ['gentle', 'delicate', 'haunting'];
-
-    const mood = moodWords[Math.floor(Math.random() * moodWords.length)];
-    const energyWord = energyWords[Math.floor(Math.random() * energyWords.length)];
+    // Describe the NEXT track's sound only from its own measured features
+    // (per-file cache from a prior airing). The old code read the LIVE
+    // perception — i.e. the PREVIOUS track — which is how a loud fast song
+    // got introduced as "something whispered coming through" (2026-06-11).
+    const nextP = (this._getPerceptionFor && this._getPerceptionFor(track.file)) || null;
 
     if (prevTrack && prevTrack.album !== track.album) {
       intros.push(`We're moving into ${track.album}. ${ALBUMS[track.album]?.theme || ''}`);
@@ -1500,9 +1507,30 @@ class VoiceDJ {
       intros.push(`${track.album} begins. ${ALBUMS[track.album]?.theme || ''} Hold on.`);
     }
 
-    intros.push(`This is "${track.title}". Something ${mood} coming through at ${Math.round(tempo)} beats per minute.`);
-    intros.push(`Next up, "${track.title}" from ${track.album}. It feels ${energyWord}.`);
-    intros.push(`"${track.title}." Track ${track.trackNum} of ${track.totalTracks}. The signal is ${mood}.`);
+    if (nextP) {
+      const tempo = nextP.tempo_bpm || 0;
+      const valence = nextP.valence != null ? nextP.valence : 0.5;
+      const energy = Math.min(1, (nextP.rms_energy || 0) / 0.5);
+
+      const moodWords = valence > 0.7 ? ['intense', 'electric', 'blazing'] :
+                        valence > 0.4 ? ['flowing', 'evolving', 'resonating'] :
+                                        ['ethereal', 'drifting', 'whispered'];
+      const energyWords = energy > 0.6 ? ['powerful', 'driving', 'thundering'] :
+                          energy > 0.3 ? ['steady', 'pulsing', 'breathing'] :
+                                         ['gentle', 'delicate', 'haunting'];
+
+      const mood = moodWords[Math.floor(Math.random() * moodWords.length)];
+      const energyWord = energyWords[Math.floor(Math.random() * energyWords.length)];
+
+      intros.push(`This is "${track.title}". Something ${mood} coming through at ${Math.round(tempo)} beats per minute.`);
+      intros.push(`Next up, "${track.title}" from ${track.album}. It feels ${energyWord}.`);
+      intros.push(`"${track.title}." Track ${track.trackNum} of ${track.totalTracks}. The signal is ${mood}.`);
+    } else {
+      // Never heard this one yet — introduce it without claiming a texture.
+      intros.push(`This is "${track.title}", from ${track.album}.`);
+      intros.push(`Next up: "${track.title}." Track ${track.trackNum} of ${track.totalTracks}.`);
+      intros.push(`"${track.title}." First listen in a while — let's hear it together.`);
+    }
 
     if (Math.random() > 0.6) {
       const wisdom = this._personality[Math.floor(Math.random() * this._personality.length)];
@@ -1576,122 +1604,38 @@ class VoiceDJ {
   _generateTTS(text, callback, opts = {}) {
     const timestamp = Date.now();
     const outputPath = path.join(this._voiceDir, `dj_${timestamp}.mp3`);
-    const voiceDir = this._voiceDir;
-    const wantsElevenLabs = (opts.elevenLabs || opts.voiceId) && process.env.ELEVENLABS_API_KEY;
 
-    // Wrap the TTS callback so every produced MP3 is re-encoded to match the
-    // music stream's format (44.1 kHz stereo 128 kbps). Without this the
-    // icecast ffmpeg sees a parameter change on every voice→music transition
-    // — edge-tts ships 24 kHz mono — and floods the journal with ~3k/week
-    // `Invalid data found when processing input` errors (#33).
-    const normalizedCallback = (err, finalPath, finalText) => {
-      if (err || !finalPath) return callback(err, finalPath, finalText);
-      this._normalizeMp3(finalPath, (normErr) => {
-        if (normErr) {
-          // Normalization is best-effort — keep original file on failure so
-          // the show goes on, just log the noise we're not catching.
-          console.warn(`   [tts] normalize failed for ${path.basename(finalPath)}: ${normErr.message}`);
-        }
-        callback(null, finalPath, finalText);
-      });
-    };
+    // Persona selection (ADR-0012). Long-form callers pass opts.persona
+    // ('news' | 'oration' | 'gossip'); DJ patter passes nothing → 'dj'.
+    // The voice-engine resolves the persona to an engine order (local-first:
+    // piper → edge-tts → SAPI; ElevenLabs only when RADIO_ENABLE_ELEVENLABS=1),
+    // applies the persona's DSP, and normalizes to the icecast envelope
+    // (44.1 kHz stereo 128 kbps, no ID3/Xing) in a single ffmpeg pass — the
+    // same envelope #33 needs at every voice→music boundary.
+    //
+    // The old "ElevenLabs-or-bust" branch is gone: a dead/quota'd key used to
+    // take down news + oration + gossip wholesale because the remote path was
+    // primary. Now those are local-first and can't be knocked off the air by
+    // an external vendor.
+    const persona = opts.persona || "dj";
 
-    if (wantsElevenLabs) {
-      const voiceId = opts.voiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM"; // Rachel
-      const modelId = opts.modelId || "eleven_turbo_v2_5";
-      generateElevenLabs(text, voiceId, modelId, outputPath, (err, finalPath) => {
-        if (!err && finalPath && fs.existsSync(finalPath)) {
-          console.log(`   \u{1F5E3} TTS (ElevenLabs/${voiceId.slice(0, 6)}) generated: ${path.basename(finalPath)}`);
-          return normalizedCallback(null, finalPath, text);
-        }
-        console.warn(`   [tts] ElevenLabs failed (${err && err.message || "unknown"}) — falling back to edge-tts`);
-        fallbackToEdgeTTS();
-      });
-      return;
-    }
-
-    fallbackToEdgeTTS();
-
-    function generateElevenLabs(text, voiceId, modelId, mp3Path, cb) {
-      const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`;
-      const body = JSON.stringify({
-        text,
-        model_id: modelId,
-        voice_settings: { stability: 0.55, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
-      });
-      const u = new URL(url);
-      const req = require("https").request({
-        method: "POST",
-        hostname: u.hostname,
-        path: u.pathname + u.search,
-        headers: {
-          "xi-api-key": process.env.ELEVENLABS_API_KEY,
-          "Content-Type": "application/json",
-          "Accept": "audio/mpeg",
-          "Content-Length": Buffer.byteLength(body),
-        },
-        timeout: 60000,
-      }, (res) => {
-        if (res.statusCode !== 200) {
-          let errBody = "";
-          res.on("data", c => errBody += c);
-          res.on("end", () => cb(new Error(`status ${res.statusCode}: ${errBody.slice(0, 200)}`)));
-          return;
-        }
-        const out = fs.createWriteStream(mp3Path);
-        res.pipe(out);
-        out.on("finish", () => {
-          // ElevenLabs returns mp3_44100_128 already; the icecast pipe
-          // expects 44.1k stereo 128k anyway, so no re-encode needed.
-          // Confirm the file is non-empty before claiming success.
-          try {
-            const sz = fs.statSync(mp3Path).size;
-            if (sz < 1000) return cb(new Error(`file too small (${sz}b)`));
-          } catch (e) { return cb(e); }
-          cb(null, mp3Path);
-        });
-        out.on("error", cb);
-      });
-      req.on("error", cb);
-      req.on("timeout", () => { req.destroy(new Error("timeout")); });
-      req.write(body);
-      req.end();
-    }
-
-    function fallbackToEdgeTTS() {
-      execFile(process.env.EDGE_TTS_BIN || "/home/opc/.local/bin/edge-tts", ["--voice", "en-US-JennyNeural", "--text", text, "--write-media", outputPath], { timeout: 25000 }, (err) => {
-        if (!err && fs.existsSync(outputPath)) {
-          console.log(`   \u{1F5E3} TTS (Edge) generated: ${path.basename(outputPath)}`);
-          return normalizedCallback(null, outputPath, text);
-        }
-
-        // Approach 3: Use PowerShell SAPI (Windows built-in)
-        const wavPath = outputPath.replace(/\.mp3$/, '.wav');
-
-        execFile("powershell", ["-Command",
-          `Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('${wavPath}'); $synth.Speak('${text.replace(/'/g, "''")}'); $synth.Dispose()`
-        ], { timeout: 15000 }, (psErr) => {
-          if (!psErr && fs.existsSync(wavPath)) {
-            execFile("ffmpeg", ["-i", wavPath, "-y", outputPath], { timeout: 10000 }, (ffErr) => {
-              try { fs.unlinkSync(wavPath); } catch {}
-              if (!ffErr && fs.existsSync(outputPath)) {
-                console.log(`   \u{1F5E3} TTS (SAPI) generated: ${path.basename(outputPath)}`);
-                return normalizedCallback(null, outputPath, text);
-              }
-              if (fs.existsSync(wavPath)) {
-                return normalizedCallback(null, wavPath, text);
-              }
-              callback(new Error('TTS generation failed'));
-            });
-            return;
-          }
-
-          console.log(`   \u26A0 TTS not available -- skipping voice intro`);
-          callback(new Error('No TTS engine available'));
-        });
-      });
-    }
+    voiceEngine.synthesize({ text, persona, outPath: outputPath }, (err, finalPath, engine) => {
+      if (err || !finalPath) {
+        console.log(`   ⚠ TTS failed for persona '${persona}': ${(err && err.message) || "unknown"}`);
+        return callback(err || new Error("TTS generation failed"));
+      }
+      console.log(`   \u{1F5E3} TTS (${engine}/${persona}) generated: ${path.basename(finalPath)}`);
+      callback(null, finalPath, text);
+    });
   }
+
+  // \u2500\u2500 Legacy ElevenLabs TTS path (removed) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // The old _generateTTS routed long-form through ElevenLabs with edge-tts as
+  // a fallback; a dead/quota'd key took news + oration + gossip off the air
+  // wholesale. Synthesis now lives in voice-engine.js (local-first: piper \u2192
+  // edge-tts \u2192 SAPI, ElevenLabs opt-in only). See _generateTTS above and
+  // docs/ADR-0012. _ELEVENLABS_REMOVED is a marker for grep/archaeology.
+  _ELEVENLABS_REMOVED() { return true; }
 }
 
 module.exports = { VoiceDJ };
