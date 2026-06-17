@@ -122,7 +122,11 @@ class IcecastSource {
     this._running = true;
     this._spawnFfmpeg();
     // Kick off the playback loop on next tick so dj-engine listeners are wired.
-    setImmediate(() => this._loop());
+    // .catch() prevents an unhandled-rejection crash if _loop() throws
+    // unexpectedly (e.g. advanceTrack or onPlaylistExhausted throws).
+    setImmediate(() => this._loop().catch((e) => {
+      console.warn("[icecast-source] _loop() unhandled error:", e && e.message);
+    }));
     console.log("\u{1F4FB} icecast-source: starting (mount " + this._cfg.icecastMount + ")");
   }
 
@@ -361,6 +365,15 @@ class IcecastSource {
           return finish(null);
         }
         res.pipe(writer);
+        // A socket reset mid-body emits 'error' on res (not on writer/req).
+        // Without this handler the writer fd + temp file leak and the promise
+        // never settles, hanging the playback loop. (#res-midstream-error)
+        res.on("error", (e) => {
+          try { writer.destroy(); } catch (_) {}
+          fs.unlink(tmpPath, () => {});
+          console.warn(`[icecast-source] url stream error: ${e.message}`);
+          finish(null);
+        });
         writer.on("finish", () => finish(tmpPath));
         writer.on("error", (e) => {
           fs.unlink(tmpPath, () => {});

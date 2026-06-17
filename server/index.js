@@ -247,6 +247,10 @@ const djEngine = new DJEngine({
         djEngine.state.currentTrackIdx = 0;
         actual = djEngine.getCurrentTrack();
       }
+      // Guard: if album switch produced an empty playlist getCurrentTrack()
+      // returns null — fall back to the original track so downstream code
+      // never dereferences null. (#null-album-switch)
+      if (!actual) actual = track;
 
       // ── Talk segment check ────────────────────────────────
       // Every 3-5 non-commercial tracks, the DJ does a talk-only segment

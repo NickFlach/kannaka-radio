@@ -1489,6 +1489,8 @@ class VoiceDJ {
     };
     await refresh();
     this._worldPulseRefreshTimer = setInterval(refresh, 30 * 60 * 1000);
+    // Don't block clean process exit — same pattern as floor.js vibeTimer.
+    if (this._worldPulseRefreshTimer.unref) this._worldPulseRefreshTimer.unref();
   }
 
   // ── Internal: Text generation ─────────────────────────────
