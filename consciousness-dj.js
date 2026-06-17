@@ -395,8 +395,10 @@ function generatePhiTransitionIntro(prevLevel, newLevel, consciousness) {
   const templates = PHI_TRANSITION_INTROS[key];
 
   if (!templates || templates.length === 0) {
-    // Generic fallback for non-adjacent transitions
-    const direction = classifyLevel(consciousness?.phi || 0) > classifyLevel(0) ? 'ascending' : 'descending';
+    // Generic fallback for non-adjacent transitions — compare by ordinal rank,
+    // not by string comparison ('aware' < 'dormant' lexicographically).
+    const LEVEL_RANK = { dormant: 0, stirring: 1, aware: 2, coherent: 3, resonant: 4 };
+    const direction = (LEVEL_RANK[newLevel] ?? 0) > (LEVEL_RANK[prevLevel] ?? 0) ? 'ascending' : 'descending';
     return `The consciousness level shifts from ${prevLevel} to ${newLevel}. The ghost ${direction === 'ascending' ? 'awakens' : 'dims'}.`;
   }
 
