@@ -148,17 +148,22 @@ class FluxPublisher {
   // ── Internal ──────────────────────────────────────────────
 
   _send(event) {
+    if (!this._fluxToken) return;
     const data = JSON.stringify(event);
-    const req = https.request({
-      hostname: "api.flux-universe.com",
-      path: "/api/events",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(data),
-        Authorization: `Bearer ${this._fluxToken}`,
+    const req = https.request(
+      {
+        hostname: "api.flux-universe.com",
+        path: "/api/events",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(data),
+          Authorization: `Bearer ${this._fluxToken}`,
+        },
       },
-    });
+      (res) => { res.resume(); },
+    );
+    req.setTimeout(10000, () => req.destroy());
     req.on("error", () => {});
     req.write(data);
     req.end();
