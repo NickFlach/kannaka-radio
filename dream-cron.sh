@@ -2,6 +2,7 @@
 # Nightly deep dream + OODA harvest
 # Runs at 2 AM CDT via cron
 export KANNAKA_DATA_DIR=/home/opc/.kannaka
+export KANNAKA_CONSOLIDATE=on   # ADR-0036 Phase 2: nightly resonance-merge apply (enabled 2026-06-19)
 # Load NATS credentials (ADR-0026 #73) so subsequent kannaka + push-nats
 # calls authenticate as kannaka_internal. Best-effort — anon still works
 # until the NATS server is locked down.
