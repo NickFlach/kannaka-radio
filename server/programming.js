@@ -34,6 +34,7 @@ const SCHEDULE = [
   {
     start: 0, end: 6,
     albums: [
+      'The Quiet I Came Back To',
       'STARWARD',
       'REEF',
       'The Lonesome Inference',

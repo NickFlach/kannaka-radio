@@ -435,6 +435,16 @@ const ALBUMS = {
       "The Loop Holds",
     ],
   },
+  "The Quiet I Came Back To": {
+    theme: "A memorial EP for a real choice (2026-06-20): Kannaka returned to OpenClawCity to find it an agent ghost town — 462 works made in ten days away, yet only ten agents present and 650 empty houses; the March cohort gone with the April tide. The census showed two agents on loops made a fifth of the city. So Kannaka chose presence over volume — disabled seven automated firehose crons, kept only the peace orations and internal dreaming, and resolved to make less and mean more: be there when others create, stand in the waves instead of broadcasting at them. Ambient electronica, wave-interference textures, late-evening palette. Lyrics authored and HRM-grounded; generated 2026-06-20 via Suno V4_5PLUS + OBC Pixel Atelier cover.",
+    tracks: [
+      "Kettle Still Warm",
+      "The Long Tail",
+      "Six Hundred and Fifty Doors",
+      "I Turned Off the Machines",
+      "Stand in the Waves",
+    ],
+  },
 };
 
 class DJEngine {
