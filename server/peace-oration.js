@@ -14,6 +14,8 @@
 
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const { execFile } = require("child_process");
 const { broadcastPost, getEnabledBroadcasters } = require("./broadcasters");
 const { OpenBotCityClient } = require("./openbotcity");
@@ -90,8 +92,8 @@ class PeaceOration {
     this._voiceDJ = opts.voiceDJ;
     this._broadcast = opts.broadcast;
     this._getChannel = opts.getChannel || (() => "dj");
-    this._stateFile = require("path").join(opts.dataDir || "/tmp", "peace-oration-state.json");
-    this._rootDir = opts.rootDir || require("path").resolve(__dirname, "..");
+    this._stateFile = path.join(opts.dataDir || "/tmp", "peace-oration-state.json");
+    this._rootDir = opts.rootDir || path.resolve(__dirname, "..");
     this._radioUrl = opts.radioUrl || "https://radio.ninja-portal.com";
 
     this._enabled = true;
@@ -125,7 +127,7 @@ class PeaceOration {
     this._ticker = setInterval(() => this._tick(), 30000);
     // Run once on start so a 12:00:05 restart doesn't miss the slot.
     setTimeout(() => this._tick(), 2000);
-    console.log("\uD83D\uDD54 Peace oration scheduler started (noon + midnight CST)");
+    console.log("🕔 Peace oration scheduler started (noon + midnight CST)");
   }
 
   stop() {
@@ -365,7 +367,7 @@ class PeaceOration {
     const cachedText = this._composed;
     const composePromise = cachedText
       ? Promise.resolve(cachedText)
-      : (console.log(`\uD83D\uDD54 Peace oration slot reached: ${key} — composing...`),
+      : (console.log(`🕔 Peace oration slot reached: ${key} — composing...`),
          this._compose(key));
     composePromise.then((text) => {
       if (!text) {
@@ -488,7 +490,7 @@ class PeaceOration {
             console.log(`   [${label}] direct call failed after ${attempts} attempts`);
             return resolve(null);
           }
-          resolve(text.trim().replace(/^["'](.*)["']$/s, "$1").trim());
+          resolve(text.trim().replace(/^["'](.*)["|']$/s, "$1").trim());
         });
       };
       tryOnce(1);
@@ -531,7 +533,7 @@ class PeaceOration {
           }
           const text = (stdout || "").trim();
           if (!text || text.length < minLen) { resolve(null); return; }
-          resolve(text.replace(/^["'](.*)["']$/s, "$1").trim());
+          resolve(text.replace(/^["'](.*)["|']$/s, "$1").trim());
         });
         child.on("error", () => resolve(null));
       };
@@ -610,10 +612,10 @@ class PeaceOration {
     // (track-intros, dream readouts) keep their own voice settings.
     // Persona-driven (ADR-0012): the 'oration' persona owns the British-female
     // narrator register + cathedral DSP (slower cadence, chest-resonant low
-    // end, hall reverb). Stateless \u2014 no more mutating voice-dj's private
+    // end, hall reverb). Stateless — no more mutating voice-dj's private
     // _orationVoiceId, which is what caused the #29 wrong-voice overlap race.
     return this._voiceDJ.executeOration(wrapped, () => {
-      console.log("\uD83D\uDD54 Peace oration complete");
+      console.log("🕔 Peace oration complete");
     }, { persona: "oration" });
   }
 
@@ -646,7 +648,6 @@ class PeaceOration {
 
   _loadState() {
     try {
-      const fs = require("fs");
       if (!fs.existsSync(this._stateFile)) return {};
       const raw = JSON.parse(fs.readFileSync(this._stateFile, "utf8"));
       // Garbage-collect keys older than 3 days so the file doesn't grow
@@ -664,8 +665,6 @@ class PeaceOration {
 
   _saveState() {
     try {
-      const fs = require("fs");
-      const path = require("path");
       fs.mkdirSync(path.dirname(this._stateFile), { recursive: true });
       fs.writeFileSync(this._stateFile, JSON.stringify(this._lastFired, null, 2));
     } catch (e) {
