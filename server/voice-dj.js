@@ -344,8 +344,21 @@ class VoiceDJ {
       // to NOT play the audio separately (it'll come down /stream).
       const ics = this._getIcecastSource && this._getIcecastSource();
       let inStream = false;
+      // Release the speaking lock when the intro actually finishes — on the
+      // inject-completion callback when streamed, else on a word-count estimate
+      // (DJ patter ~2.8 w/s). The old fixed 1500ms ended the lock while any
+      // intro longer than ~4 words was still playing, opening a window for a
+      // second voice segment (track-change / swarm event) to be composed and
+      // broadcast OVER the still-playing intro.
+      let releasedSpeaking = false;
+      const releaseSpeaking = () => { if (!releasedSpeaking) { releasedSpeaking = true; this._speaking = false; } };
+      const introWords = (cached.text || '').split(/\s+/).filter(Boolean).length;
+      const introMs = Math.min(30000, Math.max(3000, (introWords / 2.8) * 1000)) + 1000;
       if (ics && typeof ics.injectAudio === 'function') {
-        try { ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }); inStream = true; } catch (_) {}
+        try {
+          ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }, () => releaseSpeaking());
+          inStream = true;
+        } catch (_) {}
       }
       const voiceMsg = {
         type: 'dj_voice',
@@ -358,9 +371,10 @@ class VoiceDJ {
       console.log(`   \u{1F399} DJ (cached${inStream ? '+stream' : ''}): "${cached.text.substring(0, 60)}..."`);
       execFile(this._kannakabin, ['hear', cached.audioPath], { timeout: 30000 }, () => {});
       this._lastIntro = cached.text;
-      // Speaking lock releases when the client finishes playback — we don't
-      // know exact duration here, so release after a conservative window.
-      setTimeout(() => { this._speaking = false; }, 1500);
+      // Fallback ceiling: release on the duration estimate in case the inject
+      // completion callback never fires (or there was no stream inject).
+      const introReleaseTimer = setTimeout(releaseSpeaking, introMs);
+      introReleaseTimer.unref?.();
       return;
     }
 
@@ -517,6 +531,25 @@ class VoiceDJ {
     this._speaking = true;
     this._broadcast({ type: 'dj_talk_pending', timestamp: new Date().toISOString() });
 
+    // Entry safety net for the TTS phase. executeOration's ONLY lock-release
+    // paths live inside the _generateTTS callback below, so if synthesize never
+    // invokes its callback (engine hang) _inTalkSegment/_speaking would stay set
+    // forever and every future oration/news/teaser would hit the busy guard at
+    // the top of this method permanently — the 2026-04-30 wedge that
+    // executeTalkSegment already guards against. Cleared the instant the TTS
+    // callback runs, before the normal 720s inject-ceiling timer takes over, so
+    // it never interferes with a legitimately long oration.
+    const ttsSafetyMs = 420000; // 7 min — past piper's 6-min long-form ceiling
+    this._orationTtsSafety = setTimeout(() => {
+      if (this._inTalkSegment) {
+        console.warn('   [oration] SAFETY: TTS callback never fired — force-releasing talk lock');
+        this._inTalkSegment = false;
+        this._speaking = false;
+        if (onDone) { try { onDone(); } catch (_) { /* swallow */ } }
+      }
+    }, ttsSafetyMs);
+    this._orationTtsSafety.unref?.();
+
     // Orations + news ride the high-quality voice so prosody matches the
     // gravitas of the long-form delivery. Per-call `opts.voiceId` is the
     // canonical override (slot-specific personas — news, peace oration,
@@ -535,6 +568,9 @@ class VoiceDJ {
     const persona = (opts && opts.persona) || this._orationPersona || "oration";
     const ttsOpts = { persona };
     this._generateTTS(text, (err, audioPath, spokenText) => {
+      // TTS callback fired — the entry safety net has done its job; the normal
+      // release()/720s inject-ceiling timer below now owns the lock.
+      if (this._orationTtsSafety) { clearTimeout(this._orationTtsSafety); this._orationTtsSafety = null; }
       this._speaking = false;
       if (err || !audioPath) {
         console.log(`   [oration] TTS failed — releasing talk lock`);

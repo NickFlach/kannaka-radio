@@ -263,6 +263,14 @@ async function handleAgentRequest(req, res, parsed) {
       release();
       try { res.end(); } catch (_) {}
     });
+    // A failed spawn (e.g. KANNAKA_BIN missing → ENOENT) emits 'error' and may
+    // never emit 'exit'. Without this listener that 'error' is unhandled and
+    // crashes the whole process, AND release() never runs — so the slot leaks
+    // and after RADIO_AUDIT_MAX failed spawns the endpoint is wedged at 503.
+    child.on("error", () => {
+      release();
+      try { res.end(); } catch (_) {}
+    });
     return true;
   }
 

@@ -32,10 +32,16 @@ class MusicGenerator {
     this.generatedTracks = []; // { title, path, prompt, generatedAt }
     this.generating = false;
 
-    // Reset daily counter at midnight
+    // Reset the daily counter when the calendar day changes. Matching the
+    // exact 00:00 minute (old behavior) was fragile: setInterval drift or a
+    // busy/blocked event loop can skip the single 00:00 tick entirely, leaving
+    // the counter un-reset and generation wedged at the daily cap for ~24h.
+    // A day-key comparison resets on the first tick of any new day.
+    this._lastResetDay = new Date().toDateString();
     this._resetTimer = setInterval(() => {
-      const now = new Date();
-      if (now.getHours() === 0 && now.getMinutes() === 0) {
+      const day = new Date().toDateString();
+      if (day !== this._lastResetDay) {
+        this._lastResetDay = day;
         this.generationsToday = 0;
       }
     }, 60000);
@@ -386,18 +392,45 @@ class MusicGenerator {
   async _downloadFile(url, outputPath) {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(outputPath);
-      https.get(url, (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302) {
-          // Follow redirect
-          https.get(res.headers.location, (res2) => {
-            res2.pipe(file);
-            file.on('finish', () => { file.close(); resolve(); });
-          }).on('error', reject);
-        } else {
+      let settled = false;
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        try { file.close(); } catch (_) {}
+        // Remove the partial/corrupt file so the DJ engine never tries to
+        // stream a half-written or error-body "track".
+        fs.unlink(outputPath, () => {});
+        reject(err);
+      };
+      // Without this, a disk-write error never rejected and the generate()
+      // await hung forever.
+      file.on('error', fail);
+
+      const get = (u, redirectsLeft) => {
+        https.get(u, (res) => {
+          // Follow redirects, but DRAIN the redirect response first — the old
+          // code left the 301/302 socket half-read, leaking the connection.
+          if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+            res.resume();
+            if (redirectsLeft <= 0) return fail(new Error('too many redirects'));
+            return get(res.headers.location, redirectsLeft - 1);
+          }
+          // A non-200 (e.g. 403/404 from an expired signed CDN URL) returns an
+          // HTML error body; piping it produced a corrupt .mp3 that "downloaded
+          // successfully". Reject instead.
+          if (res.statusCode !== 200) {
+            res.resume();
+            return fail(new Error('download HTTP ' + res.statusCode));
+          }
           res.pipe(file);
-          file.on('finish', () => { file.close(); resolve(); });
-        }
-      }).on('error', reject);
+          file.on('finish', () => {
+            if (settled) return;
+            settled = true;
+            file.close(() => resolve());
+          });
+        }).on('error', fail);
+      };
+      get(url, 3);
     });
   }
 

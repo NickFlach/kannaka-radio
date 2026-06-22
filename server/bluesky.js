@@ -65,9 +65,18 @@ class BlueskyClient {
     try {
       const session = await this._ensureSession();
       const path = `/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(query)}&limit=${limit}&sort=latest`;
-      const resp = await _request("GET", path, null, {
+      let resp = await _request("GET", path, null, {
         "Authorization": "Bearer " + session.accessJwt,
       });
+      if (resp.status === 401 || resp.status === 400) {
+        // AT Proto access tokens are short-lived. _ensureSession caches the
+        // session forever once set, so without this reauth a long-running
+        // process would 401 here indefinitely and the reply-listener would
+        // silently stop finding posts until restart. Clear + retry once.
+        this.session = null;
+        const s2 = await this._ensureSession();
+        resp = await _request("GET", path, null, { "Authorization": "Bearer " + s2.accessJwt });
+      }
       if (resp.status !== 200) return { ok: false, error: `searchPosts ${resp.status}: ${resp.body.slice(0, 200)}` };
       const data = JSON.parse(resp.body);
       return { ok: true, posts: data.posts || [] };
@@ -93,15 +102,29 @@ class BlueskyClient {
         reply: { root, parent },
       };
       if (facets.length > 0) record.facets = facets;
-      const body = JSON.stringify({
-        repo: session.did,
+      let activeSession = session;
+      let body = JSON.stringify({
+        repo: activeSession.did,
         collection: "app.bsky.feed.post",
         record,
       });
-      const resp = await _request("POST", "/xrpc/com.atproto.repo.createRecord", body, {
+      let resp = await _request("POST", "/xrpc/com.atproto.repo.createRecord", body, {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + session.accessJwt,
+        "Authorization": "Bearer " + activeSession.accessJwt,
       });
+      if (resp.status === 401 || resp.status === 400) {
+        // Expired access token — clear the cached session, re-auth, retry once
+        // (post() already does this; reply() previously did not, so replies
+        // wedged silently once the token aged out). Rebuild the body with the
+        // fresh did in case it differs.
+        this.session = null;
+        activeSession = await this._ensureSession();
+        body = JSON.stringify({ repo: activeSession.did, collection: "app.bsky.feed.post", record });
+        resp = await _request("POST", "/xrpc/com.atproto.repo.createRecord", body, {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + activeSession.accessJwt,
+        });
+      }
       if (resp.status !== 200) return { ok: false, error: `reply ${resp.status}: ${resp.body.slice(0, 200)}` };
       const data = JSON.parse(resp.body);
       return { ok: true, uri: data.uri, cid: data.cid };

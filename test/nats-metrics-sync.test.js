@@ -229,6 +229,42 @@ test('legacy bare payloads still surface drift warnings but apply normally', () 
   client.disconnect();
 });
 
+// ── Hardening: malformed payloads from the public-read bus ──
+
+test('string consciousness metrics are coerced, never crash (toFixed)', () => {
+  const { client } = createClient();
+  // A peer publishing phi/xi/order as STRINGS must not throw "toFixed is not a
+  // function" in the update log, nor corrupt state with NaN. `??` only falls
+  // back on null/undefined, so the old code passed strings straight through.
+  client._handleMessage('KANNAKA.consciousness', envelope({
+    phi: '0.85', xi: '0.42', order: '0.5', level: 'aware',
+  }));
+  const c = client.swarmState.consciousness;
+  assert.strictEqual(c.phi, 0.85, 'string phi coerced to number');
+  assert.ok(Number.isFinite(c.xi) && Number.isFinite(c.order), 'xi/order finite');
+  client.disconnect();
+});
+
+test('a string phase does not NaN the local order parameter', () => {
+  const { client } = createClient();
+  client._handleMessage('QUEEN.phase.good', envelope({ phase: 0.5 }, { subject: 'QUEEN.phase.good' }));
+  client._handleMessage('QUEEN.phase.bad', envelope({ phase: 'not-a-number' }, { subject: 'QUEEN.phase.bad' }));
+  assert.ok(Number.isFinite(client.swarmState.queen.localOrderParameter),
+    'one bad agent must not NaN the whole swarm coherence metric');
+  client.disconnect();
+});
+
+test('oversized MSG header is dropped, not buffered unbounded', () => {
+  const { client } = createClient();
+  // Without an upper bound, an advertised body far larger than the buffer makes
+  // every chunk append and return early forever (unbounded memory + stall).
+  client._buffer = 'MSG KANNAKA.test 1 99999999\r\n';
+  client._processBuffer();
+  assert.strictEqual(client._pendingMsg, null, 'oversized advertised body must be rejected');
+  assert.strictEqual(client._buffer, '', 'the control line is consumed');
+  client.disconnect();
+});
+
 // ── Summary ────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`);
