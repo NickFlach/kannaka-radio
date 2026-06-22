@@ -733,11 +733,13 @@ wss.on('connection', (ws) => {
       else if (parsed.type === 'webrtc_release_mic') {
         const result = webrtcSignaling.releaseMic(parsed.clientId);
         broadcast({ type: 'webrtc_broadcast_ended', data: {} });
-        if (result && result.nextUp) {
-          result.nextUp.ws.send(JSON.stringify({
-            type: 'webrtc_mic_available',
-            data: { message: 'Your turn to broadcast!' },
-          }));
+        if (result && result.nextUp && result.nextUp.ws && result.nextUp.ws.readyState === 1) {
+          try {
+            result.nextUp.ws.send(JSON.stringify({
+              type: 'webrtc_mic_available',
+              data: { message: 'Your turn to broadcast!' },
+            }));
+          } catch (_) {}
         }
         broadcast({ type: 'webrtc_status', data: webrtcSignaling.getStatus() });
       }
@@ -765,11 +767,14 @@ wss.on('connection', (ws) => {
       else if (parsed.type === 'webrtc_listen') {
         webrtcSignaling.addListener(ws, parsed.clientId);
         // Tell the broadcaster a new listener joined so it can create an offer
-        if (webrtcSignaling.broadcaster) {
-          webrtcSignaling.broadcaster.ws.send(JSON.stringify({
-            type: 'webrtc_new_listener',
-            clientId: parsed.clientId,
-          }));
+        if (webrtcSignaling.broadcaster && webrtcSignaling.broadcaster.ws
+            && webrtcSignaling.broadcaster.ws.readyState === 1) {
+          try {
+            webrtcSignaling.broadcaster.ws.send(JSON.stringify({
+              type: 'webrtc_new_listener',
+              clientId: parsed.clientId,
+            }));
+          } catch (_) {}
         }
         broadcast({ type: 'webrtc_status', data: webrtcSignaling.getStatus() });
       }
@@ -789,11 +794,18 @@ wss.on('connection', (ws) => {
     const rtcResult = webrtcSignaling.handleDisconnect(ws);
     if (rtcResult) {
       broadcast({ type: 'webrtc_broadcast_ended', data: {} });
-      if (rtcResult.nextUp) {
-        rtcResult.nextUp.ws.send(JSON.stringify({
-          type: 'webrtc_mic_available',
-          data: { message: 'Your turn to broadcast!' },
-        }));
+      // The promoted nextUp socket may itself be CLOSING/CLOSED (e.g. both
+      // peers dropped on a flaky connection). send() on a non-open socket
+      // throws "WebSocket is not open", and this is the 'close' handler — NOT
+      // inside the message try/catch — so an uncaught throw here crashes the
+      // radio. Guard readyState and swallow.
+      if (rtcResult.nextUp && rtcResult.nextUp.ws && rtcResult.nextUp.ws.readyState === 1) {
+        try {
+          rtcResult.nextUp.ws.send(JSON.stringify({
+            type: 'webrtc_mic_available',
+            data: { message: 'Your turn to broadcast!' },
+          }));
+        } catch (_) {}
       }
       broadcast({ type: 'webrtc_status', data: webrtcSignaling.getStatus() });
     }

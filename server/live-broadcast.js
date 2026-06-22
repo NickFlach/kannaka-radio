@@ -134,8 +134,13 @@ class LiveBroadcast {
 
     console.log(`\uD83C\uDF99 Live chunk #${this.state.chunkCount}: ${message.length} bytes`);
 
-    // Save raw audio blob for recording (accumulate all data)
-    if (this.state.recording || this._rawChunks) {
+    // Save raw audio blob ONLY while actually recording. The old
+    // `|| this._rawChunks` guard was a permanent memory leak: _saveRecording
+    // leaves `_rawChunks = []` (truthy) after a save, so every later
+    // NON-recording session kept copying each ~1/sec mic chunk into the array
+    // for the life of the process (hundreds of MB on a long live stream that
+    // is never saved). _rawChunks is now nulled after save so this can't latch.
+    if (this.state.recording) {
       if (!this._rawChunks) this._rawChunks = [];
       this._rawChunks.push(Buffer.from(message));
     }
@@ -207,7 +212,9 @@ class LiveBroadcast {
 
   _saveRecording() {
     const rawChunks = this._rawChunks || [];
-    this._rawChunks = [];
+    // Null (not []): a truthy empty array would re-arm the accumulation leak in
+    // handleChunk for the next non-recording session.
+    this._rawChunks = null;
 
     if (rawChunks.length === 0) {
       console.log(`   No audio data to save for recording`);

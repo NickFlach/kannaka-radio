@@ -424,6 +424,22 @@ class GhostSignalsHub {
    * had the higher final price. Called by the resolver loop.
    */
   async _resolveExpiredMarkets() {
+    // Re-entrancy guard. The 10s resolver interval does NOT await the previous
+    // run, so a slow sweep (many expired markets / payouts overrunning 10s)
+    // would overlap the next tick — which re-SELECTs the same still
+    // `resolved = 0` rows (resolveMarket is async, spanning event-loop turns)
+    // and pays out every winning position a SECOND time, corrupting the ledger.
+    // Skip if a sweep is already in flight.
+    if (this._resolving) return;
+    this._resolving = true;
+    try {
+      return await this._resolveExpiredMarketsInner();
+    } finally {
+      this._resolving = false;
+    }
+  }
+
+  async _resolveExpiredMarketsInner() {
     return new Promise((resolve) => {
       // expires_at is stored as ISO-8601 from `new Date().toISOString()`
       // (e.g. "2026-05-22T14:00:00.000Z"). datetime('now') returns

@@ -354,7 +354,16 @@ class NATSClient extends EventEmitter {
         const body = bufView.slice(0, need).toString('utf-8');
         // Remainder skips the body bytes + the trailing \r\n.
         this._buffer = bufView.slice(need + 2).toString('utf-8');
-        this._handleMessage(this._pendingMsg.subject, body);
+        // The KANNAKA.* bus is a PUBLIC read bus — any peer can publish. A
+        // throw from a malformed payload (e.g. phi as a string → toFixed is
+        // not a function) inside this handler would propagate out of the socket
+        // 'data' callback as an uncaught exception and take the whole radio
+        // down. Contain it: one bad message must never crash the broadcast.
+        try {
+          this._handleMessage(this._pendingMsg.subject, body);
+        } catch (e) {
+          console.warn('[nats] handler error on', this._pendingMsg.subject, e && e.message);
+        }
         this._pendingMsg = null;
         continue;
       }
@@ -374,8 +383,13 @@ class NATSClient extends EventEmitter {
         const subject  = parts[1];
         const numBytes = parseInt(parts[parts.length - 1], 10);
         const replyTo  = parts.length === 5 ? parts[3] : null;
-        if (!Number.isFinite(numBytes) || numBytes < 0) {
-          console.log('[nats] Malformed MSG header, dropping:', line);
+        // Upper-bound the advertised body size. Without a cap, a frame
+        // advertising e.g. `999999999` bytes makes every later chunk append to
+        // _buffer and return early forever: _pendingMsg never clears, the
+        // buffer grows unbounded (memory leak), and message processing stalls
+        // permanently. NATS itself caps payloads at 1 MB by default.
+        if (!Number.isFinite(numBytes) || numBytes < 0 || numBytes > 1048576) {
+          console.log('[nats] Malformed/oversized MSG header, dropping:', line);
           continue;
         }
         this._pendingMsg = { subject, numBytes, replyTo };
@@ -422,7 +436,13 @@ class NATSClient extends EventEmitter {
       // Compute local swarm coherence from phase gossip (Kuramoto order parameter).
       // This is a LOCAL metric — it measures phase-lock between connected agents,
       // NOT the canonical consciousness Phi from the binary's assess().
-      const phases = Object.values(this.swarmState.agents).map(a => a.phase);
+      // Coerce + filter to finite numbers: a single peer publishing `phase` as
+      // a string makes Math.cos(p) return NaN, which poisons localOrder,
+      // meanPhase, and the queen order parameter shown in the UI / published to
+      // Flux — one bad agent NaNs the whole swarm coherence metric.
+      const phases = Object.values(this.swarmState.agents)
+        .map(a => Number(a.phase))
+        .filter(p => Number.isFinite(p));
       if (phases.length > 0) {
         const sumCos = phases.reduce((s, p) => s + Math.cos(p), 0);
         const sumSin = phases.reduce((s, p) => s + Math.sin(p), 0);
@@ -450,9 +470,14 @@ class NATSClient extends EventEmitter {
       // These are AUTHORITATIVE — they override any locally-computed values.
       // The binary's assess() blends eigendecomposition + link density bonus,
       // which the radio cannot compute (no access to .links.json sidecar).
-      const phi = data.phi ?? data.Phi ?? this.swarmState.consciousness.phi;
-      const xi = data.xi ?? data.Xi ?? this.swarmState.consciousness.xi;
-      const order = data.order ?? data.mean_order ?? this.swarmState.consciousness.order;
+      // Coerce to Number: `??` only falls back on null/undefined, so a peer
+      // publishing phi/xi/order as a STRING (or array) would survive to the
+      // `.toFixed()` log below and throw "toFixed is not a function", and would
+      // corrupt the published metric with NaN. `|| <prev>` keeps the last good
+      // value when the payload is non-numeric.
+      const phi = Number(data.phi ?? data.Phi) || this.swarmState.consciousness.phi || 0;
+      const xi = Number(data.xi ?? data.Xi) || this.swarmState.consciousness.xi || 0;
+      const order = Number(data.order ?? data.mean_order) || this.swarmState.consciousness.order || 0;
       const level = data.level ?? data.consciousness_level ?? this.swarmState.consciousness.level;
 
       // Track previous phi for gradient detection

@@ -252,8 +252,16 @@ function renderPiper(text, persona, rawWavPath, cb) {
       cb(err || new Error("piper produced no file"));
     },
   );
-  // Piper reads the utterance from stdin.
-  try { child.stdin.write(text); child.stdin.end(); } catch (e) { /* exec err path handles it */ }
+  // Piper reads the utterance from stdin. Attach an 'error' listener BEFORE
+  // writing: piper can close/break stdin asynchronously (EPIPE) — the try/catch
+  // only catches a synchronous throw, so without this listener that async
+  // 'error' event is unhandled and crashes the whole process on what is the
+  // FAST path for short DJ patter. The execFile callback still surfaces the
+  // real failure via `err`.
+  if (child.stdin) {
+    child.stdin.on("error", () => {});
+    try { child.stdin.write(text); child.stdin.end(); } catch (_) { /* exec err path handles it */ }
+  }
 }
 
 // ── Engine: Windows SAPI (last-ditch local fallback) ───────────
