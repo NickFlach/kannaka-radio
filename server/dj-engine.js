@@ -550,7 +550,6 @@ class DJEngine {
 
   _loadRecents() {
     try {
-      const fs = require("fs");
       if (!fs.existsSync(this._recentsPath)) return;
       const raw = JSON.parse(fs.readFileSync(this._recentsPath, "utf8"));
       const cutoff = Date.now() - 24 * 60 * 60 * 1000;
@@ -894,7 +893,7 @@ class DJEngine {
       const req = https.get('https://kax.ninja-portal.com/api/artifacts', (res) => {
         let data = '';
         res.on('data', c => data += c);
-        res.on('end', () => {
+        const settle = () => {
           try {
             const parsed = JSON.parse(data);
             const artifacts = Array.isArray(parsed) ? parsed : (parsed.artifacts || parsed.data || []);
@@ -904,7 +903,9 @@ class DJEngine {
               .reverse(); // play oldest first so the feed flows chronologically
             resolve(audioItems);
           } catch (e) { reject(e); }
-        });
+        };
+        res.on('end', settle);
+        res.on('close', settle);
       });
       req.on('error', reject);
       req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
