@@ -344,21 +344,8 @@ class VoiceDJ {
       // to NOT play the audio separately (it'll come down /stream).
       const ics = this._getIcecastSource && this._getIcecastSource();
       let inStream = false;
-      // Release the speaking lock when the intro actually finishes — on the
-      // inject-completion callback when streamed, else on a word-count estimate
-      // (DJ patter ~2.8 w/s). The old fixed 1500ms ended the lock while any
-      // intro longer than ~4 words was still playing, opening a window for a
-      // second voice segment (track-change / swarm event) to be composed and
-      // broadcast OVER the still-playing intro.
-      let releasedSpeaking = false;
-      const releaseSpeaking = () => { if (!releasedSpeaking) { releasedSpeaking = true; this._speaking = false; } };
-      const introWords = (cached.text || '').split(/\s+/).filter(Boolean).length;
-      const introMs = Math.min(30000, Math.max(3000, (introWords / 2.8) * 1000)) + 1000;
       if (ics && typeof ics.injectAudio === 'function') {
-        try {
-          ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }, () => releaseSpeaking());
-          inStream = true;
-        } catch (_) {}
+        try { ics.injectAudio(cached.audioPath, { label: 'DJ intro: ' + (track.title || ''), introFor: track.file }); inStream = true; } catch (_) {}
       }
       const voiceMsg = {
         type: 'dj_voice',
@@ -371,10 +358,14 @@ class VoiceDJ {
       console.log(`   \u{1F399} DJ (cached${inStream ? '+stream' : ''}): "${cached.text.substring(0, 60)}..."`);
       execFile(this._kannakabin, ['hear', cached.audioPath], { timeout: 30000 }, () => {});
       this._lastIntro = cached.text;
-      // Fallback ceiling: release on the duration estimate in case the inject
-      // completion callback never fires (or there was no stream inject).
-      const introReleaseTimer = setTimeout(releaseSpeaking, introMs);
-      introReleaseTimer.unref?.();
+      // Release the speaking lock after a short conservative window. Do NOT tie
+      // this to the inject-completion callback: the intro sits in the icecast
+      // _voiceQueue until the CURRENT music track finishes (minutes away) and is
+      // drained sequentially, so the queue ALREADY serializes /stream audio —
+      // there is no on-air overlap to prevent. Holding _speaking until drain (or
+      // a long word-count fallback) instead starved DJ intros AND peace orations,
+      // which both gate on _speaking. (Reverted from the v3.1.0-harden over-fix.)
+      setTimeout(() => { this._speaking = false; }, 1500);
       return;
     }
 
