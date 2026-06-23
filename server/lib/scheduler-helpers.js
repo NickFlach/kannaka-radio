@@ -110,6 +110,7 @@ function fetchKnowledgeGeneInterpretation() {
             resolve(null);
           }
         });
+        res.on("close", () => resolve(null));
       })
       .on("error", () => resolve(null))
       .on("timeout", () => resolve(null));
@@ -137,6 +138,7 @@ function _fetchJson(url, timeoutMs) {
           try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
           catch { resolve(null); }
         });
+        res.on("close", () => resolve(null));
       })
       .on("error", () => resolve(null))
       .on("timeout", () => resolve(null));
@@ -236,6 +238,7 @@ function _fetchText(url, timeoutMs) {
           const chunks = [];
           res.on("data", (c) => chunks.push(c));
           res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+          res.on("close", () => resolve(null));
         })
         .on("error", () => resolve(null))
         .on("timeout", () => resolve(null));
@@ -540,6 +543,7 @@ function composeViaAnthropicDirect(prompt, opts = {}) {
         console.warn(`   [${opts.label || "direct"}] anthropic ${res.statusCode} (${model})${notFound ? " — trying next model" : ""}: ${chunks.slice(0, 160)}`);
         resolve({ text: null, notFound });
       });
+      res.on("close", () => resolve({ text: null }));
     });
     req.on("error", () => resolve({ text: null }));
     req.setTimeout(180000, () => req.destroy(new Error("timeout")));
