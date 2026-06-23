@@ -86,6 +86,56 @@ class TelegramAdapter {
       req.end();
     });
   }
+
+  /**
+   * Reply to a prior channel message. `parent.id` is the message_id returned
+   * by post(). Telegram threads it under the original as a comment.
+   */
+  async reply(text, parent) {
+    if (!this.isEnabled()) return { ok: false, error: "not_configured" };
+    if (!parent || !parent.id) return { ok: false, error: "missing_parent_id" };
+    const body = JSON.stringify({
+      chat_id: this._creds.chatId,
+      text: _truncate((text || "").trim(), POST_MAX),
+      reply_to_message_id: parent.id,
+      disable_web_page_preview: false,
+    });
+    const opts = {
+      method: "POST",
+      hostname: "api.telegram.org",
+      port: 443,
+      path: `/bot${this._creds.botToken}/sendMessage`,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+      timeout: 15000,
+    };
+    return new Promise((resolve) => {
+      const req = https.request(opts, (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          try {
+            const j = JSON.parse(data);
+            if (j.ok) {
+              const username = (this._creds.chatId || "").replace(/^@/, "");
+              const url = username ? `https://t.me/${username}/${j.result.message_id}` : null;
+              resolve({ ok: true, url, id: j.result.message_id });
+            } else {
+              resolve({ ok: false, error: `telegram: ${j.description || data.slice(0, 200)}` });
+            }
+          } catch (e) {
+            resolve({ ok: false, error: "bad json: " + e.message });
+          }
+        });
+      });
+      req.on("error", (e) => resolve({ ok: false, error: e.message }));
+      req.on("timeout", () => { req.destroy(new Error("telegram timeout")); });
+      req.write(body);
+      req.end();
+    });
+  }
 }
 
 function _loadCreds(rootDir) {

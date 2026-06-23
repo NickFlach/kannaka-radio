@@ -80,4 +80,42 @@ async function broadcastPost(msg, opts = {}) {
   return results;
 }
 
-module.exports = { broadcastPost, getEnabledBroadcasters };
+/**
+ * Thread a reply/comment under a set of prior broadcast results — used to
+ * drop a follow-up (e.g. a YouTube video link) under the original announce on
+ * each platform, the way you'd add a comment by hand. This is how a link
+ * surfaces on Bluesky/Mastodon, whose adapters intentionally drop body URLs.
+ *
+ * Best-effort and never throws: a platform with no reply support, a missing
+ * parent handle, or a failed reply is reported per-adapter and skipped.
+ *
+ * @param {Array} priorResults — the array returned by broadcastPost (each {name, ok, ...handle}).
+ * @param {string} text — the reply body (a URL is auto-linked per platform).
+ * @param {object} [opts] — { rootDir }
+ * @returns {Promise<Array<{name, ok, url?, error?}>>}
+ */
+async function broadcastReply(priorResults, text, opts = {}) {
+  const adapters = getEnabledBroadcasters(opts.rootDir);
+  const byName = new Map(adapters.map((a) => [a.name, a]));
+  // Never try to "reply" to the YouTube upload — it isn't a thread post.
+  const targets = (priorResults || []).filter(
+    (r) => r && r.ok && r.name !== "youtube" && r.name !== "none"
+  );
+  if (targets.length === 0) return [];
+  return Promise.all(
+    targets.map(async (parent) => {
+      const a = byName.get(parent.name);
+      if (!a || typeof a.reply !== "function") {
+        return { name: parent.name, ok: false, error: "no_reply_support" };
+      }
+      try {
+        const r = await a.reply(text, parent);
+        return { name: parent.name, ...r };
+      } catch (e) {
+        return { name: parent.name, ok: false, error: e && e.message };
+      }
+    })
+  );
+}
+
+module.exports = { broadcastPost, broadcastReply, getEnabledBroadcasters };

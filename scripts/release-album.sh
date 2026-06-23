@@ -290,12 +290,17 @@ else
 fi
 
 # ── 7. youtube — upload public album video ──────────────────
+YT_URL=""
 if skip_phase youtube; then
   echo "[youtube] SKIP"
 else
   echo "[youtube] uploading $(stat -c%s "$ALBUM_MP4" 2>/dev/null || stat -f%z "$ALBUM_MP4") bytes…"
-  YT_TITLE="$YT_TITLE" YT_DESC="$YT_DESC" YT_TAGS="$YT_TAGS" YT_VIDEO="$ALBUM_MP4" YT_LINK="$TRACKER" \
-    node "$ROOT/scripts/release-album-upload-youtube.js"
+  YT_OUT=$(YT_TITLE="$YT_TITLE" YT_DESC="$YT_DESC" YT_TAGS="$YT_TAGS" YT_VIDEO="$ALBUM_MP4" YT_LINK="$TRACKER" \
+    node "$ROOT/scripts/release-album-upload-youtube.js" 2>&1)
+  printf '%s\n' "$YT_OUT"
+  # Capture the uploaded URL so the announce can thread it as a comment.
+  YT_URL=$(printf '%s\n' "$YT_OUT" | sed -n 's/.*\[release-yt\] ok: //p' | head -1)
+  [ -n "$YT_URL" ] && echo "[youtube] captured video url: $YT_URL"
 fi
 
 # ── 8. deploy — scp MP3s + git pull + restart on Oracle ─────
@@ -330,12 +335,19 @@ if skip_phase announce || [ -z "$LEAD" ]; then
 elif [ -z "$ORACLE" ] || [ -z "$SSH_KEY" ]; then
   echo "[announce] no oracle host / ssh key configured — skip"
 else
-  echo "[announce] lead track: $LEAD (via $ORACLE)"
+  # Thread the album film as a comment under the announce on each platform
+  # (Bluesky/Mastodon drop body URLs, so a reply is how the video surfaces).
+  YT_ANNOUNCE_ARGS=""
+  if [ -n "${YT_URL:-}" ]; then
+    YT_ANNOUNCE_ARGS="--youtube $(printf '%q' "$YT_URL")"
+  fi
+  echo "[announce] lead track: $LEAD (via $ORACLE)${YT_URL:+  + video comment}"
   ssh -i "$SSH_KEY" "$ORACLE" "cd ~/kannaka-radio && node scripts/post-track-announce.js \
     --title $(printf '%q' "$LEAD") \
     --reason $(printf '%q' "$LEAD_REASON") \
     --tags $(printf '%q' "$YT_TAGS") \
-    --link $(printf '%q' "$TRACKER")" 2>&1 | tail -10
+    --link $(printf '%q' "$TRACKER") \
+    $YT_ANNOUNCE_ARGS" 2>&1 | tail -12
 fi
 
 echo

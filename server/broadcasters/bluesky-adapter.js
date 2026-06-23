@@ -47,6 +47,28 @@ class BlueskyAdapter {
     }
     return result;
   }
+
+  /**
+   * Reply to a prior post (a "comment"). `parent` is a prior post() result
+   * carrying the AT-proto strongRef {uri, cid}. For a top-level reply the
+   * thread root === parent.
+   */
+  async reply(text, parent) {
+    if (!this._client) return { ok: false, error: "not_configured" };
+    if (!parent || !parent.uri || !parent.cid) {
+      return { ok: false, error: "missing_parent_ref" };
+    }
+    const ref = { uri: parent.uri, cid: parent.cid };
+    const result = await this._client.reply(text, ref, ref);
+    if (result && result.ok && result.uri) {
+      const m = result.uri.match(/^at:\/\/(did:[^/]+)\/app\.bsky\.feed\.post\/([^/]+)$/);
+      if (m) {
+        const handle = (this._creds && this._creds.handle) || m[1];
+        result.url = `https://bsky.app/profile/${handle}/post/${m[2]}`;
+      }
+    }
+    return result;
+  }
 }
 
 module.exports = { BlueskyAdapter };

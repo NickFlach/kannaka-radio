@@ -138,6 +138,35 @@ class NostrAdapter {
       relays_total: this._creds.relays.length,
     };
   }
+
+  /**
+   * Reply to a prior note. `parent.id` is the kind-1 event id returned by
+   * post(). NIP-10: a single marked "root" e-tag anchors a top-level reply.
+   */
+  async reply(text, parent) {
+    if (!this.isEnabled()) return { ok: false, error: "not_configured" };
+    if (!parent || !parent.id) return { ok: false, error: "missing_parent_id" };
+    const secp = _trySecp();
+    const WS = _tryWS();
+    const content = _truncate((text || "").trim(), POST_MAX);
+    const tags = [["e", parent.id, "", "root"]];
+    const created_at = Math.floor(Date.now() / 1000);
+    const privkey = _hexToBytes(this._creds.privkey);
+    const pubkey = _bytesToHex(secp.schnorr.getPublicKey(privkey));
+    const serialized = JSON.stringify([0, pubkey, created_at, 1, tags, content]);
+    const idBytes = crypto.createHash("sha256").update(serialized).digest();
+    const id = _bytesToHex(idBytes);
+    const sig = _bytesToHex(await secp.schnorr.sign(idBytes, privkey));
+    const event = { id, pubkey, created_at, kind: 1, tags, content, sig };
+    const results = await Promise.all(
+      this._creds.relays.map((url) => _publishOne(WS, url, event))
+    );
+    const okCount = results.filter((r) => r.ok).length;
+    if (okCount === 0) {
+      return { ok: false, error: `all relays rejected: ${results.map((r) => r.error).join("; ")}` };
+    }
+    return { ok: true, url: `https://njump.me/${id}`, id, relays_accepted: okCount };
+  }
 }
 
 function _publishOne(WS, url, event) {

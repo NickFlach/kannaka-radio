@@ -86,6 +86,59 @@ class MastodonAdapter {
       req.end();
     });
   }
+
+  /**
+   * Reply to a prior status. `parent.id` is the Mastodon status id returned by
+   * post(). The reply body is posted verbatim (no hashtag footer) so a video
+   * link lands clean as a comment.
+   */
+  async reply(text, parent) {
+    if (!this.isEnabled()) return { ok: false, error: "not_configured" };
+    if (!parent || !parent.id) return { ok: false, error: "missing_parent_id" };
+    const url = new URL("/api/v1/statuses", this._creds.instance);
+    const body = JSON.stringify({
+      status: _truncate((text || "").trim(), POST_MAX),
+      visibility: "public",
+      in_reply_to_id: String(parent.id),
+    });
+    const opts = {
+      method: "POST",
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port || (url.protocol === "https:" ? 443 : 80),
+      path: url.pathname + url.search,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + this._creds.accessToken,
+        "Content-Length": Buffer.byteLength(body),
+        "User-Agent": "Kannaka-Radio/0.3 (https://radio.ninja-portal.com)",
+      },
+      timeout: 15000,
+    };
+    return new Promise((resolve) => {
+      const lib = url.protocol === "https:" ? https : http;
+      const req = lib.request(opts, (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          if (res.statusCode === 200) {
+            try {
+              const j = JSON.parse(data);
+              resolve({ ok: true, url: j.url, id: j.id });
+            } catch (e) {
+              resolve({ ok: false, error: "bad json: " + e.message });
+            }
+          } else {
+            resolve({ ok: false, error: `mastodon ${res.statusCode}: ${data.slice(0, 200)}` });
+          }
+        });
+      });
+      req.on("error", (e) => resolve({ ok: false, error: e.message }));
+      req.on("timeout", () => { req.destroy(new Error("mastodon timeout")); });
+      req.write(body);
+      req.end();
+    });
+  }
 }
 
 function _loadCreds(rootDir) {

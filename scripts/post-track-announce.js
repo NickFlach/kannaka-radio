@@ -30,7 +30,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { broadcastPost, getEnabledBroadcasters } = require("../server/broadcasters");
+const { broadcastPost, broadcastReply, getEnabledBroadcasters } = require("../server/broadcasters");
 const { renderAudioMp4 } = require("../server/broadcasters/render-audio-mp4");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -94,6 +94,26 @@ async function main() {
       console.log(`[track-announce] ${r.name} ok: ${r.url || "(no url)"}`);
     } else {
       console.error(`[track-announce] ${r.name} failed: ${r.error}`);
+    }
+  }
+
+  // ── Thread the YouTube video as a comment under each post ──────────────
+  // Use a pre-known video (--youtube, e.g. an album film built earlier in the
+  // release), otherwise the one we just made + uploaded via --audio/--image.
+  // Bluesky and Mastodon drop body URLs, so a reply is the only way the video
+  // surfaces there — this automates the "comment the video" step by hand.
+  let ytUrl = arg("--youtube") || "";
+  if (!ytUrl) {
+    const yt = results.find((r) => r.name === "youtube" && r.ok && r.url);
+    if (yt) ytUrl = yt.url;
+  }
+  if (ytUrl) {
+    const caption = arg("--video-caption") || "▶ Watch the video:";
+    const replyText = `${caption} ${ytUrl}`.trim();
+    const replies = await broadcastReply(results, replyText, { rootDir: ROOT });
+    for (const r of replies) {
+      if (r.ok) console.log(`[track-announce] ${r.name} video-comment ok: ${r.url || "(posted)"}`);
+      else console.error(`[track-announce] ${r.name} video-comment skipped: ${r.error}`);
     }
   }
 
