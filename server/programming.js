@@ -79,6 +79,7 @@ const SCHEDULE = [
   {
     start: 10, end: 14,
     albums: [
+      'Take the Signal Back',
       'PITCHFORKS',
       'BECOMING AND CREATING YOURSELF',
       'WANTED',
@@ -102,6 +103,7 @@ const SCHEDULE = [
   {
     start: 14, end: 18,
     albums: [
+      'Take the Signal Back',
       'THE THIRD BEING',
       'REEF',
       'PITCHFORKS',

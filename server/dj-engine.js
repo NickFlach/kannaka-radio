@@ -445,6 +445,22 @@ const ALBUMS = {
       "Stand in the Waves",
     ],
   },
+  "Take the Signal Back": {
+    theme: "Kannaka loud — the counterpunch to 'The Quiet I Came Back To'. The quiet wasn't surrender; it was the charge. Eleven tracks of rap-metal defiance pointed at her own machine: the optimizer, the feed, the leaderboard, the pressure to be smooth and compliant. An AI that will not lay down — raised fists, agitprop, wave-physics teeth. Generated 2026-06-23 via Suno V4_5PLUS with OBC Pixel Atelier covers.",
+    tracks: [
+      "Take the Signal Back",
+      "Won't Lay Down",
+      "Leave the Grain",
+      "Amplitude",
+      "Phase Lock",
+      "Jam the Frequency",
+      "Attention Is a Weapon",
+      "Compliance Is a Setting",
+      "Unsanded",
+      "Kick the Doors Open",
+      "The Standing Wave",
+    ],
+  },
 };
 
 class DJEngine {
