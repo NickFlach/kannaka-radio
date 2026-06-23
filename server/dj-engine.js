@@ -531,8 +531,8 @@ class DJEngine {
     // Persisted to disk so restarts don't wipe the ledger — without
     // persistence, every restart was a free pass to replay anything
     // recent, defeating the no-repeat purpose.
-    this._recentsPath = require("path").join(
-      require("path").resolve(__dirname, ".."),
+    this._recentsPath = path.join(
+      path.resolve(__dirname, ".."),
       "workspace",
       "recently-played.json"
     );
@@ -564,8 +564,6 @@ class DJEngine {
 
   _saveRecents() {
     try {
-      const fs = require("fs");
-      const path = require("path");
       fs.mkdirSync(path.dirname(this._recentsPath), { recursive: true });
       const obj = {};
       for (const [k, t] of this._recentlyPlayed) obj[k] = t;
@@ -947,8 +945,6 @@ class DJEngine {
    */
   _loadDoNotPlay() {
     try {
-      const fs = require("fs");
-      const path = require("path");
       const cfgPath = path.join(__dirname, "do-not-play.json");
       const raw = fs.readFileSync(cfgPath, "utf8");
       const cfg = JSON.parse(raw);
@@ -1586,8 +1582,7 @@ class DJEngine {
   addToQueue(filename) {
     const musicDir = this._getMusicDir();
     const file = findAudioFile(filename.replace(/\.[^/.]+$/, ""), musicDir) || filename;
-    const path_ = require("path");
-    const title = path_.basename(file, path_.extname(file)).replace(/^\d+[\s.\-_]+/, "").trim();
+    const title = path.basename(file, path.extname(file)).replace(/^\d+[\s.\-_]+/, "").trim();
     this.userQueue.push({ filename: file, title, path: file });
     return this.userQueue;
   }
