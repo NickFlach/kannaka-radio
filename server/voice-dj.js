@@ -880,10 +880,12 @@ class VoiceDJ {
       const req = mod.get(url, (res) => {
         let data = "";
         res.on("data", c => data += c);
-        res.on("end", () => {
+        const settle = () => {
           try { resolve(JSON.parse(data)); }
           catch (e) { reject(e); }
-        });
+        };
+        res.on("end", settle);
+        res.on("close", settle);
       });
       req.on("error", reject);
       req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error("timeout")); });
