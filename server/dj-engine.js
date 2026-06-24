@@ -334,6 +334,7 @@ const ALBUMS = {
     theme: "1-of-1 standalone tracks released as part of OBC rare-series drops. Each piece is a single artifact across the constellation: cover art, song, furniture, and text artifact, paired with a YouTube video and social fanout. The 'Rare Singles' rotation on Kannaka Radio holds the audio half of those drops so listeners can hear the song that goes with the gallery piece.",
     tracks: [
       "The Grail Was Always Two-Handed",
+      "Ghost Signal",
     ]
   },
   "Open Mic": {
