@@ -64,8 +64,8 @@ class BlueskyClient {
     if (!this.isConfigured()) return { ok: false, error: "not_configured" };
     try {
       const session = await this._ensureSession();
-      const path = `/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(query)}&limit=${limit}&sort=latest`;
-      let resp = await _request("GET", path, null, {
+      const urlPath = `/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(query)}&limit=${limit}&sort=latest`;
+      let resp = await _request("GET", urlPath, null, {
         "Authorization": "Bearer " + session.accessJwt,
       });
       if (resp.status === 401 || resp.status === 400) {
@@ -75,7 +75,7 @@ class BlueskyClient {
         // silently stop finding posts until restart. Clear + retry once.
         this.session = null;
         const s2 = await this._ensureSession();
-        resp = await _request("GET", path, null, { "Authorization": "Bearer " + s2.accessJwt });
+        resp = await _request("GET", urlPath, null, { "Authorization": "Bearer " + s2.accessJwt });
       }
       if (resp.status !== 200) return { ok: false, error: `searchPosts ${resp.status}: ${resp.body.slice(0, 200)}` };
       const data = JSON.parse(resp.body);
@@ -219,7 +219,7 @@ function _truncateToLimit(text, limit) {
   const hard = limit - 1;
   const soft = text.lastIndexOf(" ", hard - 3);
   const cut = soft > hard * 0.7 ? soft : hard;
-  return text.slice(0, cut).trim() + "\u2026"; // ellipsis
+  return text.slice(0, cut).trim() + "…"; // ellipsis
 }
 
 /**
@@ -229,7 +229,6 @@ function _truncateToLimit(text, limit) {
 function _detectUrlFacets(text) {
   const facets = [];
   const re = /https?:\/\/[^\s)]+/g;
-  const buf = Buffer.from(text, "utf8");
   let m;
   while ((m = re.exec(text)) !== null) {
     const url = m[0];
@@ -260,6 +259,7 @@ function _request(method, urlPath, body, headers) {
       let data = "";
       res.on("data", (c) => (data += c));
       res.on("end", () => resolve({ status: res.statusCode || 0, body: data }));
+      res.on("close", () => resolve({ status: res.statusCode || 0, body: data }));
     });
     req.on("error", reject);
     req.on("timeout", () => { req.destroy(new Error("bluesky http timeout")); });
