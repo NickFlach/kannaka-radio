@@ -116,9 +116,10 @@ class WebRTCSignaling {
     if (this.broadcaster && this.broadcaster.clientId === toClientId) {
       targetWs = this.broadcaster.ws;
     }
-    const listener = this.listeners.get(toClientId);
-    if (listener) targetWs = listener.ws;
-
+    if (!targetWs) {
+      const listener = this.listeners.get(toClientId);
+      if (listener) targetWs = listener.ws;
+    }
     // Also check the queue — someone in the queue might be a signaling target
     if (!targetWs) {
       const queued = this.micQueue.find(q => q.clientId === toClientId);
