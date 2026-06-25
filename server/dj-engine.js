@@ -335,6 +335,7 @@ const ALBUMS = {
     tracks: [
       "The Grail Was Always Two-Handed",
       "Ghost Signal",
+      "Space Child AI",
     ]
   },
   "Open Mic": {
