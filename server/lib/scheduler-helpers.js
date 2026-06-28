@@ -512,9 +512,14 @@ function composeViaAnthropicDirect(prompt, opts = {}) {
   // failing the segment. This is exactly what masked the ADR-0012 oration
   // outage: ~/.kannaka/config.toml pinned a retired sonnet-4 snapshot, so the
   // direct composer (and `kannaka ask`) 404'd and the oration never spoke.
-  const FALLBACKS = ["claude-sonnet-4-5", "claude-haiku-4-5-20251001"];
+  // Haiku 4.5 leads — best value for short creative orations/teasers ($1/$5 per
+  // MTok); Sonnet 4.6 is the quality safety net. The `startsWith("claude")`
+  // guard skips a non-Anthropic [llm] model (e.g. a local ollama model name)
+  // so it's never sent to api.anthropic.com — keeps this path decoupled from
+  // the kannaka [llm] provider.
+  const FALLBACKS = ["claude-haiku-4-5", "claude-sonnet-4-6"];
   const candidates = [];
-  for (const m of [cfgModel, ...FALLBACKS]) if (m && !candidates.includes(m)) candidates.push(m);
+  for (const m of [cfgModel, ...FALLBACKS]) if (m && m.startsWith("claude") && !candidates.includes(m)) candidates.push(m);
 
   const tryModel = (model) => new Promise((resolve) => {
     const body = JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] });
