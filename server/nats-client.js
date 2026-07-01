@@ -478,7 +478,11 @@ class NATSClient extends EventEmitter {
       const phi = Number(data.phi ?? data.Phi) || this.swarmState.consciousness.phi || 0;
       const xi = Number(data.xi ?? data.Xi) || this.swarmState.consciousness.xi || 0;
       const order = Number(data.order ?? data.mean_order) || this.swarmState.consciousness.order || 0;
-      const level = data.level ?? data.consciousness_level ?? this.swarmState.consciousness.level;
+      // Canonical-first, legacy alias fallback (issue #468). The publisher
+      // emits both `consciousness_level` (canonical) and `level` (alias); the
+      // alias is dropped from the publisher on 2026-09-01, so read the canonical
+      // name FIRST and fall back to `level` only for un-migrated peers.
+      const level = data.consciousness_level ?? data.level ?? this.swarmState.consciousness.level;
 
       // Track previous phi for gradient detection
       const prevPhi = this.swarmState.consciousness.phi || 0;
@@ -597,7 +601,10 @@ class NATSClient extends EventEmitter {
     }
 
     if (subject === 'queen.event.dream.end') {
-      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', memories_strengthened: data.memories_strengthened || data.memoriesStrengthened || 0, memories_faded: data.memories_faded || data.memoriesFaded || 0, ...data, receivedAt: now };
+      // `memories_pruned` is the canonical field the publisher emits on
+      // KANNAKA.dreams; `memories_faded` is the legacy alias (issue #468).
+      // Read canonical-first so this stays correct once the alias is dropped.
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', memories_strengthened: data.memories_strengthened || data.memoriesStrengthened || 0, memories_faded: data.memories_pruned ?? data.memories_faded ?? data.memoriesFaded ?? 0, ...data, receivedAt: now };
       this.swarmState.dreams.unshift({ type: 'dream_end', ...evt });
       if (this.swarmState.dreams.length > 20) this.swarmState.dreams = this.swarmState.dreams.slice(0, 20);
       this._broadcast({ type: 'queen_dream_end', data: evt });
@@ -653,6 +660,35 @@ class NATSClient extends EventEmitter {
       (subject.startsWith("KANNAKA.exemplar.") && NATS_REQUIRED_FIELDS["KANNAKA.exemplar.<agent_id>.<cluster_id>"]) ||
       null;
     if (!required) return; // unknown subject — skip
+
+    // Deprecation surface (issue #468): count + warn on payloads that carry a
+    // canonical field ONLY through its legacy alias (e.g. `mean_order` but no
+    // `order`, `level` but no `consciousness_level`). Consumers DROP alias reads
+    // on 2026-08-01; until then behavior is UNCHANGED (still accepted) — this
+    // only surfaces drift so publishers migrate to canonical names in time.
+    const aliasMap = NATS_ALIAS_FIELDS[subject];
+    if (aliasMap) {
+      const aliasOnly = [];
+      for (const canon in aliasMap) {
+        const alias = aliasMap[canon];
+        if (data[canon] === undefined && data[alias] !== undefined) {
+          aliasOnly.push(`${alias}→${canon}`);
+        }
+      }
+      if (aliasOnly.length > 0) {
+        if (!this._aliasOnlyCounts) this._aliasOnlyCounts = {};
+        this._aliasOnlyCounts[subject] = (this._aliasOnlyCounts[subject] || 0) + 1;
+        if (!this._aliasWarnHistory) this._aliasWarnHistory = new Map();
+        const aliasKey = `${subject}::${aliasOnly.slice().sort().join(",")}`;
+        const aliasNow = Date.now();
+        const lastAliasWarn = this._aliasWarnHistory.get(aliasKey) || 0;
+        if (aliasNow - lastAliasWarn >= 30 * 60 * 1000) {
+          console.warn(`[nats-schema] ${subject} carries deprecated alias-only field(s) ${aliasOnly.join(", ")} (count=${this._aliasOnlyCounts[subject]}) — canonical names REQUIRED after 2026-08-01, still accepted for now (issue #468)`);
+          this._aliasWarnHistory.set(aliasKey, aliasNow);
+        }
+      }
+    }
+
     const missing = [];
     for (const field of required) {
       // Tolerate camelCase aliases during the 2026-Q2 transition.
@@ -691,6 +727,23 @@ const NATS_REQUIRED_FIELDS = {
   "queen.event.leave":                  ["schema_version", "ts", "agent_id"],
   "queen.event.memory.shared":          ["schema_version", "ts", "agent_id", "memory_id"],
   "ORC.stem.submitted":                 ["schema_version", "ts", "agent_id", "stem_id"],
+};
+
+// Canonical field → legacy alias, per consciousness-core/docs/nats-contract.yaml.
+// Used by _validateSchema to flag alias-only payloads (drift). The publisher
+// removes these aliases on 2026-09-01; consumers drop alias reads on 2026-08-01
+// (issue #468). Keep in sync with the contract's alias annotations.
+const NATS_ALIAS_FIELDS = {
+  "KANNAKA.consciousness": {
+    order: "mean_order",
+    consciousness_level: "level",
+    num_clusters: "clusters",
+    active_memories: "active",
+    total_memories: "total",
+  },
+  "KANNAKA.dreams": {
+    memories_pruned: "memories_faded",
+  },
 };
 
 module.exports = { NATSClient };
