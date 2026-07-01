@@ -59,3 +59,36 @@ sudo systemctl restart <service>
 ```
 
 If the service had been removed from a stash, `git stash pop` works too.
+
+## Deploying a new kannaka-memory binary (zombie-inode rule)
+
+The kannaka-memory Rust binary is built/deployed from the repo **next door**
+(`/home/opc/kannaka-memory`), not from here. But the rule that governs it bites
+this box's whole `kannaka-*` fleet, so it's documented here where the Oracle
+runbook lives:
+
+**Any deploy that rebuilds `kannaka` (`cargo build --release`) MUST restart
+every `kannaka-*` systemd unit that execs it — not just `kannaka-memory`.**
+`cargo` replaces the file at its path but the old inode lives on; every
+long-running process that already `exec`-ed it keeps running the OLD code until
+restarted. The units that exec the binary include `kannaka-memory` (the single
+writer — restart it first), `kannaka-swarm-serve`, `kannaka-swarm-worker`,
+`kannaka-attention`, `kannaka-staff`, `kannaka-substrate`, `kannaka-ui-bridge`
+(list drifts — discover live, don't trust it). The radio/icecast Node services
+don't exec the Rust binary and are unaffected (restarting them is harmless).
+
+Symptom of a missed restart: `sudo readlink /proc/<pid>/exe` prints
+`…/target/release/kannaka (deleted)`, and SELinux `setroubleshoot` logs noise
+about `kannaka (deleted)` writing `kannaka.metrics.json`.
+
+Mechanical helper (records a rollback SHA and reverts on a failed smoke check):
+
+```bash
+# from the dev box, after pushing kannaka-memory AND rebuilding it on Oracle:
+bash scripts/deploy-oracle.sh --restart-kannaka   # alias: --fleet
+```
+
+`--restart-kannaka` restarts every *active* `kannaka-*.service` (memory first),
+then asserts no `/proc/<pid>/exe` still resolves to a `(deleted)` inode. It
+discovers the unit set live via `systemctl list-units --state=active
+'kannaka-*.service'`, so it can't rot as units are added or removed.
