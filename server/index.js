@@ -168,7 +168,6 @@ function broadcastListenerCountIfChanged() {
 // server (kr#20). If the stat server is down we keep the last good value
 // rather than flickering listeners to zero.
 function startIcecastListenerPoller() {
-  const http = require("http");
   const ICECAST_HOST = process.env.ICECAST_HOST || "127.0.0.1";
   const ICECAST_PORT = parseInt(process.env.ICECAST_PORT || "8000", 10);
   const ICECAST_URL = `http://${ICECAST_HOST}:${ICECAST_PORT}/status-json.xsl`;
