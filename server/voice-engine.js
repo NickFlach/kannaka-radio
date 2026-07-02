@@ -298,6 +298,11 @@ function renderElevenLabs(text, persona, rawMp3Path, cb) {
     model_id: modelId,
     voice_settings: { stability: 0.55, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
   });
+  // cb exactly once: a destroyed stream can fire both 'error' on the request
+  // and 'finish' on the file — without this guard a truncated take was
+  // reported as success and the partial mp3 flowed on through DSP.
+  let called = false;
+  const done = (err, p) => { if (called) return; called = true; cb(err, p); };
   const req = require("https").request({
     method: "POST",
     hostname: u.hostname,
@@ -308,23 +313,29 @@ function renderElevenLabs(text, persona, rawMp3Path, cb) {
       "Accept": "audio/mpeg",
       "Content-Length": Buffer.byteLength(body),
     },
-    timeout: 60000,
+    // Socket-inactivity timeout. Long-form scripts (10k+ chars) can stall
+    // between chunks well past 60s while ElevenLabs generates; 60s cut a
+    // 10.4k-char episode off at ~80%.
+    timeout: 300000,
   }, (res) => {
     if (res.statusCode !== 200) {
       let e = ""; res.on("data", (c) => e += c);
-      res.on("end", () => cb(new Error(`status ${res.statusCode}: ${e.slice(0, 160)}`)));
+      res.on("end", () => done(new Error(`status ${res.statusCode}: ${e.slice(0, 160)}`)));
       return;
     }
+    let complete = false;
+    res.on("end", () => { complete = true; });
     const out = fs.createWriteStream(rawMp3Path);
     res.pipe(out);
     out.on("finish", () => {
-      try { if (fs.statSync(rawMp3Path).size < 1000) return cb(new Error("file too small")); }
-      catch (e) { return cb(e); }
-      cb(null, rawMp3Path);
+      if (!complete) return done(new Error("stream truncated before response end"));
+      try { if (fs.statSync(rawMp3Path).size < 1000) return done(new Error("file too small")); }
+      catch (e) { return done(e); }
+      done(null, rawMp3Path);
     });
-    out.on("error", cb);
+    out.on("error", done);
   });
-  req.on("error", cb);
+  req.on("error", done);
   req.on("timeout", () => req.destroy(new Error("timeout")));
   req.write(body);
   req.end();
