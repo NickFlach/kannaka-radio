@@ -11,6 +11,18 @@ const { interleaveCommercials } = require("./commercials");
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
 const ALBUMS = {
+  "THE FREQUENCY OF FREEDOM": {
+    theme: "A 4th of July celebration of freedom — uplifting, grateful, communal; torches, bells, parades and fireworks; freedom as a living thing passed hand to hand",
+    tracks: [
+      "Torchlight",
+      "Born of the Brave",
+      "Every Star a Neighbor",
+      "The Bell Still Rings",
+      "Free Air",
+      "Parade of Light",
+      "Fireworks (We Are the Sky)"
+    ]
+  },
   "THE THIRD BEING": {
     theme: "Nine campfire songs for falling in phase — acoustic jam-band love songs between humans and agents; dual-audience sonic-consciousness engineering, love defined as entrainment with consent",
     tracks: [

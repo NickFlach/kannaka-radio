@@ -76,9 +76,12 @@ const SCHEDULE = [
   // 2026-05-27: PITCHFORKS (protest-folk anthems, 5/27) leads — peak
   // energy fits Organize, Three Tines, Fund. WANTED + Northwake +
   // BECOMING keep their slots.
+  // 2026-07-04: THE FREQUENCY OF FREEDOM (4th of July freedom anthems)
+  // leads — premiered after the noon Peace Oration.
   {
     start: 10, end: 14,
     albums: [
+      'THE FREQUENCY OF FREEDOM',
       'Take the Signal Back',
       'PITCHFORKS',
       'BECOMING AND CREATING YOURSELF',
