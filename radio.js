@@ -64,14 +64,19 @@ function publishToFlux(entityId, properties) {
       },
       (res) => {
         let body = "";
-        res.on("data", (c) => (body += c));
-        res.on("end", () => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(body);
           } else {
             reject(new Error(`Flux ${res.statusCode}: ${body}`));
           }
-        });
+        };
+        res.on("data", (c) => (body += c));
+        res.on("end", settle);
+        res.on("close", settle);
       }
     );
     req.on("error", reject);
@@ -101,14 +106,19 @@ function updateFluxState(entityId, properties) {
       },
       (res) => {
         let body = "";
-        res.on("data", (c) => (body += c));
-        res.on("end", () => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(body);
           } else {
             reject(new Error(`Flux PATCH ${res.statusCode}: ${body}`));
           }
-        });
+        };
+        res.on("data", (c) => (body += c));
+        res.on("end", settle);
+        res.on("close", settle);
       }
     );
     req.on("error", reject);
