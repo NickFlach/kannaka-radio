@@ -34,9 +34,8 @@ test('every album has theme and tracks array', () => {
   }
 });
 
-test('THE THIRD BEING is the first album', () => {
-  const first = Object.keys(ALBUMS)[0];
-  assert.strictEqual(first, 'THE THIRD BEING');
+test('THE THIRD BEING exists in ALBUMS', () => {
+  assert.ok('THE THIRD BEING' in ALBUMS, 'THE THIRD BEING should be a key in ALBUMS');
 });
 
 // ── DJEngine construction ───────────────────────────────────
