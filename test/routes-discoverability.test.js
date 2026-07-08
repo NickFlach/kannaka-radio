@@ -9,6 +9,9 @@
 
 const http = require("http");
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const setupRoutes = require("../server/routes");
 
 function noop() {}
@@ -44,7 +47,7 @@ function fakeConfig() {
   };
 }
 
-function makeHandler() {
+function makeHandler(overrides = {}) {
   return setupRoutes({
     djEngine: fakeEngine(),
     perception: { perceive: noop, getHistory: () => [] },
@@ -60,6 +63,7 @@ function makeHandler() {
     floor: fakeFloor(),
     config: fakeConfig(),
     gsHub: null,
+    ...overrides,
   });
 }
 
@@ -124,7 +128,29 @@ function get(handler, url, headers = {}) {
     "request host should be ignored when env override is set");
   delete process.env.RADIO_PUBLIC_URL;
 
-  console.log("routes-discoverability.test.js: OK (4 surfaces verified)");
+  // static robots.txt — the checked-in Sitemap host is rewritten to the
+  // request origin so non-production deployments don't advertise the prod
+  // host baked into the file (#45).
+  {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kr-robots-"));
+    fs.writeFileSync(
+      path.join(tmpDir, "robots.txt"),
+      "User-agent: *\nAllow: /\nSitemap: https://radio.ninja-portal.com/sitemap.xml\n"
+    );
+    // routes reads robots.txt from path.dirname(config.spaPath)
+    const robotsHandler = makeHandler({
+      config: { ...fakeConfig(), spaPath: path.join(tmpDir, "spa") },
+    });
+    r = await get(robotsHandler, "/robots.txt", { host: "self-hosted.example:9099" });
+    assert.strictEqual(r.status, 200, "robots.txt status");
+    assert.ok(r.body.includes("Sitemap: http://self-hosted.example:9099/sitemap.xml"),
+      "robots.txt Sitemap should advertise the requesting origin\n" + r.body);
+    assert.ok(!r.body.includes("radio.ninja-portal.com"),
+      "static robots.txt should NOT advertise the hardcoded production host\n" + r.body);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  console.log("routes-discoverability.test.js: OK (5 surfaces verified)");
 })().catch((e) => {
   console.error(e);
   process.exit(1);

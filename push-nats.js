@@ -20,12 +20,19 @@ const { execSync } = require('child_process');
 const os = require('os');
 
 const IS_WINDOWS = os.platform() === 'win32';
-const KANNAKA_BIN = IS_WINDOWS
-  ? 'C:\\Users\\nickf\\Source\\kannaka-memory\\target\\release\\kannaka.exe'
-  : '/home/opc/.local/bin/kannaka';
-const KANNAKA_DATA = IS_WINDOWS
-  ? 'C:\\Users\\nickf\\.kannaka'
-  : '/home/opc/.kannaka';
+const HOME = os.homedir();
+// Resolve the binary and data dir from the environment first so this bridge
+// is portable across operators/machines. Explicit overrides win; otherwise
+// the Windows defaults follow the current user's profile (via os.homedir())
+// instead of a hardcoded developer path, and Linux keeps the Oracle layout. (#48)
+const KANNAKA_BIN = process.env.KANNAKA_BIN
+  || (IS_WINDOWS
+    ? path.join(HOME, 'Source', 'kannaka-memory', 'target', 'release', 'kannaka.exe')
+    : '/home/opc/.local/bin/kannaka');
+const KANNAKA_DATA = process.env.KANNAKA_DATA_DIR
+  || (IS_WINDOWS
+    ? path.join(HOME, '.kannaka')
+    : '/home/opc/.kannaka');
 const NATS_HOST = 'swarm.ninja-portal.com';
 const NATS_PORT = 4222;
 
