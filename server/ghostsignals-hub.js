@@ -16,6 +16,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
 
 // We require the stem-server's sqlite3 install if available — both apps
 // run on the same host so they share the binary. Falls back to the local
@@ -53,7 +54,14 @@ function brierAccuracy(predictedProb, actualOutcome /* 1 if happened, 0 else */)
 
 class GhostSignalsHub {
   constructor(opts = {}) {
-    this.dbPath = opts.dbPath || path.join(process.env.HOME || '/home/opc', '.kannaka', 'ghostsignals.db');
+    // Resolve the DB under the canonical Kannaka data dir. `KANNAKA_DATA_DIR`
+    // wins (matches the rest of the constellation); otherwise fall back to
+    // `~/.kannaka` via os.homedir() so Windows hosts without $HOME land in the
+    // user profile instead of a bogus `\home\opc` root path. (#47)
+    this.dbPath = opts.dbPath || path.join(
+      process.env.KANNAKA_DATA_DIR || path.join(os.homedir(), '.kannaka'),
+      'ghostsignals.db',
+    );
     this.startingCapital = opts.startingCapital || 100;
     this.defaultLiquidity = opts.defaultLiquidity || 10;
     this.broadcast = opts.broadcast || (() => {});

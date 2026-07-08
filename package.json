@@ -5,7 +5,7 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js && node test/icecast-source.test.js && node test/routes-discoverability.test.js"
+    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js && node test/icecast-source.test.js && node test/routes-discoverability.test.js && node test/portability-paths.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

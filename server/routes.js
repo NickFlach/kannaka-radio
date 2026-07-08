@@ -280,15 +280,22 @@ module.exports = function setupRoutes(deps) {
 
     // /robots.txt — static file with AI bot rules + Content-Signal directive.
     if (parsed.pathname === "/robots.txt") {
+      const origin = publicOrigin(req);
       try {
         const baseDir = path.dirname(config.spaPath);
-        const txt = fs.readFileSync(path.join(baseDir, "robots.txt"), "utf8");
+        // Rewrite the absolute Sitemap directive to the current public origin.
+        // The checked-in robots.txt bakes in the production host; without this
+        // a self-hosted / staging / alternate-domain deployment would point
+        // crawlers at radio.ninja-portal.com. On production origin === that
+        // host, so the served output is unchanged. (#45)
+        const txt = fs.readFileSync(path.join(baseDir, "robots.txt"), "utf8")
+          .replace(/^(Sitemap:[ \t]*)\S+/gim, `$1${origin}/sitemap.xml`);
         res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=86400" });
         res.end(txt);
       } catch {
         // Minimal fallback — never 404 on robots.txt; bots interpret 404 as "no rules".
         res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end(`User-agent: *\nAllow: /\nSitemap: ${publicOrigin(req)}/sitemap.xml\n`);
+        res.end(`User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n`);
       }
       return;
     }
