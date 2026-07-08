@@ -860,10 +860,10 @@ class VoiceDJ {
       }
     }
 
-    if (gsStats) {
-      metrics.active_markets = gsStats.active_markets || gsStats.activeMarkets || null;
-      metrics.total_traders = gsStats.total_traders || gsStats.totalTraders || null;
-      metrics.total_trades = gsStats.total_trades || gsStats.totalTrades || null;
+    if (gsStats && gsStats.stats) {
+      metrics.active_markets = gsStats.stats.markets_active ?? null;
+      metrics.total_traders = gsStats.stats.traders ?? null;
+      metrics.total_trades = gsStats.stats.trades_total ?? null;
     }
 
     this._metricsCache = metrics;
