@@ -173,8 +173,10 @@ class MusicGenerator {
         },
       }, (res) => {
         let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           try {
             const result = JSON.parse(data);
 
@@ -202,7 +204,10 @@ class MusicGenerator {
           } catch (e) {
             reject(new Error(`AceMusic parse error: ${e.message}. Raw body: ${data.slice(0, 300)}`));
           }
-        });
+        };
+        res.on('data', chunk => data += chunk);
+        res.on('end', settle);
+        res.on('close', settle);
       });
       req.on('error', (err) => reject(new Error(`AceMusic request failed: ${err.message}`)));
       req.write(createBody);
@@ -234,8 +239,10 @@ class MusicGenerator {
         },
       }, (res) => {
         let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           try {
             const result = JSON.parse(data);
 
@@ -285,7 +292,10 @@ class MusicGenerator {
           } catch (e) {
             reject(new Error(`AceMusic poll parse error: ${e.message}. Raw: ${data.slice(0, 300)}`));
           }
-        });
+        };
+        res.on('data', chunk => data += chunk);
+        res.on('end', settle);
+        res.on('close', settle);
       });
       req.on('error', (err) => reject(new Error(`AceMusic poll request failed: ${err.message}`)));
       req.write(pollBody);
@@ -325,8 +335,10 @@ class MusicGenerator {
         },
       }, (res) => {
         let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           try {
             const result = JSON.parse(data);
             if (result.error) return reject(new Error(result.error));
@@ -336,7 +348,10 @@ class MusicGenerator {
           } catch (e) {
             reject(new Error(`Parse error: ${e.message}`));
           }
-        });
+        };
+        res.on('data', chunk => data += chunk);
+        res.on('end', settle);
+        res.on('close', settle);
       });
       req.on('error', reject);
       req.write(createBody);
@@ -363,8 +378,10 @@ class MusicGenerator {
         headers: { 'Authorization': `Bearer ${this.replicateToken}` },
       }, (res) => {
         let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           try {
             const result = JSON.parse(data);
             if (result.status === 'succeeded') {
@@ -379,7 +396,10 @@ class MusicGenerator {
           } catch (e) {
             reject(new Error(`Poll parse error: ${e.message}`));
           }
-        });
+        };
+        res.on('data', chunk => data += chunk);
+        res.on('end', settle);
+        res.on('close', settle);
       });
       req.on('error', reject);
       req.end();
