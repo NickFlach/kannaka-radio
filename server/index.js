@@ -1086,6 +1086,7 @@ function shutdown() {
   syncManager.stop();
   programming.stop();
   voteManager.cancelWindow();
+  floor.close();
   musicGen.stop();
   nats.disconnect();
   if (wss) wss.close();

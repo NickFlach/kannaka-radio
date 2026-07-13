@@ -88,6 +88,18 @@ class FloorManager {
     this._broadcastPresence();
   }
 
+  /** Release timers on shutdown. */
+  close() {
+    if (this._vibeTimer) {
+      clearInterval(this._vibeTimer);
+      this._vibeTimer = null;
+    }
+    if (this._swarmPollTimer) {
+      clearInterval(this._swarmPollTimer);
+      this._swarmPollTimer = null;
+    }
+  }
+
   // ── Reactions ─────────────────────────────────────────────
 
   /** Process a floor_react message from a connected client. */
