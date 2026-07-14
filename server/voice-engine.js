@@ -27,6 +27,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { execFile } = require("child_process");
+const https = require("https");
 
 const SR = 44100; // icecast pipe envelope sample rate
 
@@ -303,7 +304,7 @@ function renderElevenLabs(text, persona, rawMp3Path, cb) {
   // reported as success and the partial mp3 flowed on through DSP.
   let called = false;
   const done = (err, p) => { if (called) return; called = true; cb(err, p); };
-  const req = require("https").request({
+  const req = https.request({
     method: "POST",
     hostname: u.hostname,
     path: u.pathname + u.search,
@@ -319,8 +320,11 @@ function renderElevenLabs(text, persona, rawMp3Path, cb) {
     timeout: 300000,
   }, (res) => {
     if (res.statusCode !== 200) {
-      let e = ""; res.on("data", (c) => e += c);
-      res.on("end", () => done(new Error(`status ${res.statusCode}: ${e.slice(0, 160)}`)));
+      let e = "";
+      res.on("data", (c) => e += c);
+      const fail = () => done(new Error(`status ${res.statusCode}: ${e.slice(0, 160)}`));
+      res.on("end", fail);
+      res.on("close", fail);
       return;
     }
     let complete = false;
