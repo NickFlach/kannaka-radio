@@ -11,6 +11,7 @@
 
 const https = require("https");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
 
@@ -489,10 +490,6 @@ function composeViaKannakaAsk(kannakabin, prompt, opts = {}) {
  * config as the rest of the constellation. Single round-trip; caller retries.
  */
 function composeViaAnthropicDirect(prompt, opts = {}) {
-  const fs = require("fs");
-  const os = require("os");
-  const https = require("https");
-  const path = require("path");
   const maxTokens = opts.maxTokens || 4096;
 
   let apiKey = process.env.ANTHROPIC_API_KEY || process.env.KANNAKA_LLM_API_KEY || "";
