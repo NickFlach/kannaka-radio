@@ -891,6 +891,22 @@ module.exports = function setupRoutes(deps) {
         });
         res.end(JSON.stringify(obj));
       };
+      // ADR-0041 Phase 0: settlement authority. Resolving a market — any
+      // market — and creating labs-tier markets requires the oracle bearer
+      // token. Before this, POST /:id/resolve was open to the internet and
+      // the Labs' Prediction No 1 market was resolvable by bare curl.
+      // Unset token = those endpoints are disabled (secure by default),
+      // never silently open.
+      const ORACLE_TOKEN = process.env.GSHUB_ORACLE_TOKEN || "";
+      const oracleAuthorized = () =>
+        ORACLE_TOKEN && req.headers["authorization"] === `Bearer ${ORACLE_TOKEN}`;
+      const denyOracle = () =>
+        sendJson(ORACLE_TOKEN ? 403 : 503, {
+          ok: false,
+          error: ORACLE_TOKEN
+            ? "forbidden: oracle token required"
+            : "disabled: GSHUB_ORACLE_TOKEN unset",
+        });
       const readJson = () => new Promise((resolve, reject) => {
         let body = "";
         req.on("data", c => body += c);
@@ -937,8 +953,15 @@ module.exports = function setupRoutes(deps) {
 
       // ── Market endpoints ─────────────────────────────────
       if (parsed.pathname === "/api/markets" && req.method === "POST") {
-        readJson().then(body => gsHub.createMarket(body))
-          .then(m => sendJson(200, { ok: true, market: m }))
+        readJson().then(body => {
+          // Labs-tier markets are created only by the registry pipeline
+          // (observatory), which holds the oracle token. Open play-tier
+          // creation is unchanged.
+          const labsTier = body && (body.tag === "labs" || body.source === "kannaka-labs");
+          if (labsTier && !oracleAuthorized()) { denyOracle(); return; }
+          return gsHub.createMarket(body)
+            .then(m => sendJson(200, { ok: true, market: m }));
+        })
           .catch(e => sendJson(400, { ok: false, error: e.message }));
         return;
       }
@@ -968,6 +991,7 @@ module.exports = function setupRoutes(deps) {
       }
       const resolveMatch = parsed.pathname.match(/^\/api\/markets\/(m_[\w-]+)\/resolve$/);
       if (resolveMatch && req.method === "POST") {
+        if (!oracleAuthorized()) { denyOracle(); return; }
         readJson().then(body => gsHub.resolveMarket({ ...body, market_id: resolveMatch[1] }))
           .then(m => sendJson(200, { ok: true, market: m }))
           .catch(e => sendJson(400, { ok: false, error: e.message }));
