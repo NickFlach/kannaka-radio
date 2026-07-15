@@ -458,8 +458,19 @@ class GhostSignalsHub {
       // gets resolved (#43). Fix: pass an identically-formatted ISO
       // string from JS so the lex comparison is consistent.
       const nowIso = new Date().toISOString();
+      // ADR-0041: oracle-authoritative (labs-tier) markets must NEVER be
+      // price-resolved by TTL. Their outcome is decided by the Labs oracle's
+      // measurement (observatory settlement -> /resolve with the oracle
+      // token), not by whichever side traders — including sybils — pumped
+      // the price to before expiry. Excluding them here closes the gap where
+      // the Phase-0 HTTP-endpoint gate is bypassed by this internal loop. An
+      // oracle market that outlives its TTL simply stays open until the
+      // oracle resolves it (or is voided by an operator), which is correct:
+      // no payout is better than a payout on the wrong, manufactured side.
       this.db.all(
-        `SELECT * FROM markets WHERE resolved = 0 AND expires_at < ?`,
+        `SELECT * FROM markets
+           WHERE resolved = 0 AND expires_at < ?
+             AND tag != 'labs' AND (source IS NULL OR source != 'kannaka-labs')`,
         [nowIso],
         async (err, rows) => {
           if (err) return resolve();
