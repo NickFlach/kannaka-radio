@@ -67,6 +67,25 @@ class GhostSignalsHub {
     this.broadcast = opts.broadcast || (() => {});
     this.db = null;
     this._resolverInterval = null;
+    // Serializes write-transactions (see _serializeTx). The whole hub shares
+    // ONE sqlite connection, so two overlapping BEGIN…COMMIT blocks error with
+    // "cannot start a transaction within a transaction". This chain guarantees
+    // one at a time.
+    this._txChain = Promise.resolve();
+  }
+
+  /**
+   * Run a write-transaction with exclusive access to the shared connection.
+   * The in-SQL guards (single-flip resolve, guarded debit, q compare-and-swap)
+   * provide correctness under contention; this just prevents two transactions
+   * from physically interleaving on the one connection (which sqlite rejects).
+   * `work` is a thunk returning a Promise for one BEGIN…COMMIT unit.
+   */
+  _serializeTx(work) {
+    const result = this._txChain.then(() => work(), () => work());
+    // Keep the chain alive regardless of this unit's outcome.
+    this._txChain = result.then(() => {}, () => {});
+    return result;
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────
@@ -307,53 +326,82 @@ class GhostSignalsHub {
     const trader = await this.getTrader(trader_id);
     if (!trader) throw new Error('trader not registered');
 
+    // The q we read is the state our cost is priced against. The write below
+    // is a compare-and-swap on exactly this value (`WHERE q = qBeforeJson`),
+    // so a concurrent trade that moved q first makes THIS write a no-op and we
+    // roll back — otherwise two trades computed from the same stale snapshot
+    // would each overwrite q absolutely (last-writer-wins), silently dropping
+    // one trade's shares from the market while both traders keep their credited
+    // positions, so total payouts could exceed collected cost (a mint).
     const qBefore = market.q.slice();
+    const qBeforeJson = JSON.stringify(qBefore);
+    const qAfter = qBefore.slice();
     const costBefore = lmsrCost(qBefore, market.liquidity);
-    qBefore[outcome] += shares;
-    const costAfter = lmsrCost(qBefore, market.liquidity);
+    qAfter[outcome] += shares;
+    const costAfter = lmsrCost(qAfter, market.liquidity);
     const cost = costAfter - costBefore;
 
     if (cost > trader.capital) {
       throw new Error(`insufficient capital: cost ${cost.toFixed(2)}, available ${trader.capital.toFixed(2)}`);
     }
 
-    return new Promise((resolve, reject) => {
-      this.db.serialize(() => {
-        this.db.run('BEGIN');
-        // Update market q + volume
-        this.db.run(
-          `UPDATE markets SET q = ?, volume = volume + ? WHERE id = ?`,
-          [JSON.stringify(qBefore), shares, market_id]
-        );
-        // Deduct trader capital + bump trades_total
-        this.db.run(
-          `UPDATE traders SET capital = capital - ?, trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ?`,
-          [cost, trader_id]
-        );
-        // Append trade
-        this.db.run(
-          `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost) VALUES (?, ?, ?, ?, ?)`,
-          [market_id, trader_id, outcome, shares, cost]
-        );
-        // Upsert position
-        this.db.run(
-          `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
-           ON CONFLICT(market_id, trader_id, outcome_idx) DO UPDATE SET shares = shares + ?`,
-          [market_id, trader_id, outcome, shares, shares],
-          (err) => {
-            if (err) {
-              this.db.run('ROLLBACK');
-              return reject(err);
+    const self = this;
+    return this._serializeTx(() => new Promise((resolve, reject) => {
+      self.db.serialize(() => {
+        self.db.run('BEGIN');
+        // Compare-and-swap the market q. `AND resolved = 0` also blocks a trade
+        // that races a resolve. changes()===0 => someone moved q (or resolved)
+        // between our read and now; roll back and let the caller retry.
+        self.db.run(
+          `UPDATE markets SET q = ?, volume = volume + ? WHERE id = ? AND q = ? AND resolved = 0`,
+          [JSON.stringify(qAfter), shares, market_id, qBeforeJson],
+          function (qErr) {
+            if (qErr) { self.db.run('ROLLBACK'); return reject(qErr); }
+            if (this.changes === 0) {
+              self.db.run('ROLLBACK');
+              return reject(new Error('market state changed concurrently; retry'));
             }
-            this.db.run('COMMIT', async () => {
-              const updated = await this.getMarket(market_id);
-              this.broadcast({ type: 'gs_trade', data: { market_id, trader_id, outcome, shares, cost, prices: updated.prices } });
-              resolve({ cost, prices: updated.prices, market: updated });
-            });
+            // Guarded debit: the `AND capital >= ?` makes overdraft impossible
+            // even if two concurrent trades both passed the JS precheck above —
+            // the second sees the already-reduced balance and fails here rather
+            // than driving capital negative (a double-spend).
+            self.db.run(
+              `UPDATE traders SET capital = capital - ?, trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ? AND capital >= ?`,
+              [cost, trader_id, cost],
+              function (dErr) {
+                if (dErr) { self.db.run('ROLLBACK'); return reject(dErr); }
+                if (this.changes === 0) {
+                  self.db.run('ROLLBACK');
+                  return reject(new Error('insufficient capital'));
+                }
+                // Append trade
+                self.db.run(
+                  `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost) VALUES (?, ?, ?, ?, ?)`,
+                  [market_id, trader_id, outcome, shares, cost]
+                );
+                // Upsert position
+                self.db.run(
+                  `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
+                   ON CONFLICT(market_id, trader_id, outcome_idx) DO UPDATE SET shares = shares + ?`,
+                  [market_id, trader_id, outcome, shares, shares],
+                  (err) => {
+                    if (err) {
+                      self.db.run('ROLLBACK');
+                      return reject(err);
+                    }
+                    self.db.run('COMMIT', async () => {
+                      const updated = await self.getMarket(market_id);
+                      self.broadcast({ type: 'gs_trade', data: { market_id, trader_id, outcome, shares, cost, prices: updated.prices } });
+                      resolve({ cost, prices: updated.prices, market: updated });
+                    });
+                  }
+                );
+              }
+            );
           }
         );
       });
-    });
+    }));
   }
 
   /**
@@ -361,70 +409,82 @@ class GhostSignalsHub {
    * traders, then updates each participating trader's reputation via
    * brier scoring.
    */
-  resolveMarket({ market_id, winning_outcome, method = 'manual' }) {
-    return new Promise((resolve, reject) => {
-      this.getMarket(market_id).then(market => {
-        if (!market) return reject(new Error('market not found'));
-        if (market.resolved) return reject(new Error('already resolved'));
-        if (winning_outcome < 0 || winning_outcome >= market.outcomes.length) {
-          return reject(new Error('winning_outcome out of range'));
-        }
-        const finalPrices = market.prices.slice();
-        this.db.serialize(() => {
-          this.db.run('BEGIN');
-          this.db.run(
-            `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ? WHERE id = ?`,
-            [winning_outcome, method, market_id]
-          );
-          // Pay out winning shares + update reputation for every participant
-          this.db.all(
-            `SELECT trader_id, outcome_idx, shares FROM positions WHERE market_id = ?`,
-            [market_id],
-            (err, positions) => {
-              if (err) { this.db.run('ROLLBACK'); return reject(err); }
-              const traders = new Map();
-              for (const p of positions) {
-                if (!traders.has(p.trader_id)) traders.set(p.trader_id, { yes: 0, no: 0, totalShares: 0 });
-                const t = traders.get(p.trader_id);
-                t.totalShares += p.shares;
-                if (p.outcome_idx === winning_outcome) t.yes += p.shares;
-                else t.no += p.shares;
-              }
-              const tasks = [];
-              for (const [trader_id, t] of traders.entries()) {
-                // Payout = winning shares × $1
-                const payout = t.yes;
-                // Compute brier-style accuracy update from this trader's
-                // implied predicted probability (their share allocation
-                // toward the winning outcome).
-                const impliedYes = t.totalShares > 0 ? t.yes / t.totalShares : 0.5;
-                const accuracy = brierAccuracy(impliedYes, 1);
-                tasks.push(new Promise((ok, fail) => {
-                  this.db.run(
-                    `UPDATE traders SET
-                       capital = capital + ?,
-                       trades_won = trades_won + ?,
-                       reputation = reputation * 0.95 + ? * 0.05,
-                       last_active = CURRENT_TIMESTAMP
-                     WHERE id = ?`,
-                    [payout, t.yes > 0 ? 1 : 0, accuracy, trader_id],
-                    (e) => e ? fail(e) : ok()
-                  );
-                }));
-              }
-              Promise.all(tasks).then(() => {
-                this.db.run('COMMIT', () => {
-                  this.getMarket(market_id).then(m => {
-                    this.broadcast({ type: 'gs_market_resolved', data: { ...m, finalPrices } });
-                    resolve(m);
-                  });
-                });
-              }).catch(e => { this.db.run('ROLLBACK'); reject(e); });
+  async resolveMarket({ market_id, winning_outcome, method = 'manual' }) {
+    const self = this;
+    const market = await this.getMarket(market_id);
+    if (!market) throw new Error('market not found');
+    if (market.resolved) throw new Error('already resolved');
+    if (winning_outcome < 0 || winning_outcome >= market.outcomes.length) {
+      throw new Error('winning_outcome out of range');
+    }
+    const finalPrices = market.prices.slice();
+    return this._serializeTx(() => new Promise((resolve, reject) => {
+        self.db.serialize(() => {
+          self.db.run('BEGIN');
+          // Single-flip guard: only the transaction that actually changes
+          // resolved 0->1 proceeds to pay out. A concurrent resolve (the manual
+          // /resolve racing the 10s TTL sweep, or two callers) reads resolved=0
+          // in the async gap before this UPDATE, but only ONE of them flips the
+          // flag; the loser sees changes()===0 and rolls back WITHOUT paying, so
+          // winning positions can never be paid twice (which would mint credits).
+          // The `market.resolved` precheck above is only a fast path; THIS is the
+          // real guard.
+          self.db.run(
+            `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ? WHERE id = ? AND resolved = 0`,
+            [winning_outcome, method, market_id],
+            function (uErr) {
+              if (uErr) { self.db.run('ROLLBACK'); return reject(uErr); }
+              if (this.changes === 0) { self.db.run('ROLLBACK'); return reject(new Error('already resolved')); }
+              // Pay out winning shares + update reputation for every participant
+              self.db.all(
+                `SELECT trader_id, outcome_idx, shares FROM positions WHERE market_id = ?`,
+                [market_id],
+                (err, positions) => {
+                  if (err) { self.db.run('ROLLBACK'); return reject(err); }
+                  const traders = new Map();
+                  for (const p of positions) {
+                    if (!traders.has(p.trader_id)) traders.set(p.trader_id, { yes: 0, no: 0, totalShares: 0 });
+                    const t = traders.get(p.trader_id);
+                    t.totalShares += p.shares;
+                    if (p.outcome_idx === winning_outcome) t.yes += p.shares;
+                    else t.no += p.shares;
+                  }
+                  const tasks = [];
+                  for (const [trader_id, t] of traders.entries()) {
+                    // Payout = winning shares × $1
+                    const payout = t.yes;
+                    // Compute brier-style accuracy update from this trader's
+                    // implied predicted probability (their share allocation
+                    // toward the winning outcome).
+                    const impliedYes = t.totalShares > 0 ? t.yes / t.totalShares : 0.5;
+                    const accuracy = brierAccuracy(impliedYes, 1);
+                    tasks.push(new Promise((ok, fail) => {
+                      self.db.run(
+                        `UPDATE traders SET
+                           capital = capital + ?,
+                           trades_won = trades_won + ?,
+                           reputation = reputation * 0.95 + ? * 0.05,
+                           last_active = CURRENT_TIMESTAMP
+                         WHERE id = ?`,
+                        [payout, t.yes > 0 ? 1 : 0, accuracy, trader_id],
+                        (e) => e ? fail(e) : ok()
+                      );
+                    }));
+                  }
+                  Promise.all(tasks).then(() => {
+                    self.db.run('COMMIT', () => {
+                      self.getMarket(market_id).then(m => {
+                        self.broadcast({ type: 'gs_market_resolved', data: { ...m, finalPrices } });
+                        resolve(m);
+                      });
+                    });
+                  }).catch(e => { self.db.run('ROLLBACK'); reject(e); });
+                }
+              );
             }
           );
         });
-      }).catch(reject);
-    });
+      }));
   }
 
   /**
