@@ -102,7 +102,39 @@ async function main() {
     assert.strictEqual(called, false, 'BLOCKER: labs market created without a token');
   }
 
-  console.log('market-auth-gate.test.js: OK (capless resolve/labs-create denied; oracle token reaches the hub)');
+  // 5. labs-tier TRADE without a KAX token -> 401, placeTrade never called.
+  //    (verifyKaxToken short-circuits on a missing bearer — no network needed.)
+  {
+    let traded = false;
+    const handler = makeHandler({
+      getMarket: async () => ({ id: 'm_labs', tag: 'labs', source: 'kannaka-labs', outcomes: ['Yes', 'No'] }),
+      placeTrade: async () => { traded = true; return { cost: 1 }; },
+      registerTrader: async () => ({}),
+    });
+    const req = mockReq('POST', '/api/markets/m_labs/trade', {}, JSON.stringify({ trader_id: 'sybil', outcome: 0, shares: 5 }));
+    const res = mockRes();
+    await handler(req, res); await res.done;
+    assert.strictEqual(res.statusCode, 401, `no-token labs trade should be 401, got ${res.statusCode}`);
+    assert.strictEqual(traded, false, 'BLOCKER: labs-tier trade placed without a KAX identity');
+  }
+
+  // 6. play-tier TRADE without a token -> unchanged: reaches the hub with the
+  //    body-supplied trader id (open play tier is intentionally anonymous).
+  {
+    let seenTraderId = null;
+    const handler = makeHandler({
+      getMarket: async () => ({ id: 'm_play', tag: 'custom', source: 'system', outcomes: ['Yes', 'No'] }),
+      placeTrade: async (args) => { seenTraderId = args.trader_id; return { cost: 1, prices: [0.5, 0.5] }; },
+      registerTrader: async () => ({}),
+    });
+    const req = mockReq('POST', '/api/markets/m_play/trade', {}, JSON.stringify({ trader_id: 'anon-player', outcome: 0, shares: 5 }));
+    const res = mockRes();
+    await handler(req, res); await res.done;
+    assert.strictEqual(res.statusCode, 200, `play-tier trade should be 200, got ${res.statusCode}`);
+    assert.strictEqual(seenTraderId, 'anon-player', 'play-tier trade must keep its anonymous body trader id');
+  }
+
+  console.log('market-auth-gate.test.js: OK (capless resolve/labs-create/labs-trade denied; play trade open; oracle token reaches the hub)');
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

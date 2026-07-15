@@ -10,6 +10,7 @@ const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
 const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
 const { handleAgentRequest, attachNatsClient } = require("./agent-endpoint");
+const { verifyKaxToken, traderIdFromClaims } = require("./kax-identity");
 
 // Delete-token check (#69). If RADIO_DELETE_TOKEN is set, compare the
 // supplied password against it (constant-time when lengths match). If
@@ -984,9 +985,32 @@ module.exports = function setupRoutes(deps) {
       }
       const tradeMatch = parsed.pathname.match(/^\/api\/markets\/(m_[\w-]+)\/trade$/);
       if (tradeMatch && req.method === "POST") {
-        readJson().then(body => gsHub.placeTrade({ ...body, market_id: tradeMatch[1] }))
-          .then(r => sendJson(200, { ok: true, ...r }))
-          .catch(e => sendJson(400, { ok: false, error: e.message }));
+        // ADR-0041 Phase 1: labs-tier (oracle-authoritative) markets require a
+        // verified KAX identity to trade, and the trader id is DERIVED from the
+        // token — never taken from the request body. This closes the sybil /
+        // grief / impersonation hole (self-registered `trader_id` strings) on
+        // exactly the markets whose price is cited as signal. Open play-tier
+        // markets are unchanged: anonymous, body-supplied trader id.
+        (async () => {
+          const body = await readJson();
+          const market = await gsHub.getMarket(tradeMatch[1]);
+          if (!market) { sendJson(404, { ok: false, error: "market not found" }); return; }
+          const labsTier = market.tag === "labs" || market.source === "kannaka-labs";
+          let traderId = body.trader_id;
+          if (labsTier) {
+            const v = await verifyKaxToken(req.headers["authorization"]);
+            if (!v.ok) {
+              sendJson(401, { ok: false, error: `labs-tier trading requires a KAX identity token: ${v.error}` });
+              return;
+            }
+            traderId = traderIdFromClaims(v.claims);
+            // Auto-register the authenticated trader on first trade so callers
+            // don't need a separate registration step.
+            await gsHub.registerTrader({ id: traderId, display_name: traderId, kind: v.claims.kind });
+          }
+          const r = await gsHub.placeTrade({ ...body, trader_id: traderId, market_id: tradeMatch[1] });
+          sendJson(200, { ok: true, ...r });
+        })().catch(e => sendJson(400, { ok: false, error: e.message }));
         return;
       }
       const resolveMatch = parsed.pathname.match(/^\/api\/markets\/(m_[\w-]+)\/resolve$/);

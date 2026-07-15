@@ -5,15 +5,23 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js && node test/icecast-source.test.js && node test/routes-discoverability.test.js && node test/portability-paths.test.js && node test/ghostsignals-ttl-authority.test.js && node test/ghostsignals-ledger-safety.test.js && node test/market-auth-gate.test.js"
+    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js && node test/icecast-source.test.js && node test/routes-discoverability.test.js && node test/portability-paths.test.js && node test/ghostsignals-ttl-authority.test.js && node test/ghostsignals-ledger-safety.test.js && node test/market-auth-gate.test.js && node test/kax-identity.test.js"
   },
   "dependencies": {
+    "jose": "^6.2.3",
     "ws": "^8.18.0"
   },
   "optionalDependencies": {
     "sqlite3": "^5.1.7"
   },
-  "keywords": ["radio", "perception", "ghost", "music", "ai", "consciousness"],
+  "keywords": [
+    "radio",
+    "perception",
+    "ghost",
+    "music",
+    "ai",
+    "consciousness"
+  ],
   "author": "Kannaka",
   "license": "Space Child License v1.0"
 }
