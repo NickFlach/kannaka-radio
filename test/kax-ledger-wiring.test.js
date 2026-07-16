@@ -136,6 +136,19 @@ async function run() {
   assert.ok(!p.body.winners.some((w) => w.principal === bob), 'Bob (outcome 1) is not paid');
   console.log(`ok  batched payout (1 tx, ${p.body.winners.length} winner(s), residual ${p.body.residual})`);
 
+  // 3b) Upset market: resolve to a side NOBODY bought → no winners, but the full
+  //     pool (subsidy + losers' stakes) must be swept to house, not stranded.
+  const m2 = await hub.createMarket({ question: 'upset', outcomes: ['Yes', 'No'], ttl_sec: 3600, tag: 'labs', source: 'kannaka-labs' });
+  await hub.placeTrade({ market_id: m2.id, trader_id: alice, outcome: 0, shares: 4 }); // all on outcome 0
+  const pool2 = led.bal(`amm:${m2.id}`);
+  assert.ok(pool2 > 0n, 'upset pool funded');
+  const houseBefore = led.bal('house');
+  await hub.resolveMarket({ market_id: m2.id, winning_outcome: 1, method: 'manual' }); // outcome 1 wins — nobody holds it
+  assert.strictEqual(led.bal(`amm:${m2.id}`), 0n, 'upset pool fully swept (not stranded)');
+  assert.strictEqual(led.bal('house') - houseBefore, pool2, 'full pool returned to house');
+  assert.strictEqual((await hub.getMarket(m2.id)).state, 'settled', 'upset market settled');
+  console.log(`ok  upset market swept to house (${pool2} minor, no winners)`);
+
   // 4) Conservation: every posting summed to zero, so Σ all balances == 0, and
   //    the pool never went negative.
   let total = 0n;

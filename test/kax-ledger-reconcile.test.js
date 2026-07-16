@@ -14,6 +14,9 @@ process.env.KAX_LEDGER_BASE = 'http://kax.test';
 process.env.KAX_LEDGER_MINT_TOKEN = 'mint-tok';
 process.env.KAX_LEDGER_TRADE_TOKEN = 'trade-tok';
 process.env.KAX_SERVICE_TOKEN = 'read-tok';
+// No grace window in the test so a just-journaled orphan is reconciled at once
+// (in prod the grace period protects live in-flight trades from false refunds).
+process.env.KAX_RECONCILE_GRACE_MS = '0';
 
 const { GhostSignalsHub } = require('../server/ghostsignals-hub');
 const kax = require('../server/kax-ledger');
@@ -62,6 +65,8 @@ function makeFakeLedger() {
     }
     // POST writes
     const body = JSON.parse(opts.body);
+    // Optional gate: block a trade POST mid-flight (to test the reconcile race).
+    if (u.pathname === '/api/ledger/trade' && led.tradeGate) await led.tradeGate;
     let postings = null;
     if (u.pathname === '/api/ledger/escrow') postings = [{ account: 'house', amount: -S(body.amount) }, { account: `amm:${body.marketId}`, amount: S(body.amount) }];
     else if (u.pathname === '/api/ledger/grant') postings = [{ account: 'house', amount: -S(body.amount) }, { account: `trader:${body.principal}`, amount: S(body.amount) }];
@@ -69,6 +74,11 @@ function makeFakeLedger() {
       postings = body.side === 'sell'
         ? [{ account: `amm:${body.marketId}`, amount: -S(body.amount) }, { account: `trader:${body.principal}`, amount: S(body.amount) }]
         : [{ account: `trader:${body.principal}`, amount: -S(body.amount) }, { account: `amm:${body.marketId}`, amount: S(body.amount) }];
+    } else if (u.pathname === '/api/ledger/payout') {
+      const total = (body.winners || []).reduce((a, w) => a + S(w.amount), 0n) + S(body.residual || '0');
+      postings = [{ account: `amm:${body.marketId}`, amount: -total }];
+      for (const w of (body.winners || [])) postings.push({ account: `trader:${w.principal}`, amount: S(w.amount) });
+      if (S(body.residual || '0') > 0n) postings.push({ account: 'house', amount: S(body.residual) });
     }
     try {
       const r = apply(body.txId, postings);
@@ -135,6 +145,42 @@ async function run() {
   // A halted market rejects new trades.
   await assert.rejects(() => hub.placeTrade({ market_id: stuckId, trader_id: alice, outcome: 0, shares: 1 }), /not open/);
   console.log('ok  pool audit shortfall → halted + trading blocked');
+
+  // ── E) BLOCKER-1 regression: reconcile must NOT refund a LIVE in-flight trade.
+  //       Hold a trade's ledger POST open, fire reconcile() concurrently, then
+  //       release — the trade must complete and never be refunded. ────────────
+  const led2 = makeFakeLedger();
+  const hub2 = new GhostSignalsHub({ dbPath: tmpDbPath(), defaultLiquidity: 10 });
+  await hub2.init();
+  const carol = 'kax:agent:carol';
+  await hub2.registerTrader({ id: carol, display_name: 'Carol', kind: 'ai' });
+  await kax.grant({ principal: carol, amountMinor: '100000000', txId: 'grant:register:' + carol });
+  const mk = await hub2.createMarket({ question: 'race', outcomes: ['Y', 'N'], tag: 'labs', source: 'kannaka-labs' });
+  let releaseGate;
+  led2.tradeGate = new Promise((res) => { releaseGate = res; });
+  const tradeP = hub2.placeTrade({ market_id: mk.id, trader_id: carol, outcome: 0, shares: 3 }); // holds mutex on the gated POST
+  await new Promise((r) => setTimeout(r, 20)); // let it reach the gated POST
+  const reconcileP = hub2.reconcile();          // queues behind the market mutex
+  await new Promise((r) => setTimeout(r, 20));
+  releaseGate();                                // let the trade finish
+  await Promise.all([tradeP, reconcileP]);
+  const pk = await hub2._get(`SELECT state FROM pending_trades WHERE market_id = ?`, [mk.id]);
+  assert.strictEqual(pk.state, 'posted', 'in-flight trade committed, not refunded');
+  const refundLanded = (await kax.getTx(kax.txid.refund((await hub2._get(`SELECT tx_id FROM pending_trades WHERE market_id = ?`, [mk.id])).tx_id)));
+  assert.ok(refundLanded.ok && refundLanded.result.found === false, 'no refund was posted for the live trade');
+  console.log('ok  reconcile does NOT refund a live in-flight trade (blocker-1)');
+
+  // ── F) BLOCKER-2 regression: a payout that the client saw fail is re-driven
+  //       by reconcile until settled (funds not stranded). ─────────────────────
+  await hub2.placeTrade({ market_id: mk.id, trader_id: carol, outcome: 1, shares: 2 });
+  led2.mode = 'applyThenFail'; // payout lands on the ledger but client sees 5xx
+  await hub2.resolveMarket({ market_id: mk.id, winning_outcome: 0, method: 'manual' });
+  assert.strictEqual((await hub2.getMarket(mk.id)).state, 'resolving', 'failed payout leaves market resolving');
+  led2.mode = 'normal';
+  const repF = await hub2.reconcile();
+  assert.strictEqual((await hub2.getMarket(mk.id)).state, 'settled', 'reconcile settled the resolving market');
+  assert.ok(repF.resolves >= 1, 'payout reconcile pass acted');
+  console.log('ok  failed payout re-driven to settled (blocker-2)');
 
   console.log('\nPASSED kax-ledger-reconcile.test.js');
 }

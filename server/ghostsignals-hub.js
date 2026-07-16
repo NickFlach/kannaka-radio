@@ -598,23 +598,25 @@ class GhostSignalsHub {
   }
 
   // ── Ledger-path helpers (ADR-0041 PR 2) ─────────────────────────────
-  // Small promisified sqlite wrappers keep the money-path code readable; the
-  // shared-connection ordering guarantees still hold (calls queue in order, and
-  // _serializeTx prevents two BEGIN…COMMIT units from interleaving).
+  // Small promisified sqlite wrappers keep the money-path code readable.
   _run(sql, params = []) { return new Promise((res, rej) => this.db.run(sql, params, function (e) { e ? rej(e) : res(this); })); }
   _get(sql, params = []) { return new Promise((res, rej) => this.db.get(sql, params, (e, row) => e ? rej(e) : res(row))); }
   _all(sql, params = []) { return new Promise((res, rej) => this.db.all(sql, params, (e, rows) => e ? rej(e) : res(rows))); }
 
-  _setMarketState(id, state) { return this._run(`UPDATE markets SET state = ? WHERE id = ?`, [state, id]); }
+  // State-mutating single statements go through _serializeTx so they can never
+  // be dispatched onto the shared connection WHILE another unit's BEGIN…COMMIT
+  // is open (which would enlist them in that transaction and roll them back with
+  // it). Chaining them makes the write land in its own autocommit, in order.
+  _setMarketState(id, state) { return this._serializeTx(() => this._run(`UPDATE markets SET state = ? WHERE id = ?`, [state, id])); }
   _setPendingState(txId, state) {
-    return this._run(`UPDATE pending_trades SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE tx_id = ?`, [state, txId]);
+    return this._serializeTx(() => this._run(`UPDATE pending_trades SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE tx_id = ?`, [state, txId]));
   }
   _journalPending(r) {
-    return this._run(
+    return this._serializeTx(() => this._run(
       `INSERT INTO pending_trades (tx_id, market_id, trader_id, outcome_idx, shares, cost_minor, share_ticks, q_before, state)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [r.txId, r.market_id, r.trader_id, r.outcome, r.shares, r.costMinor, r.shareTicks, r.qBeforeJson, r.state],
-    );
+    ));
   }
 
   /**
@@ -637,6 +639,11 @@ class GhostSignalsHub {
       const qAfter = qBefore.slice();
       qAfter[outcome] += shares;
       const cost = lmsrCost(qAfter, m.liquidity) - lmsrCost(qBefore, m.liquidity);
+      // Bound the float→int multiply so cost/share minor units can't lose
+      // precision past 2^53 (a huge grant could otherwise corrupt the amounts).
+      if (shares * SHARE_TICK >= Number.MAX_SAFE_INTEGER || cost * kax.MINOR >= Number.MAX_SAFE_INTEGER) {
+        throw new Error('trade too large (would overflow minor-unit precision)');
+      }
       const costMinor = kax.tradeCostMinor(cost);           // ceil, rejects dust <= 0
       const shareTicks = Math.floor(shares * SHARE_TICK);    // floor — pool's favor
       if (!(shareTicks > 0)) throw new Error('shares round to zero ticks');
@@ -655,8 +662,9 @@ class GhostSignalsHub {
       }
 
       // 3) Shares AFTER money: q-CAS + audit-grade trade row + position, one tx.
-      //    Under the per-market mutex the CAS should never fail; if it does, the
-      //    debit already landed, so flag for refund reconciliation (PR 2c).
+      //    Under the per-market mutex the CAS normally holds; it CAN still miss
+      //    if the audit halted the market mid-flight (state flips off 'open') —
+      //    then the debit already landed, so flag for refund reconciliation.
       try {
         await this._commitLedgerTradeShares({ txId, market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson: JSON.stringify(qAfter), qBeforeJson });
       } catch (e) {
@@ -729,10 +737,11 @@ class GhostSignalsHub {
     const market_id = market.id;
     const finalPrices = market.prices.slice();
     return this._serializeMarket(market_id, async () => {
-      // Freeze — only the transaction that flips 0->1 proceeds.
+      // Freeze — only the transaction that flips 0->1 proceeds. state='resolving'
+      // hands the market to the payout reconciler until the payout is confirmed.
       const flip = await this._serializeTx(async () => {
         const u = await this._run(
-          `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ? WHERE id = ? AND resolved = 0`,
+          `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ?, state = 'resolving' WHERE id = ? AND resolved = 0`,
           [winning_outcome, method, market_id],
         );
         return u.changes;
@@ -740,30 +749,44 @@ class GhostSignalsHub {
       if (flip === 0) throw new Error('already resolved');
 
       // Trading is frozen. Compute + POST the batched payout (an HTTP call, so
-      // OUTSIDE any SQLite transaction).
-      const winners = await this._winningPayouts(market_id, winning_outcome);
-      const totalPayout = winners.reduce((a, w) => a + BigInt(w.amountMinor), 0n);
-      const poolValue = await this._poolValueMinor(market_id, market.subsidy_minor);
-      let residual = poolValue - totalPayout;
-      if (residual < 0n) {
-        // Should be impossible under pool-favor rounding. Never sweep-then-assert:
-        // alert, sweep nothing, and let the KAX overdraft guard 409 if truly short.
-        console.error(`gshub SOLVENCY ALERT market ${market_id}: payout ${totalPayout} > pool ${poolValue}`);
-        residual = 0n;
-      }
-      if (winners.length > 0) {
-        const r = await kax.payout({ marketId: market_id, winners, residualMinor: residual.toString(), ref: `resolve:${market_id}` });
-        if (!r.ok && r.definitive) {
-          console.error(`gshub payout rejected market ${market_id} (${r.status}): ${r.error} — frozen, awaiting reconciliation`);
-        } else if (!r.ok) {
-          console.error(`gshub payout ambiguous market ${market_id} (${r.status}): ${r.error} — will reconcile (idempotent resolve:${market_id})`);
-        }
-      }
+      // OUTSIDE any SQLite transaction). A failure leaves state='resolving' for
+      // _reconcilePendingResolve to re-post (idempotent resolve:<id>).
+      const { winners, residual } = await this._computePayout(market_id, winning_outcome, market.subsidy_minor);
+      const r = await this._postPayout(market_id, winners, residual);
+      if (r && r.ok) await this._setMarketState(market_id, 'settled');
       await this._updateLedgerReputation(market_id, winning_outcome).catch(() => {});
       const m = await this.getMarket(market_id);
       this.broadcast({ type: 'gs_market_resolved', data: { ...m, finalPrices, ledger: true } });
       return m;
     });
+  }
+
+  /** Winners + house residual for a resolved market (pool-favor; never negative). */
+  async _computePayout(market_id, winning_outcome, subsidy_minor) {
+    const winners = await this._winningPayouts(market_id, winning_outcome);
+    const totalPayout = winners.reduce((a, w) => a + BigInt(w.amountMinor), 0n);
+    const poolValue = await this._poolValueMinor(market_id, subsidy_minor);
+    let residual = poolValue - totalPayout;
+    if (residual < 0n) {
+      // Impossible under pool-favor rounding. Never sweep-then-assert: alert,
+      // sweep nothing, let the KAX overdraft guard 409 if the pool is truly short.
+      console.error(`gshub SOLVENCY ALERT market ${market_id}: payout ${totalPayout} > pool ${poolValue}`);
+      residual = 0n;
+    }
+    return { winners, residual };
+  }
+
+  /**
+   * Post the batched payout. ALWAYS settles the pool — even with zero winners we
+   * sweep the full residual (subsidy + losers' stakes) back to house, so an
+   * upset market can't strand its pool. Returns the client result (or a
+   * synthetic ok when there is genuinely nothing to move).
+   */
+  async _postPayout(market_id, winners, residual) {
+    if (winners.length === 0 && residual === 0n) return { ok: true, empty: true };
+    const r = await kax.payout({ marketId: market_id, winners, residualMinor: residual.toString(), ref: `resolve:${market_id}` });
+    if (!r.ok) console.error(`gshub payout ${r.definitive ? 'rejected' : 'ambiguous'} market ${market_id} (${r.status}): ${r.error}`);
+    return r;
   }
 
   /** Non-monetary reputation/accuracy update for a resolved ledger market. */
@@ -798,10 +821,11 @@ class GhostSignalsHub {
     if (!kax.tradeEnabled() || !kax.readEnabled()) return { skipped: true };
     if (this._reconciling) return { skipped: 'in-flight' };
     this._reconciling = true;
-    const report = { escrow: 0, trades: 0, audited: 0, alerts: 0 };
+    const report = { escrow: 0, trades: 0, resolves: 0, audited: 0, alerts: 0 };
     try {
       await this._reconcilePendingEscrow(report);
       await this._reconcilePendingTrades(report);
+      await this._reconcilePendingResolve(report);
       await this._auditOpenPools(report);
     } catch (e) {
       console.error('gshub reconcile error:', e.message);
@@ -838,28 +862,68 @@ class GhostSignalsHub {
    *   absent + committed  → impossible (we only commit after a 2xx) → alert
    */
   async _reconcilePendingTrades(report) {
+    // A freshly-'posting' row is a LIVE trade mid-flight, not a crash orphan. We
+    // must NOT refund it: its shares may be about to commit, which would leave a
+    // paid-for position with a reversed debit (a mint). Two guards:
+    //  (a) grace window — skip 'posting' rows younger than the grace period (an
+    //      in-flight trade completes well inside it); and
+    //  (b) per-market mutex — process each row UNDER _serializeMarket so it
+    //      queues behind any live trade for that market and re-reads the now-
+    //      terminal state instead of racing it.
+    const graceMs = Number(process.env.KAX_RECONCILE_GRACE_MS ?? 2 * Number(process.env.KAX_LEDGER_TIMEOUT_MS || 8000));
     const rows = await this._all(
-      `SELECT tx_id, market_id, trader_id, outcome_idx, cost_minor FROM pending_trades
-        WHERE state IN ('posting', 'reconcile', 'refund')`,
+      `SELECT tx_id, market_id, trader_id, outcome_idx, cost_minor, state,
+              (julianday('now') - julianday(updated_at)) * 86400000 AS age_ms
+         FROM pending_trades WHERE state IN ('posting', 'reconcile', 'refund')`,
     );
     for (const p of rows) {
-      const g = await kax.getTx(p.tx_id);
-      if (!(g.ok && g.result)) continue; // read ambiguous → next cycle
-      const landed = g.result.found === true;
-      const absent = g.result.found === false;
-      const committed = !!(await this._get(`SELECT 1 AS x FROM trades WHERE tx_id = ? LIMIT 1`, [p.tx_id]));
+      if (p.state === 'posting' && p.age_ms < graceMs) continue; // live trade — leave to its owner
+      await this._serializeMarket(p.market_id, async () => {
+        // Re-read under the mutex: the owning trade may have finished while we queued.
+        const cur = await this._get(`SELECT state FROM pending_trades WHERE tx_id = ?`, [p.tx_id]);
+        if (!cur || !['posting', 'reconcile', 'refund'].includes(cur.state)) return; // already terminal
+        const g = await kax.getTx(p.tx_id);
+        if (!(g.ok && g.result)) return; // read ambiguous → next cycle
+        const landed = g.result.found === true;
+        const absent = g.result.found === false;
+        const committed = !!(await this._get(`SELECT 1 AS x FROM trades WHERE tx_id = ? LIMIT 1`, [p.tx_id]));
 
-      if (landed && committed) { await this._setPendingState(p.tx_id, 'posted'); report.trades++; continue; }
-      if (absent && !committed) { await this._setPendingState(p.tx_id, 'failed'); report.trades++; continue; }
-      if (landed && !committed) {
-        // Reverse the orphaned debit: a 'sell' of the same cost moves amm→trader.
-        const principal = kax.principalFor(p.trader_id);
-        const r = await kax.trade({ txId: kax.txid.refund(p.tx_id), principal, marketId: p.market_id, amountMinor: p.cost_minor, side: 'sell', ref: `refund:${p.tx_id}` });
-        if (r.ok) { await this._setPendingState(p.tx_id, 'refunded'); report.trades++; }
-        else if (r.definitive) { console.error(`gshub refund rejected ${p.tx_id}: ${r.error}`); }
-        continue;
-      }
-      if (absent && committed) { console.error(`gshub INCONSISTENCY ${p.tx_id}: shares committed but ledger has no debit`); report.alerts++; }
+        if (landed && committed) { await this._setPendingState(p.tx_id, 'posted'); report.trades++; return; }
+        if (absent && !committed) { await this._setPendingState(p.tx_id, 'failed'); report.trades++; return; }
+        if (landed && !committed) {
+          // Reverse the orphaned debit: a 'sell' of the same cost moves amm→trader.
+          const principal = kax.principalFor(p.trader_id);
+          const r = await kax.trade({ txId: kax.txid.refund(p.tx_id), principal, marketId: p.market_id, amountMinor: p.cost_minor, side: 'sell', ref: `refund:${p.tx_id}` });
+          if (r.ok) { await this._setPendingState(p.tx_id, 'refunded'); report.trades++; }
+          else if (r.definitive) { console.error(`gshub refund rejected ${p.tx_id}: ${r.error}`); }
+          return;
+        }
+        if (absent && committed) { console.error(`gshub INCONSISTENCY ${p.tx_id}: shares committed but ledger has no debit`); report.alerts++; }
+      });
+    }
+  }
+
+  /**
+   * Re-drive payouts for markets frozen at state='resolving' (their payout POST
+   * failed or was ambiguous). getTx(resolve:<id>) confirms landing; otherwise
+   * re-post the idempotent payout. Closes the window where winners' funds could
+   * be stranded in the pool after a failed settlement.
+   */
+  async _reconcilePendingResolve(report) {
+    const rows = await this._all(
+      `SELECT id, resolved_outcome, subsidy_minor FROM markets WHERE ledger_backed = 1 AND resolved = 1 AND state = 'resolving'`,
+    );
+    for (const row of rows) {
+      await this._serializeMarket(row.id, async () => {
+        const g = await kax.getTx(kax.txid.resolve(row.id));
+        if (g.ok && g.result && g.result.found === true) { await this._setMarketState(row.id, 'settled'); report.resolves++; return; }
+        if (g.ok && g.result && g.result.found === false) {
+          const { winners, residual } = await this._computePayout(row.id, row.resolved_outcome, row.subsidy_minor);
+          const r = await this._postPayout(row.id, winners, residual);
+          if (r && r.ok) { await this._setMarketState(row.id, 'settled'); report.resolves++; }
+        }
+        // getTx ambiguous → leave 'resolving' for next cycle.
+      });
     }
   }
 
@@ -871,16 +935,21 @@ class GhostSignalsHub {
    * shortfall, halt trading (placeTrade requires state='open') and alert.
    */
   async _auditOpenPools(report) {
-    const rows = await this._all(`SELECT id, subsidy_minor FROM markets WHERE ledger_backed = 1 AND state = 'open' AND resolved = 0`);
+    // Audit both 'open' (may need halting) and 'halted' (may recover) markets.
+    const rows = await this._all(`SELECT id, subsidy_minor, state FROM markets WHERE ledger_backed = 1 AND state IN ('open', 'halted') AND resolved = 0`);
     for (const row of rows) {
       const b = await kax.balance(`amm:${row.id}`);
       if (!b.ok) continue; // read failed — skip rather than false-alarm
       report.audited++;
       const expected = await this._poolValueMinor(row.id, row.subsidy_minor);
-      if (b.balance < expected) {
+      if (b.balance < expected && row.state === 'open') {
         console.error(`gshub POOL AUDIT SHORTFALL ${row.id}: ledger ${b.balance} < committed ${expected} — halting trading`);
         await this._setMarketState(row.id, 'halted');
         report.alerts++;
+      } else if (b.balance >= expected && row.state === 'halted') {
+        // Shortfall cleared (e.g. an orphaned debit was refunded) — resume trading.
+        console.error(`gshub POOL AUDIT RECOVERED ${row.id}: ledger ${b.balance} >= committed ${expected} — resuming trading`);
+        await this._setMarketState(row.id, 'open');
       }
     }
   }
