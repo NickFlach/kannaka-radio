@@ -112,6 +112,16 @@ class GhostSignalsHub {
   }
 
   /**
+   * True when `trader_id` is the principal that proposed this market's prediction
+   * (metadata.proposedBy, set by the observatory). Blocks the proposer from
+   * trading their own market. Inert on markets with no proposedBy.
+   */
+  _isSelfDeal(market, trader_id) {
+    const proposer = market && market.metadata && market.metadata.proposedBy;
+    return !!proposer && String(trader_id) === String(proposer);
+  }
+
+  /**
    * Run a write-transaction with exclusive access to the shared connection.
    * The in-SQL guards (single-flip resolve, guarded debit, q compare-and-swap)
    * provide correctness under contention; this just prevents two transactions
@@ -425,6 +435,15 @@ class GhostSignalsHub {
     if (outcome >= market.outcomes.length) throw new Error('outcome out of range');
     const trader = await this.getTrader(trader_id);
     if (!trader) throw new Error('trader not registered');
+
+    // Anti-self-dealing (ADR-0041): the trader who PROPOSED a prediction cannot
+    // trade on its paired market — they'd be betting on an outcome they can
+    // influence (and, for oracle-settled markets, front-run the reading). The
+    // proposer principal is carried in metadata.proposedBy by the observatory;
+    // it's absent on ordinary (non-labs) markets, so this is inert there.
+    if (this._isSelfDeal(market, trader_id)) {
+      throw new Error('self-dealing blocked: the proposer of a prediction may not trade on its market');
+    }
 
     // ADR-0041 PR 2: labs-tier ledger markets move real credits on KAX instead
     // of SQLite capital. Dormant unless the market was created ledger-backed.
