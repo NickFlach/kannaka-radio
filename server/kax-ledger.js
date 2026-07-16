@@ -209,6 +209,22 @@ async function getTx(txId) {
   return httpJson('GET', `/api/ledger/tx/${encodeURIComponent(txId)}`, c.readToken, null);
 }
 
+/**
+ * Derived balance (minor units) of an account for the audit — the pool-solvency
+ * check compares balance(amm:<m>) against subsidy + Σ cost_minor. Read surface.
+ * On a 2xx returns { ok:true, balance: bigint }; otherwise passes the httpJson
+ * result through (definitive/ambiguous) so a failed read never reads as zero.
+ */
+async function balance(account, asset) {
+  if (!readEnabled()) throw new Error('kax read surface not configured');
+  const c = cfg();
+  const r = await httpJson('GET', `/api/ledger/balance?account=${encodeURIComponent(account)}&asset=${encodeURIComponent(asset || c.asset)}`, c.readToken, null);
+  if (r.ok && r.result && typeof r.result.balance === 'string') {
+    return { ok: true, definitive: true, status: r.status, balance: BigInt(r.result.balance) };
+  }
+  return r;
+}
+
 module.exports = {
   MINOR,
   cfg,
@@ -232,4 +248,5 @@ module.exports = {
   trade,
   payout,
   getTx,
+  balance,
 };

@@ -195,6 +195,11 @@ class GhostSignalsHub {
         addCol(`ALTER TABLE markets ADD COLUMN ledger_backed INTEGER NOT NULL DEFAULT 0`);
         addCol(`ALTER TABLE trades ADD COLUMN cost_minor TEXT`);
         addCol(`ALTER TABLE trades ADD COLUMN share_ticks INTEGER`);
+        // tx_id correlates a committed trade row with its ledger debit, so the
+        // reconciler can tell "debit landed AND shares committed" (row exists)
+        // from "debit landed, shares did NOT commit" (needs refund).
+        addCol(`ALTER TABLE trades ADD COLUMN tx_id TEXT`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_trades_txid ON trades(tx_id)`);
         this.db.run(`CREATE TABLE IF NOT EXISTS pending_trades (
           tx_id TEXT PRIMARY KEY,
           market_id TEXT NOT NULL,
@@ -227,7 +232,14 @@ class GhostSignalsHub {
 
   startResolverLoop(intervalMs = 10000) {
     if (this._resolverInterval) return;
-    this._resolverInterval = setInterval(() => this._resolveExpiredMarkets().catch(() => {}), intervalMs);
+    // Boot crash-recovery pass for the ledger path (no-op when KAX unarmed).
+    this.reconcile().catch(() => {});
+    let tick = 0;
+    this._resolverInterval = setInterval(() => {
+      this._resolveExpiredMarkets().catch(() => {});
+      // Piggyback the ledger reconcile+audit every ~6th tick (≈60s by default).
+      if (++tick % 6 === 0) this.reconcile().catch(() => {});
+    }, intervalMs);
   }
 
   stopResolverLoop() {
@@ -646,7 +658,7 @@ class GhostSignalsHub {
       //    Under the per-market mutex the CAS should never fail; if it does, the
       //    debit already landed, so flag for refund reconciliation (PR 2c).
       try {
-        await this._commitLedgerTradeShares({ market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson: JSON.stringify(qAfter), qBeforeJson });
+        await this._commitLedgerTradeShares({ txId, market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson: JSON.stringify(qAfter), qBeforeJson });
       } catch (e) {
         await this._setPendingState(txId, 'refund');
         throw new Error(`shares commit failed after ledger debit (refund queued, tx ${txId}): ${e.message}`);
@@ -659,7 +671,7 @@ class GhostSignalsHub {
   }
 
   /** The SQLite side of a ledger trade: q-CAS + trade row + position. No capital. */
-  _commitLedgerTradeShares({ market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson, qBeforeJson }) {
+  _commitLedgerTradeShares({ txId, market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson, qBeforeJson }) {
     const self = this;
     return this._serializeTx(async () => {
       await self._run('BEGIN');
@@ -671,8 +683,8 @@ class GhostSignalsHub {
         if (q.changes === 0) throw new Error('market state changed concurrently (q-CAS)');
         await self._run(`UPDATE traders SET trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ?`, [trader_id]);
         await self._run(
-          `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost, cost_minor, share_ticks) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [market_id, trader_id, outcome, shares, cost, costMinor, shareTicks],
+          `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost, cost_minor, share_ticks, tx_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, txId],
         );
         await self._run(
           `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
@@ -771,6 +783,105 @@ class GhostSignalsHub {
         `UPDATE traders SET trades_won = trades_won + ?, reputation = reputation * 0.95 + ? * 0.05, last_active = CURRENT_TIMESTAMP WHERE id = ?`,
         [t.yes > 0 ? 1 : 0, accuracy, trader_id],
       );
+    }
+  }
+
+  // ── Reconciliation & solvency audit (ADR-0041 PR 2c) ────────────────
+  /**
+   * Crash-recovery + pool-solvency audit for the ledger path. Idempotent and
+   * safe to run repeatedly (once at boot + piggybacked on the resolver loop).
+   * A no-op when the KAX surfaces aren't armed, so dev is unaffected. Runs the
+   * three passes in order: escrow (open funded markets), trades (settle/refund
+   * ambiguous debits) THEN the audit (so transient debits are resolved first).
+   */
+  async reconcile() {
+    if (!kax.tradeEnabled() || !kax.readEnabled()) return { skipped: true };
+    if (this._reconciling) return { skipped: 'in-flight' };
+    this._reconciling = true;
+    const report = { escrow: 0, trades: 0, audited: 0, alerts: 0 };
+    try {
+      await this._reconcilePendingEscrow(report);
+      await this._reconcilePendingTrades(report);
+      await this._auditOpenPools(report);
+    } catch (e) {
+      console.error('gshub reconcile error:', e.message);
+    } finally {
+      this._reconciling = false;
+    }
+    return report;
+  }
+
+  /** Open markets whose escrow actually landed; retry (idempotent) the absent ones. */
+  async _reconcilePendingEscrow(report) {
+    const rows = await this._all(`SELECT id, subsidy_minor FROM markets WHERE ledger_backed = 1 AND state = 'pending_escrow'`);
+    for (const row of rows) {
+      const g = await kax.getTx(kax.txid.escrow(row.id));
+      if (g.ok && g.result && g.result.found === true) { await this._setMarketState(row.id, 'open'); report.escrow++; continue; }
+      if (g.ok && g.result && g.result.found === false) {
+        // Definitively absent → retry the idempotent escrow.
+        try {
+          const r = await kax.escrow({ marketId: row.id, subsidyMinor: row.subsidy_minor, ref: `market:${row.id}` });
+          if (r.ok) { await this._setMarketState(row.id, 'open'); report.escrow++; }
+          else if (r.definitive) { await this._setMarketState(row.id, 'voided'); }
+        } catch (_) { /* ambiguous send — leave for next cycle */ }
+      }
+      // getTx ambiguous → leave pending for next cycle.
+    }
+  }
+
+  /**
+   * Settle ambiguous / crashed trades using the ledger as the source of truth.
+   * tx_id on the committed trade row lets us distinguish the four cases exactly:
+   *   landed + committed  → mark posted (the state update was what crashed)
+   *   absent + !committed → mark failed  (no money moved)
+   *   landed + !committed → REFUND (reverse the debit via a same-cost 'sell')
+   *   absent + committed  → impossible (we only commit after a 2xx) → alert
+   */
+  async _reconcilePendingTrades(report) {
+    const rows = await this._all(
+      `SELECT tx_id, market_id, trader_id, outcome_idx, cost_minor FROM pending_trades
+        WHERE state IN ('posting', 'reconcile', 'refund')`,
+    );
+    for (const p of rows) {
+      const g = await kax.getTx(p.tx_id);
+      if (!(g.ok && g.result)) continue; // read ambiguous → next cycle
+      const landed = g.result.found === true;
+      const absent = g.result.found === false;
+      const committed = !!(await this._get(`SELECT 1 AS x FROM trades WHERE tx_id = ? LIMIT 1`, [p.tx_id]));
+
+      if (landed && committed) { await this._setPendingState(p.tx_id, 'posted'); report.trades++; continue; }
+      if (absent && !committed) { await this._setPendingState(p.tx_id, 'failed'); report.trades++; continue; }
+      if (landed && !committed) {
+        // Reverse the orphaned debit: a 'sell' of the same cost moves amm→trader.
+        const principal = kax.principalFor(p.trader_id);
+        const r = await kax.trade({ txId: kax.txid.refund(p.tx_id), principal, marketId: p.market_id, amountMinor: p.cost_minor, side: 'sell', ref: `refund:${p.tx_id}` });
+        if (r.ok) { await this._setPendingState(p.tx_id, 'refunded'); report.trades++; }
+        else if (r.definitive) { console.error(`gshub refund rejected ${p.tx_id}: ${r.error}`); }
+        continue;
+      }
+      if (absent && committed) { console.error(`gshub INCONSISTENCY ${p.tx_id}: shares committed but ledger has no debit`); report.alerts++; }
+    }
+  }
+
+  /**
+   * Solvency audit: each open ledger market's pool must hold AT LEAST what its
+   * committed trades funded (subsidy + Σ committed cost_minor). Only UNDER-
+   * funding is dangerous (can't cover payouts); an over-funded pool is a benign
+   * in-flight / pending-refund transient, so we never false-alarm on it. On a
+   * shortfall, halt trading (placeTrade requires state='open') and alert.
+   */
+  async _auditOpenPools(report) {
+    const rows = await this._all(`SELECT id, subsidy_minor FROM markets WHERE ledger_backed = 1 AND state = 'open' AND resolved = 0`);
+    for (const row of rows) {
+      const b = await kax.balance(`amm:${row.id}`);
+      if (!b.ok) continue; // read failed — skip rather than false-alarm
+      report.audited++;
+      const expected = await this._poolValueMinor(row.id, row.subsidy_minor);
+      if (b.balance < expected) {
+        console.error(`gshub POOL AUDIT SHORTFALL ${row.id}: ledger ${b.balance} < committed ${expected} — halting trading`);
+        await this._setMarketState(row.id, 'halted');
+        report.alerts++;
+      }
     }
   }
 

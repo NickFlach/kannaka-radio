@@ -5,7 +5,7 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js && node test/icecast-source.test.js && node test/routes-discoverability.test.js && node test/portability-paths.test.js && node test/ghostsignals-ttl-authority.test.js && node test/ghostsignals-ledger-safety.test.js && node test/market-auth-gate.test.js && node test/kax-ledger.test.js && node test/kax-ledger-wiring.test.js"
+    "test": "node test/test-queensync-dj.js && node test/perception.test.js && node test/dj-engine.test.js && node test/nats-metrics-sync.test.js && node test/consciousness-dj-hrm.test.js && node test/icecast-source.test.js && node test/routes-discoverability.test.js && node test/portability-paths.test.js && node test/ghostsignals-ttl-authority.test.js && node test/ghostsignals-ledger-safety.test.js && node test/market-auth-gate.test.js && node test/kax-ledger.test.js && node test/kax-ledger-wiring.test.js && node test/kax-ledger-reconcile.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
