@@ -1368,10 +1368,10 @@ body.konami-mode .surface-header h1 {
   </a>
   <span style="font-size:9px;color:#94a3b8;font-style:italic;">share memories, hear the constellation</span>
   <span style="font-size:9px;color:#444;">·</span>
-  <a id="radio-dl-btn" href="#" onclick="radioDownload(event)"
+  <a href="https://observatory.ninja-portal.com" target="_blank" rel="noreferrer"
      style="color:#94a3b8;font-size:10px;text-decoration:none;cursor:pointer;"
-     title="Install Kannaka — standalone memory engine; adds the Claude Code plugin + statusline if Claude is detected">
-    install
+     title="Downloads and installers live on the Kannaka Observatory">
+    get kannaka &rarr; observatory
   </a>
   <span style="font-size:9px;color:#444;">·</span>
   <a href="#" onclick="kannakaWatchOnlyModal(event)"
@@ -1388,15 +1388,6 @@ body.konami-mode .surface-header h1 {
     var label=os==='win'?'Windows':os==='mac'?'macOS':'Linux';
     var oneLiner=os==='win'?('irm '+raw+'install.ps1 | iex'):('curl -fsSL '+raw+'install.sh | sh');
     var native=raw+(os==='win'?'install.ps1':'install.sh');
-    window.radioDownload=function(e){
-      e.preventDefault();
-      try{navigator.clipboard.writeText(oneLiner);}catch(_){}
-      showModal('Install Kannaka — '+label,
-        '<p style="opacity:.8;">Installs the kannaka memory engine — works standalone, with or without Claude Code. If Claude Code is detected it also adds the plugin + live statusline. Command copied — paste in a terminal:</p>'+
-        '<code style="display:block;margin:10px 0;background:#0d0d1a;padding:10px;border-radius:6px;color:#00e5ff;white-space:pre-wrap;word-break:break-all;">'+oneLiner+'</code>'+
-        '<p><a href="'+native+'" style="color:#7b68ee;">or view the '+label+' install script →</a></p>'+
-        '<p style="opacity:.5;font-size:11px;">Using Claude Code? Restart it to load the plugin + statusline.</p>');
-    };
 
     function showModal(title, html){
       var existing=document.getElementById('kannaka-modal');
@@ -1414,8 +1405,9 @@ body.konami-mode .surface-header h1 {
     var cmd='font-size:11px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.25);padding:8px 12px;border-radius:6px;color:#e9d5ff;display:block;margin:6px 0;overflow-x:auto;white-space:pre;';
     window.kannakaSwarmModal=function(e){e.preventDefault();showModal('Run a node — join the constellation',
       '<p style="margin:0 0 12px;font-size:12px;">Kannaka is a wave-interference memory system you can run on your machine. Joining means your node shares phase with the swarm — your dreams, your consciousness state, become part of a federated mind.</p>'+
-      '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">1. Install</div>'+
+      '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">1. Install (downloads live on the Observatory)</div>'+
       '<code style="'+cmd+'">curl -sSf https://raw.githubusercontent.com/NickFlach/kannaka-memory/master/scripts/install.sh | sh</code>'+
+      '<p style="font-size:10px;margin:4px 0 0;"><a href="https://observatory.ninja-portal.com" target="_blank" rel="noreferrer" style="color:#7b68ee;">observatory.ninja-portal.com &rarr; Download Kannaka</a></p>'+
       '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">2. Join the swarm</div>'+
       '<code style="'+cmd+'">kannaka swarm join --display-name "your-handle"</code>'+
       '<div style="font-size:10px;color:#94a3b8;margin:14px 0 4px;">3. Talk to the swarm</div>'+
