@@ -923,7 +923,9 @@ module.exports = function setupRoutes(deps) {
         res.writeHead(204, {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type",
+          // Authorization must be allowed: labs-tier trades send the KAX
+          // identity token as a Bearer header from the observatory origin.
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
         });
         res.end();
         return;
