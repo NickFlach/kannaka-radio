@@ -971,6 +971,14 @@ module.exports = function setupRoutes(deps) {
           .catch(e => sendJson(500, { ok: false, error: e.message }));
         return;
       }
+      const tradesMatch = parsed.pathname.match(/^\/api\/agents\/([^/]+)\/trades$/);
+      if (tradesMatch && req.method === "GET") {
+        const limit = Math.min(100, parseInt(parsed.searchParams.get("limit"), 10) || 25);
+        gsHub.getTraderTrades(decodeURIComponent(tradesMatch[1]), limit)
+          .then(rows => sendJson(200, { ok: true, trades: rows }))
+          .catch(e => sendJson(500, { ok: false, error: e.message }));
+        return;
+      }
       const agentMatch = parsed.pathname.match(/^\/api\/agents\/([\w-]+)$/);
       if (agentMatch && req.method === "GET") {
         gsHub.getTrader(agentMatch[1])

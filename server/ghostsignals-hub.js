@@ -330,6 +330,36 @@ class GhostSignalsHub {
     });
   }
 
+  /** A trader's recent trades joined with market context (dashboard history). */
+  getTraderTrades(trader_id, limit = 25) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT t.market_id, t.outcome_idx, t.shares, t.cost, t.cost_minor, t.recorded_at,
+                m.question, m.outcomes
+           FROM trades t JOIN markets m ON m.id = t.market_id
+          WHERE t.trader_id = ?
+          ORDER BY t.recorded_at DESC LIMIT ?`,
+        [trader_id, Math.min(100, limit)],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows.map((r) => {
+            let label = String(r.outcome_idx);
+            try { label = JSON.parse(r.outcomes)[r.outcome_idx] ?? label; } catch (_) { /* raw idx */ }
+            return {
+              market_id: r.market_id,
+              question: r.question,
+              outcome: label,
+              shares: r.shares,
+              cost: r.cost,
+              cost_minor: r.cost_minor || null,
+              at: r.recorded_at,
+            };
+          }));
+        },
+      );
+    });
+  }
+
   leaderboard({ sort = 'capital', limit = 20 } = {}) {
     const orderCol = ({ capital: 'capital', reputation: 'reputation', accuracy: '(CAST(trades_won AS REAL) / NULLIF(trades_total, 0))' })[sort] || 'capital';
     return new Promise((resolve, reject) => {
