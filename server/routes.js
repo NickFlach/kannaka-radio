@@ -960,6 +960,15 @@ module.exports = function setupRoutes(deps) {
           .catch(e => sendJson(400, { ok: false, error: e.message }));
         return;
       }
+      // Positions for a trader (public read; principal ids contain ':' so the
+      // segment is matched loosely and URL-decoded).
+      const posMatch = parsed.pathname.match(/^\/api\/agents\/([^/]+)\/positions$/);
+      if (posMatch && req.method === "GET") {
+        gsHub.getTraderPositions(decodeURIComponent(posMatch[1]))
+          .then(rows => sendJson(200, { ok: true, positions: rows }))
+          .catch(e => sendJson(500, { ok: false, error: e.message }));
+        return;
+      }
       const agentMatch = parsed.pathname.match(/^\/api\/agents\/([\w-]+)$/);
       if (agentMatch && req.method === "GET") {
         gsHub.getTrader(agentMatch[1])
