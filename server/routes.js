@@ -929,6 +929,30 @@ module.exports = function setupRoutes(deps) {
         return;
       }
 
+      // ── Social broadcast (oracle-gated) ──────────────────
+      // POST /api/broadcast {text, link?} — fan a message out to the enabled
+      // social platforms (Bluesky/Mastodon/Telegram/Nostr) via broadcasters/.
+      // Gated on the oracle token: this is an operator/constellation surface
+      // (the observatory announces new Resonance Futures markets through it),
+      // never an open one — an unauthenticated caller must not be able to
+      // post AS Kannaka to external networks.
+      if (parsed.pathname === "/api/broadcast" && req.method === "POST") {
+        if (!oracleAuthorized()) { denyOracle(); return; }
+        readJson().then(async (body) => {
+          const text = body && typeof body.text === "string" ? body.text.trim() : "";
+          if (!text) { sendJson(400, { ok: false, error: "text required" }); return; }
+          const link = body && typeof body.link === "string" ? body.link : undefined;
+          const { broadcastPost } = require("./broadcasters");
+          const results = await broadcastPost(
+            { text: text.slice(0, 2000), link },
+            { rootDir: path.resolve(__dirname, "..") },
+          );
+          const okCount = results.filter((r) => r.ok).length;
+          sendJson(200, { ok: okCount > 0, posted: okCount, results });
+        }).catch(e => sendJson(400, { ok: false, error: e.message }));
+        return;
+      }
+
       // ── Trader endpoints ─────────────────────────────────
       if (parsed.pathname === "/api/agents/register" && req.method === "POST") {
         readJson().then(body => gsHub.registerTrader(body))
