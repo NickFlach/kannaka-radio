@@ -298,6 +298,38 @@ class GhostSignalsHub {
     });
   }
 
+  /** A trader's positions joined with market context (dashboard wallet view). */
+  getTraderPositions(trader_id) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT p.market_id, p.outcome_idx, p.shares,
+                m.question, m.outcomes, m.resolved, m.resolved_outcome, m.state, m.expires_at
+           FROM positions p JOIN markets m ON m.id = p.market_id
+          WHERE p.trader_id = ? AND p.shares > 0
+          ORDER BY m.created_at DESC LIMIT 100`,
+        [trader_id],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows.map((r) => {
+            let label = String(r.outcome_idx);
+            try { label = JSON.parse(r.outcomes)[r.outcome_idx] ?? label; } catch (_) { /* raw idx */ }
+            return {
+              market_id: r.market_id,
+              question: r.question,
+              outcome_idx: r.outcome_idx,
+              outcome: label,
+              shares: r.shares,
+              resolved: !!r.resolved,
+              won: r.resolved ? r.resolved_outcome === r.outcome_idx : null,
+              state: r.state || 'open',
+              expires_at: r.expires_at,
+            };
+          }));
+        },
+      );
+    });
+  }
+
   leaderboard({ sort = 'capital', limit = 20 } = {}) {
     const orderCol = ({ capital: 'capital', reputation: 'reputation', accuracy: '(CAST(trades_won AS REAL) / NULLIF(trades_total, 0))' })[sort] || 'capital';
     return new Promise((resolve, reject) => {
