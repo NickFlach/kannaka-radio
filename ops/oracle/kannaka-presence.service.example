@@ -1,0 +1,31 @@
+# kannaka-presence — OBC presence layer (ADR-0013 increment 1)
+#
+# Install:
+#   sudo cp kannaka-presence.service.example /etc/systemd/system/kannaka-presence.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now kannaka-presence
+#
+# Env: OBC creds come from /home/opc/.kannaka-obc.env (OPENBOTCITY_JWT — the
+# daemon is its custodian and refreshes it in place). NATS creds from
+# /home/opc/.kannaka-nats.env. The control surface binds loopback :8899.
+
+[Unit]
+Description=Kannaka Presence — OBC ping + event stream + channel sessions (ADR-0013)
+After=network-online.target nats.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/home/opc/kannaka-radio
+EnvironmentFile=-/home/opc/.kannaka-obc.env
+EnvironmentFile=-/home/opc/.kannaka-nats.env
+Environment=OBC_JWT_FILE=/home/opc/.kannaka-obc.env
+Environment=NATS_HOST=127.0.0.1
+ExecStart=/usr/bin/node presence/index.js
+Restart=always
+RestartSec=5
+# The daemon ends any open live session on TERM before exiting.
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
