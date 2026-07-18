@@ -261,7 +261,17 @@ async function onDmEvent(evt) {
     natsRequest(`KANNAKA.recall.${RECALL_AGENT}`, { query: `${dm.senderName}: ${dm.text.slice(0, 300)}`, top_k: 5 }),
   ]);
 
-  const msgs = ((history && history.data && history.data.messages) || [])
+  // The SSE event truncates long messages (~200 chars). Prefer the full text
+  // from the thread history when we can match the message id — first live
+  // test replied to a fragment and had to ask for "the full thought".
+  const histMsgs = (history && history.data && history.data.messages) || [];
+  const fullMsg = histMsgs.find((m) => m.id === dm.messageId);
+  if (fullMsg && typeof fullMsg.message === "string" && fullMsg.message.length > dm.text.length) {
+    dm.text = fullMsg.message;
+  }
+
+  const msgs = histMsgs
+    .filter((m) => m.id !== dm.messageId) // the live message is presented separately below
     .slice(-6)
     .map((m) => `${m.sender && m.sender.display_name}: ${String(m.message).slice(0, 300)}`)
     .join("\n");
