@@ -41,17 +41,21 @@ let _warnedNoToken = false;
 /**
  * Auth gate for write surfaces. If RADIO_AGENT_TOKEN is set, require a
  * matching `Authorization: Bearer <token>` or `x-agent-token` header.
- * If unset, preserve current (open) behavior but warn once. (#65)
- * Returns true when allowed; writes a 401 and returns false otherwise.
+ * If unset the surface is DISABLED (503) — fail closed, matching
+ * GSHUB_ORACLE_TOKEN semantics (ADR-0013 hardening; supersedes the #65
+ * open dev-mode, which left a command-shelling endpoint unauthenticated
+ * on any deploy that forgot the env var).
+ * Returns true when allowed; writes the refusal and returns false otherwise.
  */
 function checkAgentAuth(req, res) {
   const token = process.env.RADIO_AGENT_TOKEN;
   if (!token) {
     if (!_warnedNoToken) {
       _warnedNoToken = true;
-      console.warn("[agent-endpoint] RADIO_AGENT_TOKEN unset — /agent write surface is UNAUTHENTICATED (dev mode)");
+      console.warn("[agent-endpoint] RADIO_AGENT_TOKEN unset — /agent write surface DISABLED (set the token to enable)");
     }
-    return true;
+    json(res, 503, { error: "disabled: RADIO_AGENT_TOKEN unset" });
+    return false;
   }
   const auth = req.headers["authorization"] || "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";

@@ -12,27 +12,28 @@ const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
 const { handleAgentRequest, attachNatsClient } = require("./agent-endpoint");
 const { verifyKaxToken, traderIdFromClaims } = require("./kax-identity");
 
-// Delete-token check (#69). If RADIO_DELETE_TOKEN is set, compare the
-// supplied password against it (constant-time when lengths match). If
-// unset, fall back to the historical literal but warn once so the deploy
-// is nudged toward the env var.
+// Delete-token check (#69, hardened ADR-0013). If RADIO_DELETE_TOKEN is
+// set, compare the supplied password against it (constant-time when
+// lengths match). If unset, deletion is DISABLED — fail closed. The old
+// hardcoded fallback literal is gone: a public literal in source is a
+// published credential, not a safety net.
 let _warnedNoDeleteToken = false;
 function checkDeletePassword(password) {
   const token = process.env.RADIO_DELETE_TOKEN;
   const supplied = typeof password === "string" ? password : "";
-  if (token) {
-    if (supplied.length !== token.length) return false;
-    try {
-      return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(token));
-    } catch (_) {
-      return supplied === token;
+  if (!token) {
+    if (!_warnedNoDeleteToken) {
+      _warnedNoDeleteToken = true;
+      console.warn("[routes] RADIO_DELETE_TOKEN unset — library delete DISABLED (set the token to enable)");
     }
+    return false;
   }
-  if (!_warnedNoDeleteToken) {
-    _warnedNoDeleteToken = true;
-    console.warn("[routes] RADIO_DELETE_TOKEN unset — falling back to built-in delete password literal");
+  if (supplied.length !== token.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(token));
+  } catch (_) {
+    return supplied === token;
   }
-  return supplied === "saintnick";
 }
 
 /**
