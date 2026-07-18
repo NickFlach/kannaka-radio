@@ -63,3 +63,4 @@ run-push-nats.sh
 .nostr.json
 .youtube.json
 .youtube-client.json
+workspace/rare-singles.json
