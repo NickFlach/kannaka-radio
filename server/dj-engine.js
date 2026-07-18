@@ -478,6 +478,26 @@ const ALBUMS = {
   },
 };
 
+// ── Rare Singles file extension (ADR-0013 increment 2) ─────
+// scripts/drop.js appends released single titles to workspace/rare-singles.json
+// so a drop needs no code change / PR / restart-ordering dance. Merged at
+// load; the literal list above stays the seed. Bad file = ignored (the
+// rotation must never die to a malformed drop).
+(function mergeRareSinglesFile() {
+  try {
+    const p = path.join(__dirname, "..", "workspace", "rare-singles.json");
+    if (!fs.existsSync(p)) return;
+    const extra = JSON.parse(fs.readFileSync(p, "utf8"));
+    if (!Array.isArray(extra)) return;
+    const tracks = ALBUMS["Rare Singles"].tracks;
+    for (const t of extra) {
+      if (typeof t === "string" && t.trim() && !tracks.includes(t)) tracks.push(t);
+    }
+  } catch (e) {
+    console.warn("[dj] rare-singles.json ignored:", e.message);
+  }
+})();
+
 class DJEngine {
   /**
    * @param {object} opts
