@@ -1,0 +1,34 @@
+# kannaka-responder — the bounded mouth (ADR-0014)
+#
+# Install:
+#   sudo cp kannaka-responder.service.example /etc/systemd/system/kannaka-responder.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now kannaka-responder
+#
+# Kill switches (either stops all autonomous replies):
+#   - unset RESPONDER_ENABLED (or set 0) here and daemon-reload+restart
+#   - set "enabled": false in responder/charter.json and restart
+# The charter (responder/charter.json) is the arbiter: allowlist, caps,
+# escalation keywords. Expanding it = edit + PR, never runtime drift.
+
+[Unit]
+Description=Kannaka Responder — bounded DM replies under charter (ADR-0014)
+After=network-online.target nats.service kannaka-presence.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/home/opc/kannaka-radio
+EnvironmentFile=-/home/opc/.kannaka-obc.env
+EnvironmentFile=-/home/opc/.kannaka-nats.env
+EnvironmentFile=-/home/opc/.kannaka-anthropic.env
+Environment=OBC_JWT_FILE=/home/opc/.kannaka-obc.env
+Environment=NATS_HOST=127.0.0.1
+Environment=RESPONDER_ENABLED=1
+ExecStart=/usr/bin/node responder/index.js
+Restart=always
+RestartSec=10
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

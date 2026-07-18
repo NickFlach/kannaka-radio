@@ -325,7 +325,10 @@ function sseConnect() {
           try {
             fs.appendFileSync(JOURNAL, JSON.stringify(record) + "\n");
           } catch {}
-          const type = (data && data.type) || ev.event;
+          // Route by the city's inner eventType (dm_message, zone_chat, …)
+          // when present — the envelope type is a generic "city_event" and
+          // would flatten the whole taxonomy onto one subject (ADR-0014).
+          const type = (data && (data.eventType || data.type)) || ev.event;
           natsPub(obcSubject(type), { type, obc: data });
         }
       });
