@@ -21,8 +21,10 @@ Idempotent: finished renders are skipped unless --force.
 import json
 import math
 import os
+import random
 import subprocess
 import sys
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +32,8 @@ PODCASTS = os.path.join(ROOT, "workspace", "podcasts")
 ART_DIR = os.path.join(PODCASTS, "art")
 RENDERS = os.path.join(PODCASTS, "renders")
 EPISODES_JSON = os.path.join(PODCASTS, "episodes.json")
+CATALOG_JSON = os.path.join(PODCASTS, "art-catalog.json")   # full KAX image pool (fetch-kax-art.py)
+USED_JSON = os.path.join(PODCASTS, "art-used.json")         # no-repeat ledger across episodes
 
 COVER_SECONDS = 6.0
 SLIDE_SECONDS = 45.0
@@ -60,9 +64,75 @@ def load_manifest():
         return json.load(f)
 
 
-def pick_art(manifest, ep_num, count):
-    start = ((ep_num - 1) * ART_STRIDE) % len(manifest)
-    return [manifest[(start + i) % len(manifest)] for i in range(count)]
+def load_pool():
+    """Prefer the full KAX image catalog (art-catalog.json, hundreds of pieces);
+    fall back to the legacy 52-image Our Journey manifest."""
+    if os.path.exists(CATALOG_JSON):
+        with open(CATALOG_JSON, encoding="utf-8") as f:
+            return json.load(f)
+    return load_manifest()
+
+
+def _load_used():
+    if os.path.exists(USED_JSON):
+        with open(USED_JSON, encoding="utf-8") as f:
+            return json.load(f)
+    # Seed the ledger with the legacy Our Journey manifest so images already used
+    # in GSP-013..015 are not reused when we switch to the full catalog.
+    seed = []
+    mp = os.path.join(ART_DIR, "manifest.json")
+    if os.path.exists(mp):
+        with open(mp, encoding="utf-8") as f:
+            seed = [x["file"] for x in json.load(f)]
+    return {"used": seed, "byEpisode": {}}
+
+
+def _save_used(u):
+    with open(USED_JSON, "w", encoding="utf-8") as f:
+        json.dump(u, f, indent=1)
+
+
+def _download(entry):
+    """Ensure entry['file'] exists in ART_DIR (download its publicUrl if catalog-backed)."""
+    dest = os.path.join(ART_DIR, entry["file"])
+    if (not os.path.exists(dest) or os.path.getsize(dest) < 1000) and entry.get("url"):
+        os.makedirs(ART_DIR, exist_ok=True)
+        req = urllib.request.Request(entry["url"], headers={"User-Agent": "Mozilla/5.0 (Kannaka podcast)"})
+        with urllib.request.urlopen(req, timeout=45) as r, open(dest, "wb") as f:
+            f.write(r.read())
+    return {"file": entry["file"]}
+
+
+def pick_art(pool, ep_num, count):
+    """No-repeat picker: choose `count` images from the pool that have not been
+    used by any prior episode, record them in the ledger, and download on demand.
+    Idempotent per episode (re-renders reuse the same picks). Legacy manifests
+    (list without 'url') fall back to the old sequential rotation."""
+    catalog_backed = bool(pool) and isinstance(pool[0], dict) and "url" in pool[0]
+    if not catalog_backed:
+        start = ((ep_num - 1) * ART_STRIDE) % len(pool)
+        return [pool[(start + i) % len(pool)] for i in range(count)]
+
+    used = _load_used()
+    by_file = {e["file"]: e for e in pool}
+    ep_key = str(ep_num)
+    prior = used["byEpisode"].get(ep_key)
+    if prior and len([f for f in prior if f in by_file]) >= count:
+        return [_download(by_file[f]) for f in prior[:count]]
+
+    used_set = set(used["used"])
+    avail = [e for e in pool if e["file"] not in used_set]
+    rng = random.Random(1000 + ep_num)
+    rng.shuffle(avail)
+    chosen = avail[:count]
+    if len(chosen) < count:  # pool exhausted — top up from full pool (last resort)
+        extra = [e for e in pool if e not in chosen]
+        rng.shuffle(extra)
+        chosen += extra[: count - len(chosen)]
+    used["used"].extend(e["file"] for e in chosen)
+    used["byEpisode"][ep_key] = [e["file"] for e in chosen]
+    _save_used(used)
+    return [_download(e) for e in chosen]
 
 
 def make_cover(ep, hero_path, out_path):
@@ -204,7 +274,7 @@ def render_episode(ep, manifest, force=False):
 def main():
     with open(EPISODES_JSON, encoding="utf-8") as f:
         episodes = json.load(f)
-    manifest = load_manifest()
+    manifest = load_pool()
     force = "--force" in sys.argv
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
