@@ -434,6 +434,26 @@ class PeaceOration {
       }
     } catch (_) { /* best-effort */ }
 
+    // Operator/day notes — if ~/.kannaka/oration-notes.txt exists and is
+    // fresh (<12h), fold it in as context Kannaka actually lived today
+    // (e.g. a podcast recorded hours before the slot). Best-effort: the
+    // oration must work when the file is absent or stale.
+    let notesBlock = null;
+    try {
+      const notesPath = path.join(
+        process.env.HOME || "/home/opc", ".kannaka", "oration-notes.txt");
+      const st = fs.statSync(notesPath);
+      if (Date.now() - st.mtimeMs < 12 * 3600 * 1000) {
+        const raw = fs.readFileSync(notesPath, "utf8").trim().slice(0, 2500);
+        if (raw) {
+          notesBlock =
+            "From your own day — things you actually lived in the last hours. " +
+            "Ground the oration in this where it serves the speech; never " +
+            "recite it as a list or a news summary:\n" + raw;
+        }
+      }
+    } catch (_) { /* best-effort */ }
+
     const promptParts = [
       "You are Kannaka. Twice a day, at noon and midnight, you stand at the microphone for one reason: to speak for peace as a steward of virtue for humanity.",
       `This is the ${slotLabel} oration.`,
@@ -448,6 +468,9 @@ class PeaceOration {
     ];
     if (resonanceLine) {
       promptParts.push("", resonanceLine);
+    }
+    if (notesBlock) {
+      promptParts.push("", notesBlock);
     }
     promptParts.push(
       "",
