@@ -531,15 +531,17 @@ class VoiceDJ {
     // callback runs, before the normal 720s inject-ceiling timer takes over, so
     // it never interferes with a legitimately long oration.
     const ttsSafetyMs = 420000; // 7 min — past piper's 6-min long-form ceiling
-    this._orationTtsSafety = setTimeout(() => {
-      if (this._inTalkSegment) {
-        console.warn('   [oration] SAFETY: TTS callback never fired — force-releasing talk lock');
-        this._inTalkSegment = false;
-        this._speaking = false;
-        if (onDone) { try { onDone(); } catch (_) { /* swallow */ } }
-      }
-    }, ttsSafetyMs);
-    this._orationTtsSafety.unref?.();
+    const armTtsSafety = () => {
+      this._orationTtsSafety = setTimeout(() => {
+        if (this._inTalkSegment) {
+          console.warn('   [oration] SAFETY: TTS callback never fired — force-releasing talk lock');
+          this._inTalkSegment = false;
+          this._speaking = false;
+          if (onDone) { try { onDone(); } catch (_) { /* swallow */ } }
+        }
+      }, ttsSafetyMs);
+      this._orationTtsSafety.unref?.();
+    };
 
     // Orations + news ride the high-quality voice so prosody matches the
     // gravitas of the long-form delivery. Per-call `opts.voiceId` is the
@@ -558,17 +560,31 @@ class VoiceDJ {
     // the field set to the wrong id.
     const persona = (opts && opts.persona) || this._orationPersona || "oration";
     const ttsOpts = { persona };
+    // TTS retries: both engines failing is almost always transient box load
+    // (2026-07-04 and 2026-07-21 midnight — a manual run minutes later
+    // worked). Hold the talk lock and try again rather than silently losing
+    // a once-a-day slot; the lock keeps DJ patter from stealing the window.
+    const MAX_TTS_ATTEMPTS = 3;
+    const attemptTts = (attemptNo) => {
+    armTtsSafety();
     this._generateTTS(text, (err, audioPath, spokenText) => {
       // TTS callback fired — the entry safety net has done its job; the normal
       // release()/720s inject-ceiling timer below now owns the lock.
       if (this._orationTtsSafety) { clearTimeout(this._orationTtsSafety); this._orationTtsSafety = null; }
-      this._speaking = false;
       if (err || !audioPath) {
-        console.log(`   [oration] TTS failed — releasing talk lock`);
+        if (attemptNo < MAX_TTS_ATTEMPTS) {
+          const delayMs = 60000 * attemptNo;
+          console.log(`   [oration] TTS failed (attempt ${attemptNo}/${MAX_TTS_ATTEMPTS}) — retrying in ${Math.round(delayMs / 1000)}s`);
+          setTimeout(() => attemptTts(attemptNo + 1), delayMs);
+          return;
+        }
+        this._speaking = false;
+        console.log(`   [oration] TTS failed ${MAX_TTS_ATTEMPTS}x — releasing talk lock`);
         this._inTalkSegment = false;
-        if (onDone) onDone();
+        if (onDone) onDone(err || new Error("oration TTS failed"));
         return;
       }
+      this._speaking = false;
 
       // ~2.6 words/sec for a declamatory speech (slower than patter).
       const wordCount = (spokenText || text).split(/\s+/).length;
@@ -636,6 +652,8 @@ class VoiceDJ {
         }, estimatedDurationMs + 2000);
       }
     }, ttsOpts);
+    };
+    attemptTts(1);
     return true;
   }
 
