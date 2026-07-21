@@ -637,8 +637,12 @@ class PeaceOration {
     // narrator register + cathedral DSP (slower cadence, chest-resonant low
     // end, hall reverb). Stateless — no more mutating voice-dj's private
     // _orationVoiceId, which is what caused the #29 wrong-voice overlap race.
-    return this._voiceDJ.executeOration(wrapped, () => {
-      console.log("🕔 Peace oration complete");
+    return this._voiceDJ.executeOration(wrapped, (err) => {
+      if (err) {
+        console.warn("🕔 Peace oration NOT delivered — TTS failed after retries (text posted to socials; audio never aired)");
+      } else {
+        console.log("🕔 Peace oration complete");
+      }
     }, { persona: "oration" });
   }
 
