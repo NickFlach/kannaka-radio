@@ -159,12 +159,30 @@ class PodcastScheduler {
       return;
     }
 
-    const chicago = this._chicagoNow();
-    const idx = this._episodeIndexFor(chicago, episodes.length);
-    const todayEpisode = episodes[idx];
+    // ── New-release priority ────────────────────────────────
+    // A freshly released episode preempts the rotation for its first
+    // 48 hours (both slots, both days), then the day-of-week rotation
+    // resumes. Keyed on file mtime — the release copy onto this box —
+    // so it's deterministic across restarts with no state file.
+    const NEW_RELEASE_MS = 48 * 60 * 60 * 1000;
+    let todayEpisode = null;
+    let newestMtime = 0;
+    const podcastDir = path.join(this._getMusicDir(), "Ghost Signals Podcast");
+    for (const f of episodes) {
+      try {
+        const mtime = fs.statSync(path.join(podcastDir, f)).mtimeMs;
+        if (mtime > newestMtime) { newestMtime = mtime; todayEpisode = f; }
+      } catch (_) { /* unstattable file — rotation fallback covers it */ }
+    }
+    if (todayEpisode && Date.now() - newestMtime < NEW_RELEASE_MS) {
+      console.log(`[podcast-scheduler] New-release priority: ${todayEpisode}`);
+    } else {
+      const chicago = this._chicagoNow();
+      const idx = this._episodeIndexFor(chicago, episodes.length);
+      todayEpisode = episodes[idx];
+      console.log(`[podcast-scheduler] Today's episode (idx ${idx}/${episodes.length}): ${todayEpisode}`);
+    }
     const epTitle = todayEpisode.replace(/\.[^.]+$/, "");
-
-    console.log(`[podcast-scheduler] Today's episode (idx ${idx}/${episodes.length}): ${epTitle}`);
 
     // Save current DJ state for restoration after the episode finishes
     this._savedDJState = {
