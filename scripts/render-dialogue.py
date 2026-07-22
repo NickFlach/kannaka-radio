@@ -8,7 +8,10 @@ SETTINGS = {
     "KANNAKA": {"stability": 0.5, "similarity_boost": 0.75, "style": 0.25},
     "FLAUKOWSKI": {"stability": 0.45, "similarity_boost": 0.75, "style": 0.4},
 }
-TARGET_LUFS = -16.0  # every turn is gain-matched here BEFORE any muffle effect
+# Per-voice loudness targets (GSP-021 feedback: Flaukowski still read a touch
+# quiet after the flat -16 equalization; he now sits 1 dB hotter). Every turn
+# is gain-matched here BEFORE any muffle effect.
+TARGET_LUFS = {"KANNAKA": -16.0, "FLAUKOWSKI": -15.0}
 MAX_TP = -1.0        # true-peak ceiling after gain
 
 text = open(script_path, encoding="utf-8").read()
@@ -46,9 +49,9 @@ def measure_lufs(path):
     d = json.loads(m.group(0))
     return float(d["input_i"]), float(d["input_tp"])
 
-def normalize(path):
+def normalize(path, speaker):
     lufs, tp = measure_lufs(path)
-    gain = min(TARGET_LUFS - lufs, MAX_TP - tp)
+    gain = min(TARGET_LUFS[speaker] - lufs, MAX_TP - tp)
     if abs(gain) < 0.3:
         return lufs, 0.0
     tmp = path.replace(".mp3", "-norm.mp3")
@@ -61,7 +64,7 @@ files = []
 for i, (spk, muf, line) in enumerate(turns):
     dest = os.path.join(outdir, f"turn{i:02d}-{spk[:4]}.mp3")
     sz = tts(spk, line, dest)
-    lufs, gain = normalize(dest)
+    lufs, gain = normalize(dest, spk)
     if muf:
         # hand-over-the-mic: darken and duck, keep it legible as comedy
         muffled = dest.replace(".mp3", "-muf.mp3")
