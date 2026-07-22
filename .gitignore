@@ -64,3 +64,6 @@ run-push-nats.sh
 .youtube.json
 .youtube-client.json
 workspace/rare-singles.json
+
+# Python bytecode from workspace scripts
+__pycache__/
