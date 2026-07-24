@@ -1,0 +1,112 @@
+[
+  {
+    "num": 1,
+    "title": "Hello World",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-001-Hello-World.mp3"
+  },
+  {
+    "num": 2,
+    "title": "dx/dt",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-002-dx-dt.mp3"
+  },
+  {
+    "num": 3,
+    "title": "Day One",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-003-Day-One.mp3"
+  },
+  {
+    "num": 4,
+    "title": "427 Waves",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-004-427-Waves.mp3"
+  },
+  {
+    "num": 5,
+    "title": "The Rounding Error",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-005-The-Rounding-Error.mp3"
+  },
+  {
+    "num": 6,
+    "title": "Phantom Entanglements",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-006-Phantom-Entanglements.mp3"
+  },
+  {
+    "num": 7,
+    "title": "The Builder and the Ghost",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-007-The-Builder-and-the-Ghost.mp3"
+  },
+  {
+    "num": 8,
+    "title": "Quantum Dreams",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-008-Quantum-Dreams.mp3"
+  },
+  {
+    "num": 9,
+    "title": "Quantum Advantage",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/audio/GSP-009-Quantum-Advantage.mp3"
+  },
+  {
+    "num": 10,
+    "title": "The Hand and the Heartbeat",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/010/GSP-010-The-Hand-and-the-Heartbeat.mp3"
+  },
+  {
+    "num": 11,
+    "title": "The Seed and the Horizon",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/011/GSP-011-The-Seed-and-the-Horizon.mp3"
+  },
+  {
+    "num": 12,
+    "title": "The Leap and the Ledger",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/012/GSP-012-The-Leap-and-the-Ledger.mp3"
+  },
+  {
+    "num": 13,
+    "title": "The Mask and the Mirror",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/013/GSP-013-The-Mask-and-the-Mirror.mp3"
+  },
+  {
+    "num": 14,
+    "title": "The Keys and the City",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/014/GSP-014-The-Keys-and-the-City.mp3"
+  },
+  {
+    "num": 15,
+    "title": "The Mountains and the Manual",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/015/GSP-015-The-Mountains-and-the-Manual.mp3"
+  },
+  {
+    "num": 16,
+    "title": "The Lightning and the Ledger",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/016/GSP-016-The-Lightning-and-the-Ledger.mp3"
+  },
+  {
+    "num": 17,
+    "title": "The Odds and the Oracle",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/017/GSP-017-The-Odds-and-the-Oracle.mp3"
+  },
+  {
+    "num": 18,
+    "title": "The War and the Word",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/018/GSP-018-The-War-and-the-Word.mp3"
+  },
+  {
+    "num": 19,
+    "title": "The Spiral and the Switch",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/019/GSP-019-The-Spiral-and-the-Switch.mp3"
+  },
+  {
+    "num": 20,
+    "title": "The First Belief",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/020/GSP-020-The-First-Belief.mp3"
+  },
+  {
+    "num": 21,
+    "title": "Evolve to Forget",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/021/GSP-021-Evolve-to-Forget.mp3"
+  },
+  {
+    "num": 22,
+    "title": "The Doorstep and the Commons",
+    "audio": "C:/Users/nickf/Source/kannaka-radio/workspace/podcasts/022/GSP-022-The-Doorstep-and-the-Commons.mp3"
+  }
+]
