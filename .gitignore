@@ -32,8 +32,18 @@ npm-debug.log*
 
 # Runtime / generated assets
 workspace/models/art/
-workspace/podcasts/
 music/Ghost Signals Podcast/
+
+# Podcast workspace: track scripts, upload/build tooling, metadata, and
+# covers — but not rendered media (mp3/mp4 live on Oracle radio + YouTube)
+# or the downloaded KAX art cache.
+workspace/podcasts/**/*.mp3
+workspace/podcasts/**/*.mp4
+workspace/podcasts/art/
+workspace/podcasts/audio/
+workspace/podcasts/renders/*
+!workspace/podcasts/renders/*.png
+!workspace/podcasts/renders/*.jpg
 
 # Per-feature scheduler state — date-keyed dedup files written by the
 # peace-oration / news-broadcast / gossip-broadcast / showcase pipelines.
