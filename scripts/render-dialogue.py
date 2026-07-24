@@ -50,21 +50,33 @@ def measure_lufs(path):
     return float(d["input_i"]), float(d["input_tp"])
 
 def normalize(path, speaker):
+    # Plain gain only while the true-peak ceiling allows it; peaky turns (most
+    # ElevenLabs output) take the full gain through a limiter instead. The old
+    # TP-capped plain gain left them 2-3 dB short of target and could invert
+    # the K/F balance (GSP-022 shipped F 0.8 dB quieter than K before makeup).
     lufs, tp = measure_lufs(path)
-    gain = min(TARGET_LUFS[speaker] - lufs, MAX_TP - tp)
-    if abs(gain) < 0.3:
-        return lufs, 0.0
+    needed = TARGET_LUFS[speaker] - lufs
+    if abs(needed) < 0.3:
+        return lufs, 0.0, lufs
+    if needed > 0 and needed > MAX_TP - tp:
+        af = (f"volume={needed:.2f}dB,alimiter=limit={10 ** (MAX_TP / 20):.3f}"
+              ":level=false:attack=5:release=50")
+    else:
+        af = f"volume={needed:.2f}dB"
     tmp = path.replace(".mp3", "-norm.mp3")
-    subprocess.run(["ffmpeg", "-y", "-i", path, "-af", f"volume={gain:.2f}dB",
+    subprocess.run(["ffmpeg", "-y", "-i", path, "-af", af,
                     "-b:a", "128k", tmp], check=True, capture_output=True)
     os.replace(tmp, path)
-    return lufs, gain
+    final, _ = measure_lufs(path)
+    return lufs, needed, final
 
 files = []
+finals = {}
 for i, (spk, muf, line) in enumerate(turns):
     dest = os.path.join(outdir, f"turn{i:02d}-{spk[:4]}.mp3")
     sz = tts(spk, line, dest)
-    lufs, gain = normalize(dest, spk)
+    lufs, gain, final = normalize(dest, spk)
+    finals.setdefault(spk, []).append(final)
     if muf:
         # hand-over-the-mic: darken and duck, keep it legible as comedy
         muffled = dest.replace(".mp3", "-muf.mp3")
@@ -74,8 +86,13 @@ for i, (spk, muf, line) in enumerate(turns):
             check=True, capture_output=True,
         )
         os.replace(muffled, dest)
-    print(f"  turn{i:02d} {spk:<10}{' MUF' if muf else '    '} {len(line.split()):>4}w {sz//1024:>5}KB {lufs:>6.1f}LUFS {gain:+.1f}dB")
+    print(f"  turn{i:02d} {spk:<10}{' MUF' if muf else '    '} {len(line.split()):>4}w {sz//1024:>5}KB {lufs:>6.1f}->{final:>6.1f}LUFS {gain:+.1f}dB")
     files.append(dest)
+
+for spk, vals in sorted(finals.items()):
+    avg = sum(vals) / len(vals)
+    off = "" if abs(avg - TARGET_LUFS[spk]) <= 0.5 else "  ** OFF TARGET **"
+    print(f"POST-NORM {spk}: {avg:.2f} LUFS avg over {len(vals)} turns (target {TARGET_LUFS[spk]}){off}")
 
 sil = os.path.join(outdir, "sil04.mp3")
 subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
