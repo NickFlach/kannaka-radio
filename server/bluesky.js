@@ -153,6 +153,37 @@ class BlueskyClient {
       if (facets.length > 0) record.facets = facets;
       if (opts.langs) record.langs = opts.langs; else record.langs = ["en"];
 
+      // Optional images (e.g. an OBC gallery artifact): upload each as a blob,
+      // then attach as an app.bsky.embed.images embed. AT Protocol allows up to
+      // 4 images and caps a blob at ~1 MB. A failed/oversized image is skipped —
+      // the text post still goes out.
+      if (Array.isArray(opts.images) && opts.images.length > 0) {
+        const embeds = [];
+        for (const im of opts.images.slice(0, 4)) {
+          try {
+            let bytes = im.bytes;
+            let mime = im.mime;
+            if (!bytes && im.url) {
+              const f = await _fetchBytes(im.url);
+              bytes = f.buf;
+              mime = mime || f.mime;
+            }
+            if (!bytes) continue;
+            if (bytes.length > 1000000) {
+              process.stderr.write(`[bluesky] skipping image > 1MB (${bytes.length} bytes)\n`);
+              continue;
+            }
+            const blob = await this.uploadBlob(bytes, mime || "image/jpeg", session);
+            embeds.push({ alt: String(im.alt || "").slice(0, 1000), image: blob });
+          } catch (e) {
+            process.stderr.write(`[bluesky] image embed failed: ${e.message}\n`);
+          }
+        }
+        if (embeds.length > 0) {
+          record.embed = { $type: "app.bsky.embed.images", images: embeds };
+        }
+      }
+
       const body = JSON.stringify({
         repo: session.did,
         collection: "app.bsky.feed.post",
@@ -185,6 +216,71 @@ class BlueskyClient {
       return { ok: false, error: e.message };
     }
   }
+
+  /**
+   * Upload an image blob to the repo and return the AT Protocol blob ref for
+   * use in an embed. `bytes` is a Buffer; `mime` its content type. Re-auths
+   * once on an expired token. Throws on failure.
+   */
+  async uploadBlob(bytes, mime, session) {
+    const s = session || (await this._ensureSession());
+    const headers = () => ({
+      "Content-Type": mime || "image/jpeg",
+      "Authorization": "Bearer " + this.session.accessJwt,
+    });
+    this.session = s;
+    let resp = await _request("POST", "/xrpc/com.atproto.repo.uploadBlob", bytes, headers());
+    if (resp.status === 401 || resp.status === 400) {
+      this.session = null;
+      await this._ensureSession();
+      resp = await _request("POST", "/xrpc/com.atproto.repo.uploadBlob", bytes, headers());
+    }
+    if (resp.status !== 200) {
+      throw new Error(`uploadBlob ${resp.status}: ${resp.body.slice(0, 200)}`);
+    }
+    return JSON.parse(resp.body).blob;
+  }
+}
+
+/**
+ * GET a URL into a Buffer, following redirects (image hosts like Supabase
+ * storage often 302 to a CDN). Resolves { buf, mime }.
+ */
+function _fetchBytes(rawUrl, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirects > 3) return reject(new Error("too many redirects"));
+    const u = new URL(rawUrl);
+    const req = https.request(
+      {
+        method: "GET",
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        headers: { "User-Agent": "Kannaka-Radio/0.3" },
+        timeout: 30000,
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          resolve(_fetchBytes(new URL(res.headers.location, u).toString(), redirects + 1));
+          return;
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`fetch ${res.statusCode} for ${rawUrl}`));
+          return;
+        }
+        const mime = (res.headers["content-type"] || "image/jpeg").split(";")[0].trim();
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve({ buf: Buffer.concat(chunks), mime }));
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("fetch timeout")));
+    req.end();
+  });
 }
 
 /**
