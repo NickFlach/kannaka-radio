@@ -11,6 +11,7 @@ const { ALBUMS } = require("./dj-engine");
 const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
 const { handleAgentRequest, attachNatsClient } = require("./agent-endpoint");
 const { verifyKaxToken, traderIdFromClaims } = require("./kax-identity");
+const { handlePodcastRequest } = require("./podcast-feed");
 
 // Delete-token check (#69, hardened ADR-0013). If RADIO_DELETE_TOKEN is
 // set, compare the supplied password against it (constant-time when
@@ -115,6 +116,13 @@ module.exports = function setupRoutes(deps) {
 
   return async function handleRequest(req, res) {
     const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+    // Podcast RSS feed + episode audio — Apple Podcasts / Spotify / Overcast
+    // ingest /podcast.xml; players stream the enclosures from /podcast/audio/.
+    if (parsed.pathname === "/podcast.xml" || parsed.pathname === "/podcast/feed.xml" || parsed.pathname.startsWith("/podcast/audio/")) {
+      const baseUrl = process.env.RADIO_PUBLIC_URL || "https://radio.ninja-portal.com";
+      if (await handlePodcastRequest(req, res, { baseDir: config.baseDir, baseUrl })) return;
+    }
 
     // Swarm inbox JSON surface — /agent/send (POST), /agent/audit (SSE).
     // The bare /agent route falls through to the Greenroom HTML below.
