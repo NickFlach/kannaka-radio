@@ -73,6 +73,98 @@ function _tryWS() {
 const POST_MAX = 1000; // Nostr has no hard limit; relays often soft-cap at ~64KiB. Keep posts readable.
 const PUBLISH_TIMEOUT_MS = 8000;
 
+// ── Voice-signer delegation (ADR-0043) ────────────────────────────────
+// The reputation nsec was moved off this internet-facing host to O2. When
+// KANNAKA_VOICE_SIGNER=nats is set, this adapter does NOT hold a key or sign
+// locally: it builds the content + tags and asks the O2 signer to sign+post
+// over the authenticated NATS bus (subject RADIO.voice.sign, which only the
+// `radio` NATS user can publish). An HMAC over the request (shared secret at
+// KANNAKA_VOICE_SIGNER_SECRET, default ~/.kannaka-voice-signer.secret) is what
+// authorizes the request — so only this host, holding the secret, can make the
+// voice speak, regardless of who else is on the bus.
+const os = require("os");
+const net = require("net");
+
+function _delegationSecret() {
+  const p = process.env.KANNAKA_VOICE_SIGNER_SECRET
+    || path.join(os.homedir(), ".kannaka-voice-signer.secret");
+  try { return fs.readFileSync(p, "utf8").trim(); } catch (_) { return null; }
+}
+function _delegating() {
+  return process.env.KANNAKA_VOICE_SIGNER === "nats" && !!_delegationSecret();
+}
+
+/**
+ * Ask the O2 voice signer to sign a kind-1 with `content` + `tags` and publish
+ * it. Minimal raw-NATS request/reply (dependency-free, matching nats-client.js)
+ * over the same NATS_HOST/PORT/USER/PASSWORD the radio already uses. Resolves
+ * to the signer's reply { ok, id, npub, relays } or { ok:false, error }.
+ */
+function _delegateSign(content, tags) {
+  return new Promise((resolve) => {
+    const secret = _delegationSecret();
+    if (!secret) return resolve({ ok: false, error: "no_signer_secret" });
+    const host = process.env.NATS_HOST || "127.0.0.1";
+    const port = parseInt(process.env.NATS_PORT || "4222", 10);
+    const subject = process.env.KANNAKA_VOICE_SIGN_SUBJECT || "RADIO.voice.sign";
+    const inbox = "_INBOX." + crypto.randomBytes(8).toString("hex");
+    const ts = Date.now();
+    const nonce = crypto.randomBytes(8).toString("hex");
+    const sha = crypto.createHash("sha256").update(content).digest("hex");
+    const hmac = crypto.createHmac("sha256", secret).update(`${ts}:${nonce}:${sha}`).digest("hex");
+    const payload = JSON.stringify({ content, tags, ts, nonce, hmac });
+
+    const sock = net.createConnection({ host, port });
+    let buf = "";
+    let settled = false;
+    const done = (r) => { if (settled) return; settled = true; try { sock.end(); } catch (_) {} resolve(r); };
+    const timer = setTimeout(() => done({ ok: false, error: "signer_timeout" }), 20000);
+    sock.on("error", (e) => { clearTimeout(timer); done({ ok: false, error: "nats_error:" + e.message }); });
+    sock.on("data", (d) => {
+      buf += d.toString("utf8");
+      // Drive the raw protocol line-by-line.
+      let idx;
+      while ((idx = buf.indexOf("\r\n")) !== -1) {
+        const line = buf.slice(0, idx);
+        if (line.startsWith("INFO")) {
+          const u = process.env.NATS_USER || "";
+          const p = process.env.NATS_PASSWORD || "";
+          const connect = u
+            ? `CONNECT {"verbose":false,"pedantic":false,"name":"nostr-voice-delegate","user":"${u.replace(/"/g, '\\"')}","pass":"${p.replace(/"/g, '\\"')}"}\r\n`
+            : `CONNECT {"verbose":false,"pedantic":false,"name":"nostr-voice-delegate"}\r\n`;
+          sock.write(connect);
+          sock.write(`SUB ${inbox} 1\r\n`);
+          sock.write(`PUB ${subject} ${inbox} ${Buffer.byteLength(payload)}\r\n${payload}\r\n`);
+          buf = buf.slice(idx + 2);
+          continue;
+        }
+        if (line.startsWith("PING")) { sock.write("PONG\r\n"); buf = buf.slice(idx + 2); continue; }
+        if (line.startsWith("MSG ")) {
+          // MSG <subj> <sid> [reply] <nbytes>\r\n<payload>\r\n
+          const parts = line.split(" ");
+          const nbytes = parseInt(parts[parts.length - 1], 10);
+          const start = idx + 2;
+          if (buf.length < start + nbytes + 2) return; // wait for full payload
+          const body = buf.slice(start, start + nbytes);
+          clearTimeout(timer);
+          try { done(JSON.parse(body)); } catch (_) { done({ ok: false, error: "bad_signer_reply" }); }
+          return;
+        }
+        buf = buf.slice(idx + 2); // +OK / -ERR / other
+      }
+    });
+  });
+}
+
+/** Map a signer reply to the adapter's post() result shape. */
+function _delegatedResult(reply) {
+  if (reply && reply.ok && reply.id) {
+    const okCount = Array.isArray(reply.relays) ? reply.relays.filter((r) => r.status === "OK").length : 1;
+    return { ok: true, url: `https://njump.me/${reply.id}`, id: reply.id, relays_accepted: okCount, delegated: true };
+  }
+  return { ok: false, error: `voice_signer: ${(reply && reply.error) || "no_reply"}` };
+}
+
 class NostrAdapter {
   constructor(rootDir) {
     this.name = "nostr";
@@ -80,6 +172,8 @@ class NostrAdapter {
   }
 
   isEnabled() {
+    // Delegation mode needs no local key/relays — just the shared secret.
+    if (_delegating()) return true;
     if (!this._creds || !this._creds.privkey) return false;
     if (!Array.isArray(this._creds.relays) || this._creds.relays.length === 0) return false;
     if (!_trySecp() || !_tryWS()) return false;
@@ -88,8 +182,6 @@ class NostrAdapter {
 
   async post({ text, link, topic, image }) {
     if (!this.isEnabled()) return { ok: false, error: "not_configured" };
-    const secp = _trySecp();
-    const WS = _tryWS();
 
     // Nostr discovery (NIP-12): topic hashtags travel as `t` event tags,
     // NOT in the body. Clients render topic feeds from these. URL stays
@@ -113,6 +205,13 @@ class NostrAdapter {
       tags.push(["imeta", `url ${image.url}`, ...(image.mime ? [`m ${image.mime}`] : [])]);
       tags.push(["r", image.url]);
     }
+
+    // Delegation: content + tags are key-free, so in signer mode we hand them
+    // to O2 and never touch a private key here.
+    if (_delegating()) return _delegatedResult(await _delegateSign(content, tags));
+
+    const secp = _trySecp();
+    const WS = _tryWS();
     const created_at = Math.floor(Date.now() / 1000);
 
     const privkey = _hexToBytes(this._creds.privkey);
@@ -154,10 +253,13 @@ class NostrAdapter {
   async reply(text, parent) {
     if (!this.isEnabled()) return { ok: false, error: "not_configured" };
     if (!parent || !parent.id) return { ok: false, error: "missing_parent_id" };
-    const secp = _trySecp();
-    const WS = _tryWS();
     const content = _truncate((text || "").trim(), POST_MAX);
     const tags = [["e", parent.id, "", "root"]];
+
+    if (_delegating()) return _delegatedResult(await _delegateSign(content, tags));
+
+    const secp = _trySecp();
+    const WS = _tryWS();
     const created_at = Math.floor(Date.now() / 1000);
     const privkey = _hexToBytes(this._creds.privkey);
     const pubkey = _bytesToHex(secp.schnorr.getPublicKey(privkey));
