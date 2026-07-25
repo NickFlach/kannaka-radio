@@ -51,6 +51,11 @@ function getEnabledBroadcasters(rootDir) {
  * @param {object} msg
  * @param {string} msg.text — the Kannaka-drafted body. Adapters may truncate.
  * @param {string} [msg.link] — URL to attach; adapters render per-platform.
+ * @param {object} [msg.image] — optional image `{ url, alt?, mime? }` (e.g. an
+ *   OBC gallery artifact). Mastodon fetches + uploads it as a media attachment;
+ *   Nostr appends the URL + a NIP-92 imeta tag. A failed media upload never
+ *   blocks the text post. Bluesky (pending client-lib blob support) and the
+ *   media-only YouTube adapter ignore it.
  * @param {object} [opts]
  * @param {string} [opts.rootDir] — radio root for credential lookup.
  * @returns {Promise<Array<{name, ok, url?, error?}>>}

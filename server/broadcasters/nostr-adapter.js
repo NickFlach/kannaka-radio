@@ -86,7 +86,7 @@ class NostrAdapter {
     return true;
   }
 
-  async post({ text, link, topic }) {
+  async post({ text, link, topic, image }) {
     if (!this.isEnabled()) return { ok: false, error: "not_configured" };
     const secp = _trySecp();
     const WS = _tryWS();
@@ -98,13 +98,21 @@ class NostrAdapter {
     const { tagsFor, renderNostrTags } = require("./discovery");
     const topicTags = tagsFor(topic, 5);
 
-    const content = _truncate((text || "").trim(), POST_MAX);
+    let content = _truncate((text || "").trim(), POST_MAX);
     const tags = [
       ...renderNostrTags(topicTags),
       // Optional reference tag — clients that DO surface refs (rare on
       // primary feeds) get the radio link, but it's not part of body.
       ...(link ? [["r", link]] : []),
     ];
+    // Optional image (e.g. an OBC gallery artifact): Nostr clients render a
+    // bare image URL inline, so append it to the body and advertise it via a
+    // NIP-92 `imeta` tag plus an `r` reference.
+    if (image && image.url) {
+      content = content + (content ? "\n\n" : "") + image.url;
+      tags.push(["imeta", `url ${image.url}`, ...(image.mime ? [`m ${image.mime}`] : [])]);
+      tags.push(["r", image.url]);
+    }
     const created_at = Math.floor(Date.now() / 1000);
 
     const privkey = _hexToBytes(this._creds.privkey);
