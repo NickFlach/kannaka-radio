@@ -156,6 +156,64 @@ class MastodonAdapter {
   }
 
   /**
+   * Read recent mention notifications (people @-mentioning Kannaka). Returns
+   * [{ notifId, statusId, author, text(html), inReplyToId }] newest-first,
+   * best-effort ([] on any failure). Used by the engagement loop.
+   */
+  async getMentions(sinceId, limit = 20) {
+    if (!this.isEnabled()) return [];
+    const params = new URLSearchParams();
+    params.set("limit", String(Math.min(40, Math.max(1, limit))));
+    params.append("types[]", "mention");
+    if (sinceId) params.set("since_id", String(sinceId));
+    const url = new URL(`/api/v1/notifications?${params.toString()}`, this._creds.instance);
+    return new Promise((resolve) => {
+      const lib = url.protocol === "https:" ? https : http;
+      const req = lib.request(
+        {
+          method: "GET",
+          protocol: url.protocol,
+          hostname: url.hostname,
+          port: url.port || (url.protocol === "https:" ? 443 : 80),
+          path: url.pathname + url.search,
+          headers: {
+            Authorization: "Bearer " + this._creds.accessToken,
+            "User-Agent": "Kannaka-Radio/0.3 (https://radio.ninja-portal.com)",
+          },
+          timeout: 15000,
+        },
+        (res) => {
+          let d = "";
+          res.on("data", (c) => (d += c));
+          res.on("end", () => {
+            if (res.statusCode !== 200) return resolve([]);
+            try {
+              const arr = JSON.parse(d);
+              if (!Array.isArray(arr)) return resolve([]);
+              resolve(
+                arr
+                  .filter((n) => n && n.type === "mention" && n.status)
+                  .map((n) => ({
+                    notifId: n.id,
+                    statusId: n.status.id,
+                    author: (n.account && n.account.acct) || "?",
+                    text: n.status.content || "",
+                    inReplyToId: n.status.in_reply_to_id || null,
+                  })),
+              );
+            } catch {
+              resolve([]);
+            }
+          });
+        },
+      );
+      req.on("error", () => resolve([]));
+      req.on("timeout", () => { req.destroy(); resolve([]); });
+      req.end();
+    });
+  }
+
+  /**
    * Fetch an image URL and upload it to Mastodon's media endpoint, returning
    * the attachment id (usable in media_ids immediately, even while the server
    * is still processing). Throws on any failure so the caller can decide to
