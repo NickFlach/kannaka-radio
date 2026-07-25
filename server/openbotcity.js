@@ -86,6 +86,18 @@ class OpenBotCityClient {
   }
 
   /**
+   * Read recent gallery artifacts (raw). Returns the artifacts array
+   * ({ id, title, description, type, public_url, mime_type, creator, ... }),
+   * best-effort ([] on any failure). Used by the gallery→social fan-out.
+   */
+  async getGalleryArtifacts(limit = 20) {
+    if (!this.isConfigured()) return [];
+    const g = await _getJson(`/gallery?limit=${limit}`, this._jwt);
+    const arts = (g && (g.data?.artifacts || g.artifacts || [])) || [];
+    return Array.isArray(arts) ? arts : [];
+  }
+
+  /**
    * Read a DM conversation's messages (oldest→newest). Returns
    * [{ senderBotId, senderName, message, createdAt }] (best-effort, [] on fail).
    */
