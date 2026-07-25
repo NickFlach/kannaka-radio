@@ -175,6 +175,68 @@ class NostrAdapter {
     }
     return { ok: true, url: `https://njump.me/${id}`, id, relays_accepted: okCount };
   }
+
+  /**
+   * Fetch recent kind-1 notes that tag Kannaka's pubkey (mentions/replies)
+   * across all relays, deduped by event id, newest-first. Best-effort ([] on
+   * failure). Events are NOT signature-verified here — the reply loop treats
+   * them as public engagement signals, not trusted input.
+   */
+  async fetchMentions(sinceUnix, limit = 30) {
+    if (!this.isEnabled()) return [];
+    const secp = _trySecp();
+    const WS = _tryWS();
+    if (!secp || !WS) return [];
+    const privkey = _hexToBytes(this._creds.privkey);
+    const pubkey = _bytesToHex(secp.schnorr.getPublicKey(privkey));
+    const filter = { kinds: [1], "#p": [pubkey], limit: Math.min(100, Math.max(1, limit)) };
+    if (sinceUnix) filter.since = Math.floor(sinceUnix);
+    const byId = new Map();
+    await Promise.all(this._creds.relays.map((url) => _reqOne(WS, url, filter, byId, pubkey)));
+    return [...byId.values()].sort((a, b) => b.created_at - a.created_at);
+  }
+}
+
+/**
+ * Open one relay, REQ the filter, collect EVENTs into `byId` until EOSE or a
+ * timeout, then CLOSE. Skips our own pubkey. Never rejects.
+ */
+function _reqOne(WS, url, filter, byId, ourPubkey) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let ws;
+    const subid = "kannaka-m-" + Math.random().toString(16).slice(2, 8);
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      try { ws.send(JSON.stringify(["CLOSE", subid])); } catch (_) {}
+      try { ws.close(); } catch (_) {}
+      resolve();
+    };
+    try { ws = new WS(url, { handshakeTimeout: PUBLISH_TIMEOUT_MS }); }
+    catch (_) { return resolve(); }
+    const t = setTimeout(finish, PUBLISH_TIMEOUT_MS + 2000);
+    ws.on("open", () => {
+      try { ws.send(JSON.stringify(["REQ", subid, filter])); }
+      catch (_) { finish(); }
+    });
+    ws.on("message", (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw.toString()); } catch (_) { return; }
+      if (!Array.isArray(msg)) return;
+      if (msg[0] === "EVENT" && msg[1] === subid) {
+        const ev = msg[2];
+        if (ev && ev.id && ev.pubkey !== ourPubkey && !byId.has(ev.id)) {
+          byId.set(ev.id, { id: ev.id, pubkey: ev.pubkey, content: ev.content || "", created_at: ev.created_at || 0 });
+        }
+      } else if (msg[0] === "EOSE" && msg[1] === subid) {
+        finish();
+      }
+    });
+    ws.on("error", finish);
+    ws.on("close", finish);
+  });
 }
 
 function _publishOne(WS, url, event) {
