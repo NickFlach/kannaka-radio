@@ -27,12 +27,14 @@ class BlueskyAdapter {
     return !!this._client && this._client.isConfigured();
   }
 
-  async post({ text, link, topic }) {
+  async post({ text, link, topic, image }) {
     // 4 tags max — Bluesky's facet rendering tolerates more, but readability
     // tanks past 4. The body shrinks to fit.
     const tags = tagsFor(topic, 4);
     const body = composeForFeed(text, tags, POST_MAX);
-    const result = await this._client.post(body);
+    // Optional image (e.g. an OBC gallery artifact) → app.bsky.embed.images.
+    const opts = image && image.url ? { images: [image] } : {};
+    const result = await this._client.post(body, opts);
     // Convert the AT-Protocol uri (at://did:plc:.../app.bsky.feed.post/<rkey>)
     // into a public bsky.app URL so the broadcaster log shows a clickable
     // link alongside Mastodon/Telegram/Nostr instead of "(no url)".
