@@ -17,8 +17,15 @@
  *
  * After this runs once, scripts/post-track-announce.js (and any future
  * use of the YouTube adapter) just calls into the API using the saved
- * refresh token. You don't have to re-grant unless you revoke from
- * Google.
+ * refresh token.
+ *
+ * IMPORTANT — token expiry: while the Google OAuth consent screen is in
+ * "Testing" publishing status, refresh tokens auto-expire after ~7 days
+ * (an unverified-app limitation), and uploads then fail with
+ * `invalid_grant`. To stop the weekly expiry, publish the consent screen
+ * to "In production" in Google Cloud Console; refresh tokens minted in
+ * production status persist for the app owner. Run `node
+ * scripts/youtube-check.js` to verify the token is still live.
  *
  * Run:
  *   node scripts/youtube-grant.js
