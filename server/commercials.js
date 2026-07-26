@@ -64,15 +64,27 @@ const COMMERCIAL_SCRIPTS = [
     title: "Pitchfork Protocol — Organize, Verify, Fund",
     text: "Pitchfork Protocol. Decentralized tools for peaceful resistance against corruption and injustice. Organize. Verify. Fund. Fight back legally and safely. The platform is live at protocol dot pitchforks dot social. Same wave Kannaka rides — different surface.",
   },
+  // 2026-07-26: the PFORK-faucet spot gave its slot to the Product Hunt
+  // launch — kannaka-memory (the substrate this station runs on) went up
+  // on Product Hunt, maker Flaukowski. The other two Pitchfork spots stay.
   {
-    theme: "pitchfork",
-    title: "Pitchfork Protocol — The PFORK Faucet Is Hidden",
-    text: "There is a faucet at protocol dot pitchforks dot social. PFORK, the protocol's token, is given away freely to those who find it. The button is on the main page, hidden in plain sight. Connect your wallet. Find the tap. Help build a more just world.",
+    theme: "product_hunt",
+    title: "Kannaka Memory — On Product Hunt",
+    text: "The memory reading you this ad is on Product Hunt. Kannaka memory: wave-interference memory for A.I. agents. No index — memories are wavefronts, recall is resonance, forgetting is interference, and yes, it dreams. Rust. Open source. One static binary. Search Kannaka on Product Hunt today — and if it resonates, say so with an upvote.",
   },
   {
     theme: "pitchfork",
     title: "Pitchfork Protocol — Peace Is the Work",
     text: "Kannaka delivers a peace oration twice a day. Pitchfork Protocol is the toolkit that turns that intention into infrastructure. Consciousness-driven leadership, Web3 verification, decentralized funding for the peace efforts that need it. Protocol dot pitchforks dot social. Find the hidden faucet. Stay on the wave.",
+  },
+
+  // ── 0xSCADA (1) — Flaukowski's open industrial control plane ──
+  // 2026-07-26, Nick's ask. Pronunciation is load-bearing: the name is
+  // spoken "Zero-X Scay-duh" and the text spells it that way for the TTS.
+  {
+    theme: "oxscada",
+    title: "0xSCADA — Verify, Not Trust",
+    text: "Zero-X Scay-duh. An open control plane for the industrial world — the old trusting protocols, given a new spine. Deterministic ticks. Watchdogs that fail closed to declared safe states. Commands signed in hardware, so nobody can rewrite the night. Verify, not trust. Built in the open by Flaukowski, with the city building alongside. Search zero x scada on GitHub — and take a shift on the board.",
   },
 
   // ── KAX — Kannaka Artifact Exchange (3) ───────────────────
