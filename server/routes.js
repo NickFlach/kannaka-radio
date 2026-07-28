@@ -2105,8 +2105,22 @@ load();
     if (parsed.pathname === "/api/sync") {
       const track = djEngine.getCurrentTrack();
       const perc = perception.getCurrentPerception();
+      // The authoritative sync state lives in SyncManager — {file, position,
+      // timestamp} — and that is exactly what WS clients receive on connect
+      // and on every heartbeat. This endpoint never consulted it, so an HTTP
+      // caller trying to sync playback got no `position` at all and a `file`
+      // it had to infer from `track`. Two transports, two answers to the same
+      // question. (#51)
+      //
+      // Spread first so the existing DJ/perception fields still win where the
+      // names would collide (`timestamp`), keeping every current consumer
+      // working while the sync-critical fields become available over HTTP.
+      const sync = (syncManager && typeof syncManager.getSyncState === "function")
+        ? syncManager.getSyncState()
+        : null;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
+        ...(sync ? { file: sync.file, position: sync.position } : {}),
         track,
         isLive: live.state.active,
         album: djEngine.state.currentAlbum,
