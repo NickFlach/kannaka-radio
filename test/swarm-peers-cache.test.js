@@ -143,6 +143,57 @@ const GOOD_PEERS = [{ id: "oracle-1" }, { id: "oracle-2" }, { id: "witness-01" }
       "failed refresh should still stamp the cache to throttle respawns");
   });
 
+  // ── #137: the public endpoint must not leak operator identity ──
+  //
+  // /api/swarm/peers is advertised as public in /.well-known/api-catalog and
+  // used to return `kannaka swarm peers --json` records verbatim — including
+  // the operator's identity.email / identity.user_id. Verified against the
+  // real CLI: the local "Kannaka" peer record does carry an identity object.
+  await test("#137 identity is stripped from the public peer directory", async () => {
+    global._peersCache = { t: Date.now(), peers: [{
+      agent_id: "Kannaka",
+      display_name: "Kannaka",
+      identity: { email: "operator@example.invalid", user_id: "00000000-dead-beef-0000-000000000000" },
+      memory_count: 42,
+    }] };
+    const r = await get(handler, "/api/swarm/peers");
+    assert.ok(!r.body.includes("operator@example.invalid"), "email reached the wire: " + r.body);
+    assert.ok(!r.body.includes("dead-beef"), "user_id reached the wire: " + r.body);
+    assert.ok(!r.body.includes("identity"), "identity object was serialised: " + r.body);
+  });
+
+  await test("#137 the useful public fields survive redaction", async () => {
+    global._peersCache = { t: Date.now(), peers: [{
+      agent_id: "gossipghost-01",
+      display_name: "GossipGhost",
+      capabilities: { ask: true, dream: true },
+      joined_at: "2026-07-28T15:19:24Z",
+      last_seen: "2026-07-28T15:19:24Z",
+      kannaka_version: "0.11.1",
+      memory_count: 25,
+      identity: { email: "nope@example.invalid" },
+    }] };
+    const body = JSON.parse((await get(handler, "/api/swarm/peers")).body);
+    const p = body.peers[0];
+    assert.strictEqual(p.agent_id, "gossipghost-01");
+    assert.strictEqual(p.display_name, "GossipGhost");
+    assert.strictEqual(p.memory_count, 25);
+    assert.strictEqual(p.kannaka_version, "0.11.1");
+    assert.deepStrictEqual(p.capabilities, { ask: true, dream: true });
+    assert.strictEqual(p.identity, undefined, "redaction must apply to every record");
+  });
+
+  await test("#137 an unknown future field is withheld by default (allowlist, not denylist)", async () => {
+    global._peersCache = { t: Date.now(), peers: [{
+      agent_id: "future-01",
+      some_new_secret_field: "should-not-be-published",
+    }] };
+    const r = await get(handler, "/api/swarm/peers");
+    assert.ok(!r.body.includes("should-not-be-published"),
+      "a field the CLI adds later must stay withheld until allowlisted: " + r.body);
+    assert.ok(r.body.includes("future-01"), "known fields still pass through");
+  });
+
   delete global._peersCache;
 
   console.log(`\n${"─".repeat(50)}`);

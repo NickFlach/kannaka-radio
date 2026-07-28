@@ -44,6 +44,36 @@ function checkDeletePassword(password) {
  * load balancer) > incoming Host header > localhost fallback. The result is
  * always returned without a trailing slash so callers can concatenate paths.
  */
+/**
+ * Fields of a `kannaka swarm peers --json` record that are safe to publish.
+ *
+ * ALLOWLIST, deliberately — not a denylist. `/api/swarm/peers` is advertised
+ * as public in /.well-known/api-catalog and used to return the CLI's records
+ * verbatim, which meant the operator's `identity: { email, user_id }` was
+ * served to any anonymous caller. A denylist would have fixed today's leak and
+ * quietly re-opened it the next time the CLI grew a field; with an allowlist a
+ * new field is withheld until someone decides it is public. (#137)
+ */
+const PUBLIC_PEER_FIELDS = [
+  "agent_id",
+  "display_name",
+  "capabilities",
+  "joined_at",
+  "last_seen",
+  "kannaka_version",
+  "memory_count",
+];
+
+/** Project one peer record down to its publishable fields. */
+function publicPeerFields(peer) {
+  if (!peer || typeof peer !== "object") return {};
+  const out = {};
+  for (const k of PUBLIC_PEER_FIELDS) {
+    if (peer[k] !== undefined) out[k] = peer[k];
+  }
+  return out;
+}
+
 function publicOrigin(req) {
   const envUrl = (process.env.RADIO_PUBLIC_URL || "").trim();
   if (envUrl) return envUrl.replace(/\/+$/, "");
@@ -1113,7 +1143,12 @@ module.exports = function setupRoutes(deps) {
         const c = global._peersCache;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
-          peers: (c && c.peers) || [],
+          // Projected again on the way out. The cache is already redacted at
+          // write time, but this is the boundary that actually faces the
+          // internet, so it does not rely on every writer having remembered.
+          // Idempotent: the allowlist projection of a projected record is
+          // itself. (#137)
+          peers: ((c && c.peers) || []).map(publicPeerFields),
           // Present only when the last refresh failed and we are serving the
           // previous directory, so a client can tell "swarm is empty" apart
           // from "we could not ask just now".
@@ -1157,7 +1192,9 @@ module.exports = function setupRoutes(deps) {
             // too. Anything else is a shape we do not understand — treat it as
             // a failed refresh rather than publishing an empty directory.
             const list = Array.isArray(out) ? out : (Array.isArray(out && out.peers) ? out.peers : null);
-            if (list) global._peersCache = { t: now, peers: list };
+            // Redact BEFORE caching, so the secret never sits in memory and the
+            // stale-serving path can't republish it either.
+            if (list) global._peersCache = { t: now, peers: list.map(publicPeerFields) };
             else keep(`unexpected swarm peers shape: ${typeof out}`);
           } catch (e) {
             keep(`unparseable swarm peers output: ${e.message}`);
