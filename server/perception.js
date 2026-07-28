@@ -88,7 +88,18 @@ class PerceptionEngine {
 
   // ── Real perception via kannaka-ear ───────────────────────
 
-  hearTrack(track) {
+  /**
+   * @param {object} track
+   * @param {(perception: object) => void} [onRealPerception]
+   *   Called once, only if `kannaka hear` actually produced a measurement
+   *   (`source === "kannaka-ear"`). Never called with the mock placeholder.
+   *
+   *   Exists because callers that need REAL numbers cannot read
+   *   getCurrentPerception() straight after this returns: `current` is the
+   *   mock for the first ~500ms, so a synchronous read gets fabricated values
+   *   100% of the time. That is what KANNAKA.attention.ear was publishing. (#124)
+   */
+  hearTrack(track, onRealPerception) {
     // Start mock perception immediately so the visualizer isn't blank
     this.current = this.generateMockPerception(track);
     this._broadcastPerception(this.current);
@@ -107,6 +118,12 @@ class PerceptionEngine {
         this.current = perception;
         this._hasRealPerception = perception && perception.source === "kannaka-ear";
         this._broadcastPerception(perception);
+        // Notify only on a genuine measurement. A parse that fell back to mock
+        // must not reach a caller that asked for real perception.
+        if (this._hasRealPerception && typeof onRealPerception === "function") {
+          try { onRealPerception(perception); }
+          catch (e) { console.warn(`   [perception] onRealPerception hook failed: ${e.message}`); }
+        }
         console.log(`   \uD83D\uDC41 Perception: ${perception.tempo_bpm.toFixed(0)}bpm, valence=${perception.valence.toFixed(2)}, RMS=${perception.rms_energy.toFixed(3)}`);
         // Cache real measurements by file so future intros can describe
         // the upcoming track's actual sound. Mock perception is excluded
