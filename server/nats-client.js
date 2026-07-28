@@ -678,6 +678,21 @@ class NATSClient extends EventEmitter {
 
     if (subject === 'queen.event.leave') {
       const evt = { agent_id: data.agent_id || data.agentId || 'unknown', display_name: data.display_name || data.displayName || data.agent_id || 'unknown', ...data, receivedAt: now };
+      // A graceful leave must actually clear presence. Pre-fix this only
+      // recorded and broadcast the event — the agent stayed in swarmState
+      // until the 5-minute stale prune noticed it had gone quiet, so for up to
+      // five minutes after a clean shutdown /api/swarm still counted it and
+      // its phase still contributed to swarm coherence. An agent that TOLD us
+      // it was leaving should not have to be timed out. (#134)
+      if (this.swarmState.agents[evt.agent_id]) {
+        delete this.swarmState.agents[evt.agent_id];
+        this.swarmState.queen.agentCount = Object.keys(this.swarmState.agents).length;
+        this._recomputeCoherence();
+      }
+      // End the join-dedup window too: an agent that left cleanly and comes
+      // back is a real rejoin and should be announced, not suppressed for the
+      // remainder of the 6h window. (#134)
+      delete this.swarmState.joinAnnouncedAt[evt.agent_id];
       this.swarmState.agentEvents.unshift(evt);
       if (this.swarmState.agentEvents.length > 50) this.swarmState.agentEvents = this.swarmState.agentEvents.slice(0, 50);
       this._broadcast({ type: 'queen_leave', data: evt });
