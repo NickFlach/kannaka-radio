@@ -882,31 +882,98 @@ module.exports = function setupRoutes(deps) {
         res.end(JSON.stringify({ error: "track parameter required" }));
         return;
       }
-      const http = require("http");
-      http.get("http://127.0.0.1:3001/stems", (pres) => {
-        let buf = "";
-        pres.on("data", c => buf += c);
-        pres.on("end", () => {
-          try {
-            const parsed2 = JSON.parse(buf);
-            const stems = parsed2.data || parsed2.stems || [];
-            const match = stems.find(s =>
-              s.track_name && (
-                s.track_name.toLowerCase() === q.toLowerCase() ||
-                (s.file_path || '').toLowerCase().includes(q.toLowerCase()) ||
-                q.toLowerCase().includes(s.track_name.toLowerCase())
-              )
-            );
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ stem: match || null }));
-          } catch (e) {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "lookup_failed", message: e.message }));
-          }
+      const needle = q.toLowerCase();
+      // Ranked, not first-hit. The original used a single find() over three
+      // OR'd arms, so whichever stem appeared FIRST in the array won — and the
+      // third arm is a containment heuristic, so searching "Stem 200" returned
+      // "Stem 2" (because "stem 200".includes("stem 2")). An exact track_name
+      // match must beat a substring guess no matter where each sits in the
+      // list. Surfaced by the #123 regression test.
+      //   0 = exact track_name, 1 = file_path contains the query,
+      //   2 = query contains the track_name (loosest — last resort)
+      const rank = (s2) => {
+        if (!s2 || !s2.track_name) return -1;
+        const name = s2.track_name.toLowerCase();
+        if (name === needle) return 0;
+        if ((s2.file_path || "").toLowerCase().includes(needle)) return 1;
+        if (needle.includes(name)) return 2;
+        return -1;
+      };
+      // Within a rank, the LONGEST track_name wins — it is the most specific.
+      // Without this, "play Stem 42 now" matched "Stem 4" (both are contained
+      // in the query, and "Stem 4" happened to come first).
+      const bestMatch = (rows) => {
+        let best = null;
+        let bestRank = Infinity;
+        let bestLen = -1;
+        for (const row of rows || []) {
+          const r2 = rank(row);
+          if (r2 < 0) continue;
+          const len = row.track_name.length;
+          if (r2 > bestRank) continue;
+          if (r2 === bestRank && len <= bestLen) continue;
+          best = row;
+          bestRank = r2;
+          bestLen = len;
+          if (bestRank === 0) break; // nothing can beat an exact name match
+        }
+        return best;
+      };
+
+      // Search the FULL inventory via the stem-server DB rather than the HTTP
+      // /stems endpoint. dj-engine._fetchOrcStems documents why: "The HTTP
+      // /stems endpoint strips `file_path` for security and paginates at 100
+      // max, but since radio and stem-server share the filesystem we can query
+      // the DB directly for the full unpaginated list with file_path intact."
+      //
+      // This route used one plain GET to /stems, so two things were broken:
+      // any stem past the first 100 was invisible, and the `file_path` match
+      // arm above could never fire over HTTP because that field is stripped.
+      // The DB path fixes both. (#123)
+      const viaDb = typeof djEngine._fetchOrcStems === "function"
+        ? djEngine._fetchOrcStems()
+        : Promise.resolve([]);
+
+      viaDb.then((rows) => {
+        if (Array.isArray(rows) && rows.length > 0) {
+          const match = bestMatch(rows);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ stem: match || null, source: "stem-db", searched: rows.length }));
+          return;
+        }
+        // No DB on this host (dev box, or stem-server not colocated) — fall
+        // back to the HTTP endpoint. Still first-page-only and still without
+        // file_path, so the response says so rather than implying a full
+        // search happened.
+        const http = require("http");
+        http.get("http://127.0.0.1:3001/stems", (pres) => {
+          let buf = "";
+          pres.on("data", c => buf += c);
+          pres.on("end", () => {
+            try {
+              const parsed2 = JSON.parse(buf);
+              const stems = parsed2.data || parsed2.stems || [];
+              const match = bestMatch(stems);
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({
+                stem: match || null,
+                source: "stem-http",
+                searched: stems.length,
+                partial: true,
+                note: "stem DB unavailable; searched only the first /stems page and file_path is stripped over HTTP",
+              }));
+            } catch (e) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "lookup_failed", message: e.message }));
+            }
+          });
+        }).on("error", (e) => {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "stem_server_unreachable", message: e.message }));
         });
-      }).on("error", (e) => {
-        res.writeHead(502, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "stem_server_unreachable", message: e.message }));
+      }).catch((e) => {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "lookup_failed", message: e.message }));
       });
       return;
     }
