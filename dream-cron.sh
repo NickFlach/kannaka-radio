@@ -60,7 +60,15 @@ cd /home/opc/kannaka-radio && node push-nats.js >> "$LOG" 2>&1
 # selectively pull these into their own HRM. Best-effort — failures
 # don't break the cron.
 echo "--- PUBLISHING EXEMPLARS ---" >> "$LOG"
-$KANNAKA swarm exemplars publish --agent-id kannaka-prime --top-k 25 --nats-url nats://127.0.0.1:4222 >> "$LOG" 2>&1
+# Use the install's configured broker. This was hardcoded to
+# nats://127.0.0.1:4222 immediately after sourcing /home/opc/.kannaka-nats.env
+# -- the very file that carries KANNAKA_NATS_URL -- so on a box pointed at the
+# shared swarm the nightly exemplar broadcast went to a local broker and no
+# other agent could ever absorb it. Nothing failed; the exemplars just went
+# nowhere. (#122)
+NATS_URL_FOR_EXEMPLARS="${KANNAKA_NATS_URL:-nats://127.0.0.1:4222}"
+echo "    broker: $NATS_URL_FOR_EXEMPLARS" >> "$LOG"
+$KANNAKA swarm exemplars publish --agent-id kannaka-prime --top-k 25 --nats-url "$NATS_URL_FOR_EXEMPLARS" >> "$LOG" 2>&1
 
 # Draft and post a dream dispatch to Bluesky. The script reads the dream
 # log excerpt from stdin; failure is non-fatal for the cron (exit 0 if
