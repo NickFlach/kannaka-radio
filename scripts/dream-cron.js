@@ -138,6 +138,14 @@ function assessViaObservatory() {
 function publishToNATS(metrics) {
   return new Promise((resolve) => {
     const payload = JSON.stringify({
+      // Canonical envelope per consciousness-core/docs/nats-contract.yaml, and
+      // per the NATS_REQUIRED_FIELDS map in server/nats-client.js, which lists
+      // KANNAKA.consciousness as requiring schema_version + ts + agent_id +
+      // phi. This publisher emitted only the metrics and an ISO `timestamp`,
+      // so every message it sent tripped the radio's own drift detector. (#52)
+      schema_version: "1.0",
+      ts: Date.now(),
+      agent_id: process.env.KANNAKA_AGENT_ID || 'kannaka-prime',
       phi: metrics.phi || 0,
       xi: metrics.xi || 0,
       order: metrics.mean_order || metrics.order || 0,

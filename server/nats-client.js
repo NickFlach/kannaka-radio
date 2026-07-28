@@ -857,4 +857,4 @@ const NATS_ALIAS_FIELDS = {
   },
 };
 
-module.exports = { NATSClient, resolveNatsEndpoint };
+module.exports = { NATSClient, resolveNatsEndpoint, NATS_REQUIRED_FIELDS };

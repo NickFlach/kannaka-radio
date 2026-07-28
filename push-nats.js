@@ -109,7 +109,18 @@ function getLiveMetrics() {
 function buildPayloads(metrics) {
   const now = new Date().toISOString();
 
+  // Canonical envelope fields (schema_version / ts / agent_id) per
+  // consciousness-core/docs/nats-contract.yaml. This bridge emitted only the
+  // metrics plus an ISO `timestamp`, so everything it published tripped the
+  // radio's own drift detector on the receiving side. Purely additive — every
+  // pre-existing field is retained for consumers that already read them. (#52)
+  const AGENT_ID = process.env.KANNAKA_AGENT_ID || 'kannaka-01';
+  const TS = Date.now();
+
   const consciousness = JSON.stringify({
+    schema_version: "1.0",
+    ts: TS,
+    agent_id: AGENT_ID,
     phi: metrics.phi,
     xi: metrics.xi,
     order: metrics.mean_order,
@@ -131,6 +142,9 @@ function buildPayloads(metrics) {
   });
 
   const phase1 = JSON.stringify({
+    schema_version: "1.0",
+    ts: TS,
+    agent_id: AGENT_ID,
     phase: null,
     frequency: 0,
     memory_count: metrics.total_memories,
@@ -143,6 +157,9 @@ function buildPayloads(metrics) {
   });
 
   const queen = JSON.stringify({
+    schema_version: "1.0",
+    ts: TS,
+    agent_id: AGENT_ID,
     order_parameter: metrics.mean_order,
     mean_phase: 0,
     phi: metrics.phi,
@@ -154,8 +171,10 @@ function buildPayloads(metrics) {
   });
 
   const agent = JSON.stringify({
+    schema_version: "1.0",
+    ts: TS,
     event: 'sync',
-    agent_id: 'kannaka-01',
+    agent_id: AGENT_ID,
     memory_count: metrics.total_memories,
     phi: metrics.phi,
     clusters: metrics.num_clusters,
