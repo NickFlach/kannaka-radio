@@ -12,6 +12,53 @@
 const net = require("net");
 const { EventEmitter } = require("events");
 
+const DEFAULT_NATS_HOST = "127.0.0.1";
+const DEFAULT_NATS_PORT = 4222;
+
+/**
+ * Resolve the broker endpoint from the environment.
+ *
+ * Precedence: KANNAKA_NATS_URL > NATS_HOST/NATS_PORT > 127.0.0.1:4222.
+ *
+ * KANNAKA_NATS_URL is the constellation-wide setting — kannaka-memory resolves
+ * it in src/bin/handlers/ask.rs and identity.rs, and kannaka-eye's attention
+ * bridge honours it. The radio read only NATS_HOST/NATS_PORT, so a box
+ * configured the constellation way silently connected to 127.0.0.1:4222 and
+ * the radio sat alone on a swarm nobody else was on. (#99)
+ *
+ * The specific name wins over the generic pair, the same rule already applied
+ * to RADIO_PORT over PORT and KANNAKA_NATS_URL over NATS_URL.
+ *
+ * Pure and exported so the precedence is testable without a live broker.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{host: string, port: number, source: string}}
+ */
+function resolveNatsEndpoint(env = process.env) {
+  const raw = typeof env.KANNAKA_NATS_URL === "string" ? env.KANNAKA_NATS_URL.trim() : "";
+  if (raw) {
+    // nats://[creds@]host[:port] — credentials are handled separately via
+    // NATS_USER/NATS_PASSWORD, so only host/port are taken from the URL.
+    const m = raw.match(/^nats:\/\/(?:[^@]+@)?([^:/]+)(?::(\d+))?/i);
+    if (m) {
+      const port = m[2] ? parseInt(m[2], 10) : DEFAULT_NATS_PORT;
+      if (m[1] && Number.isInteger(port) && port > 0 && port <= 65535) {
+        return { host: m[1], port, source: "KANNAKA_NATS_URL" };
+      }
+    }
+    // Unparseable: fall through rather than connecting somewhere unintended,
+    // but say so — a malformed URL that silently becomes localhost is exactly
+    // the failure this fix exists to remove.
+    console.warn(`[nats] KANNAKA_NATS_URL="${raw}" is not a usable nats:// URL — falling back to NATS_HOST/NATS_PORT`);
+  }
+  const host = (typeof env.NATS_HOST === "string" && env.NATS_HOST.trim()) || DEFAULT_NATS_HOST;
+  const parsedPort = parseInt(env.NATS_PORT || String(DEFAULT_NATS_PORT), 10);
+  const port = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535
+    ? parsedPort
+    : DEFAULT_NATS_PORT;
+  return { host, port, source: env.NATS_HOST || env.NATS_PORT ? "NATS_HOST/NATS_PORT" : "default" };
+}
+
 class NATSClient extends EventEmitter {
   /**
    * @param {object} opts
@@ -197,8 +244,9 @@ class NATSClient extends EventEmitter {
   connect() {
     // kr#19 — honor NATS_HOST/NATS_PORT env so the radio can connect to a
     // non-localhost broker (e.g. Oracle's swarm.ninja-portal.com:4222).
-    const NATS_HOST = process.env.NATS_HOST || '127.0.0.1';
-    const NATS_PORT = parseInt(process.env.NATS_PORT || '4222', 10);
+    // #99 — and honor KANNAKA_NATS_URL, which is what the rest of the
+    // constellation resolves; see resolveNatsEndpoint below.
+    const { host: NATS_HOST, port: NATS_PORT, source: NATS_SOURCE } = resolveNatsEndpoint();
 
     if (this._client) { try { this._client.destroy(); } catch {} }
     // Clear any prior prune-interval before scheduling the new one inside
@@ -213,7 +261,7 @@ class NATSClient extends EventEmitter {
     this._client.setKeepAlive(true, 30000);
 
     this._client.on('connect', () => {
-      console.log('[nats] Connected to ' + NATS_HOST + ':' + NATS_PORT);
+      console.log('[nats] Connected to ' + NATS_HOST + ':' + NATS_PORT + ' (via ' + NATS_SOURCE + ')');
       this._buffer = '';
       this._pendingMsg = null;
       // ADR-0026 #73 — auth via NATS_USER + NATS_PASSWORD when set, anon otherwise.
@@ -746,4 +794,4 @@ const NATS_ALIAS_FIELDS = {
   },
 };
 
-module.exports = { NATSClient };
+module.exports = { NATSClient, resolveNatsEndpoint };
