@@ -140,6 +140,108 @@ test('generateTrackClusters returns cluster per album', () => {
   assert.ok(names.includes('Emergence'));
 });
 
+// ── User queue is actually consumed by playback (#142) ──────
+//
+// addToQueue and the vote-window winner both push into userQueue, but
+// nothing used to read it back out, so requests never aired. These lock in
+// that advanceTrack drains the queue, that peek and advance agree on what
+// plays next, and that an empty queue changes nothing.
+
+/** Fresh engine with a hand-built 3-track playlist and no real files. */
+function queueRig() {
+  const changes = [];
+  const e = new DJEngine({
+    getMusicDir: () => '/nonexistent-music-dir',
+    onTrackChange: () => {},
+    onQueueChange: (q) => changes.push(q.length),
+  });
+  e.state.playlistMeta = [
+    { title: 'A', file: '/m/a.mp3' },
+    { title: 'B', file: '/m/b.mp3' },
+    { title: 'C', file: '/m/c.mp3' },
+  ];
+  e.state.playlist = e.state.playlistMeta.map(t => t.file);
+  e.state.currentTrackIdx = 0;
+  e.state.channel = 'dj';
+  return { e, changes };
+}
+
+test('#142 advanceTrack plays a queued request before the next playlist track', () => {
+  const { e } = queueRig();
+  e.userQueue.push({ filename: '/m/req.mp3', title: 'Requested', path: '/m/req.mp3' });
+  const next = e.advanceTrack();
+  assert.strictEqual(next.title, 'Requested', 'request should air next, not playlist track B');
+  assert.strictEqual(e.userQueue.length, 0, 'request should be drained from userQueue');
+  assert.strictEqual(next.requested, true, 'promoted entry should be marked requested');
+});
+
+test('#142 playlist and playlistMeta stay parallel after promotion', () => {
+  const { e } = queueRig();
+  e.userQueue.push({ filename: '/m/req.mp3', title: 'Requested', path: '/m/req.mp3' });
+  e.advanceTrack();
+  assert.strictEqual(e.state.playlist.length, e.state.playlistMeta.length,
+    'splicing must touch both arrays or getCurrentTrack desyncs from the file list');
+  assert.deepStrictEqual(e.state.playlist, e.state.playlistMeta.map(t => t.file));
+});
+
+test('#142 the playlist resumes where it left off after the request', () => {
+  const { e } = queueRig();
+  e.userQueue.push({ filename: '/m/req.mp3', title: 'Requested', path: '/m/req.mp3' });
+  e.advanceTrack();
+  const after = e.advanceTrack();
+  assert.strictEqual(after.title, 'B', 'track B should still follow, not be skipped');
+});
+
+test('#142 peekNextTrack and advanceTrack agree — request is not injected twice', () => {
+  const { e } = queueRig();
+  e.userQueue.push({ filename: '/m/req.mp3', title: 'Requested', path: '/m/req.mp3' });
+  const peeked = e.peekNextTrack();
+  const played = e.advanceTrack();
+  assert.strictEqual(peeked.title, 'Requested', 'peek should see the request');
+  assert.strictEqual(played.title, 'Requested', 'advance should play what peek announced');
+  assert.strictEqual(e.state.playlistMeta.filter(t => t.requested).length, 1,
+    'promoting in both peek and advance must not duplicate the entry');
+});
+
+test('#142 vote winners carry votedIn through to the aired track', () => {
+  const { e } = queueRig();
+  e.userQueue.unshift({ filename: '/m/win.mp3', title: 'Winner', path: '/m/win.mp3', votedIn: true });
+  const next = e.advanceTrack();
+  assert.strictEqual(next.title, 'Winner');
+  assert.strictEqual(next.votedIn, true);
+});
+
+test('#142 multiple requests air in FIFO order, one per boundary', () => {
+  const { e } = queueRig();
+  e.userQueue.push({ filename: '/m/1.mp3', title: 'First', path: '/m/1.mp3' });
+  e.userQueue.push({ filename: '/m/2.mp3', title: 'Second', path: '/m/2.mp3' });
+  assert.strictEqual(e.advanceTrack().title, 'First');
+  assert.strictEqual(e.advanceTrack().title, 'Second');
+  assert.strictEqual(e.advanceTrack().title, 'B', 'then back to the playlist');
+});
+
+test('#142 onQueueChange fires so the UI drops the request as it starts', () => {
+  const { e, changes } = queueRig();
+  e.userQueue.push({ filename: '/m/req.mp3', title: 'Requested', path: '/m/req.mp3' });
+  e.advanceTrack();
+  assert.deepStrictEqual(changes, [0], 'one notification, reporting the drained queue');
+});
+
+test('#142 an empty queue leaves advanceTrack behaviour unchanged', () => {
+  const { e, changes } = queueRig();
+  assert.strictEqual(e.advanceTrack().title, 'B');
+  assert.strictEqual(e.state.playlistMeta.length, 3, 'nothing spliced in');
+  assert.deepStrictEqual(changes, [], 'no spurious queue notifications');
+});
+
+test('#142 a malformed queue entry is dropped instead of wedging the queue', () => {
+  const { e } = queueRig();
+  e.userQueue.push({ title: 'No file anywhere' });
+  const next = e.advanceTrack();
+  assert.strictEqual(next.title, 'B', 'playlist continues');
+  assert.strictEqual(e.userQueue.length, 0, 'bad entry removed, not retried forever');
+});
+
 // ── Summary ─────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`);

@@ -507,6 +507,10 @@ class DJEngine {
   constructor(opts) {
     this._getMusicDir = opts.getMusicDir;
     this._onTrackChange = opts.onTrackChange || (() => {});
+    // Fired when userQueue is drained by playback, so the WS clients that
+    // render the queue see the request leave it. Optional: the engine works
+    // fine without it, the UI just refreshes a beat later off /api/state.
+    this._onQueueChange = opts.onQueueChange || (() => {});
     // Phase 3 of ADR-0006 — feedback loop. The Floor (workspace/index.html)
     // accumulates reactions per track; we read those stats here to bump
     // high-resonance tracks toward the front of new playlists. Settable
@@ -1302,8 +1306,62 @@ class DJEngine {
    * so Kannaka has time to "think about what she's going to say."
    * Returns null if there's no next track and the playlist doesn't loop.
    */
+  /**
+   * Move the head of `userQueue` into the playlist slot that airs next.
+   *
+   * `addToQueue` (POST /api/queue) and the vote-window winner both push into
+   * `userQueue`, but nothing ever read it back out — so requests and vote
+   * winners accumulated forever and never played (#142). Playback is driven
+   * entirely by `playlistMeta[currentTrackIdx]`, so the fix is to splice the
+   * request into that array rather than teach every consumer about a second
+   * source of tracks: history, the 12h no-repeat ledger, peek/announce and
+   * the UI all keep working unchanged.
+   *
+   * Idempotent within a boundary — if the next slot already holds a promoted
+   * request we return it instead of promoting another. That matters because
+   * `peekNextTrack` (which pre-generates the DJ intro) and `advanceTrack`
+   * both call this: without the guard the DJ would announce one request and
+   * then play a different one.
+   *
+   * @returns {object|null} the promoted entry, or null if nothing was queued.
+   */
+  _promoteQueuedRequest() {
+    const meta = this.state.playlistMeta;
+    if (!meta || !Array.isArray(this.userQueue)) return null;
+
+    const nextIdx = this.state.currentTrackIdx + 1;
+    if (meta[nextIdx] && meta[nextIdx].requested) return meta[nextIdx];
+    if (this.userQueue.length === 0) return null;
+
+    const req = this.userQueue.shift();
+    const file = req.filename || req.path;
+    if (!file) return null; // malformed entry — drop it rather than wedge the queue
+
+    const entry = {
+      title: req.title || path.basename(String(file), path.extname(String(file))),
+      album: this.state.currentAlbum || "Requests",
+      file,
+      requested: true,
+      votedIn: !!req.votedIn,
+    };
+    // Clamp: currentTrackIdx can be -1 (jumpToTrack/prevTrack rewind it), and
+    // it can sit at the last index when the playlist is about to wrap.
+    const at = Math.min(Math.max(nextIdx, 0), meta.length);
+    meta.splice(at, 0, entry);
+    this.state.playlist.splice(at, 0, entry.file);
+
+    console.log(`[dj] request promoted to next slot: "${entry.title}"${entry.votedIn ? " (vote winner)" : ""}`);
+    try { this._onQueueChange(this.userQueue); } catch (_) {}
+    return entry;
+  }
+
   peekNextTrack() {
     if (!this.state.playlistMeta || this.state.playlistMeta.length === 0) return null;
+    // A pending request outranks whatever the playlist had queued up next,
+    // and promoting it here (not just in advanceTrack) keeps the DJ's
+    // "coming up next" announcement matched to what actually airs.
+    const promoted = this._promoteQueuedRequest();
+    if (promoted) return promoted;
     const nextIdx = this.state.currentTrackIdx + 1;
     // Wrap-and-reshuffle race: if we'd loop, advanceTrack reshuffles before
     // picking [0]. Doing that here too means peek and advance see the same
@@ -1360,6 +1418,11 @@ class DJEngine {
       if (cur) { this._markPlayed(cur); this._onTrackChange(cur); }
       return cur;
     }
+
+    // Splice any pending request into the next slot BEFORE incrementing, so
+    // the increment lands on it. No-op when peekNextTrack already promoted
+    // this boundary's request.
+    this._promoteQueuedRequest();
 
     this.state.currentTrackIdx++;
     if (this.state.currentTrackIdx >= this.state.playlist.length) {
