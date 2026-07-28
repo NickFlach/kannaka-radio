@@ -136,7 +136,30 @@ class GhostSignalsHub {
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────
-  init() {
+  /**
+   * `async` is load-bearing, not decoration.
+   *
+   * The three statements below can all throw SYNCHRONOUSLY — loadSqlite3()
+   * when the module is absent, mkdirSync() when the data dir cannot be
+   * created, and new Database() on an unopenable path. Without `async` those
+   * throws escaped before the Promise below existed, so the caller's
+   * `init().then(...).catch(...)` never got a chance to attach: the exception
+   * propagated out as an uncaught error and took the whole radio down at
+   * startup. `.catch()` only ever protected the async half.
+   *
+   * As an async function, a synchronous throw becomes a rejection and the
+   * existing handler at the call site works as it always appeared to. (#155)
+   */
+  /**
+   * True once init() has opened the database. Routes use this to answer with
+   * an honest "subsystem unavailable" instead of letting a null `db` surface
+   * as `Cannot read properties of null (reading 'serialize')`. (#155)
+   */
+  isReady() {
+    return this.db !== null && this.db !== undefined;
+  }
+
+  async init() {
     const sqlite3 = loadSqlite3();
     const dir = path.dirname(this.dbPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

@@ -901,6 +901,20 @@ module.exports = function setupRoutes(deps) {
         });
         res.end(JSON.stringify(obj));
       };
+      // gsHub is constructed unconditionally, so it stays truthy even when
+      // init() failed and there is no database behind it. Without this guard
+      // every /api/gshub/* call reached a null `db` and returned a leaked
+      // internal message ("Cannot read properties of null (reading
+      // 'serialize')"). Answer honestly instead: the subsystem is down, and
+      // 503 says retry-later rather than 500's "we broke". (#155)
+      if (parsed.pathname.startsWith("/api/gshub") && typeof gsHub.isReady === "function" && !gsHub.isReady()) {
+        sendJson(503, {
+          ok: false,
+          error: "ghostsignals_unavailable",
+          message: "GhostSignalsHub failed to initialise; see the server log for the reason.",
+        });
+        return;
+      }
       // ADR-0041 Phase 0: settlement authority. Resolving a market — any
       // market — and creating labs-tier markets requires the oracle bearer
       // token. Before this, POST /:id/resolve was open to the internet and
