@@ -1096,8 +1096,15 @@ module.exports = function setupRoutes(deps) {
     if (parsed.pathname === "/api/swarm/peers") {
       const now = Date.now();
       const sendPeers = () => {
+        const c = global._peersCache;
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ peers: (global._peersCache && global._peersCache.peers) || [] }));
+        res.end(JSON.stringify({
+          peers: (c && c.peers) || [],
+          // Present only when the last refresh failed and we are serving the
+          // previous directory, so a client can tell "swarm is empty" apart
+          // from "we could not ask just now".
+          ...(c && c.stale ? { stale: true, staleSince: c.staleSince, error: c.error } : {}),
+        }));
       };
       if (global._peersCache && now - global._peersCache.t < 30000) {
         sendPeers();
@@ -1110,11 +1117,37 @@ module.exports = function setupRoutes(deps) {
         maxBuffer: 1024 * 1024,
         env: { ...process.env, KANNAKA_QUIET: "1" },
       }, (err, stdout) => {
+        // A failed refresh must not be mistaken for "the swarm went empty".
+        // Pre-fix, any transient failure (binary missing on a redeploy, CLI
+        // timeout, malformed JSON) overwrote the cache with [] AND stamped it
+        // fresh, so the peer directory read as an empty swarm for the next
+        // 30s off one blip. Keep the last good list and flag it stale instead;
+        // `t` is still advanced so a hard-down binary is not re-spawned on
+        // every single request.
+        const keep = (reason) => {
+          const prev = global._peersCache;
+          global._peersCache = {
+            t: now,
+            peers: (prev && prev.peers) || [],
+            stale: true,
+            staleSince: (prev && prev.staleSince) || now,
+            error: reason,
+          };
+        };
         if (err) {
-          global._peersCache = { t: now, peers: [] };
+          keep(err.message || String(err));
         } else {
-          try { global._peersCache = { t: now, peers: JSON.parse(stdout) }; }
-          catch (_) { global._peersCache = { t: now, peers: [] }; }
+          try {
+            const out = JSON.parse(stdout);
+            // The CLI emits a bare array; tolerate a { peers: [...] } envelope
+            // too. Anything else is a shape we do not understand — treat it as
+            // a failed refresh rather than publishing an empty directory.
+            const list = Array.isArray(out) ? out : (Array.isArray(out && out.peers) ? out.peers : null);
+            if (list) global._peersCache = { t: now, peers: list };
+            else keep(`unexpected swarm peers shape: ${typeof out}`);
+          } catch (e) {
+            keep(`unparseable swarm peers output: ${e.message}`);
+          }
         }
         sendPeers();
       });
