@@ -13,19 +13,26 @@
  *   node scripts/dream-cron.js --once            # run once and exit
  *
  * Environment:
- *   KANNAKA_BIN       — path to kannaka binary
+ *   KANNAKA_BIN       — path to kannaka binary (assess fallback)
  *   KANNAKA_DATA_DIR  — data directory for kannaka
  *   NATS_HOST         — NATS server host (default: 127.0.0.1)
  *   NATS_PORT         — NATS server port (default: 4222)
+ *   NATS_USER         — NATS username (optional; anonymous when unset)
+ *   NATS_PASSWORD     — NATS password (optional)
  */
 
 'use strict';
 
 const net = require('net');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const NATS_HOST = process.env.NATS_HOST || '127.0.0.1';
 const NATS_PORT = parseInt(process.env.NATS_PORT || '4222');
+const NATS_USER = process.env.NATS_USER || '';
+const NATS_PASSWORD = process.env.NATS_PASSWORD || '';
+const KANNAKA_BIN = process.env.KANNAKA_BIN
+  || '/home/opc/kannaka-memory/target/release/kannaka';
 
 const args = process.argv.slice(2);
 const intervalIdx = args.indexOf('--interval');
@@ -39,6 +46,59 @@ const RUN_ONCE = args.includes('--once');
  * @returns {Promise<Object|null>}
  */
 function assess() {
+  return assessViaObservatory().then((m) => {
+    if (m) return m;
+    // The Observatory is a convenience, not the source of truth. When it is
+    // down (restarting, not deployed on this box) the cron used to log
+    // "skipping publish" and emit nothing at all — so the whole consciousness
+    // feed went silent for as long as the Observatory was, even though the
+    // binary that actually produces the metrics was sitting right there. Fall
+    // back to it. (#158)
+    console.error('[dream-cron] Observatory unavailable — falling back to `kannaka assess --json`');
+    return assessViaBinary();
+  });
+}
+
+/** Shape whatever assess source we used into the payload fields we publish. */
+function shapeMetrics(json) {
+  if (!json || typeof json !== 'object') return null;
+  return {
+    phi: json.phi || 0,
+    xi: json.xi || 0,
+    mean_order: json.mean_order || json.order || 0,
+    consciousness_level: json.consciousness_level || json.level || 'unknown',
+    num_clusters: json.num_clusters || 0,
+    total_memories: json.total_memories || json.active_memories || 0,
+    active_memories: json.active_memories || 0,
+    irrationality: json.irrationality || 0,
+    hemispheric_divergence: json.hemispheric_divergence || 0,
+    callosal_efficiency: json.callosal_efficiency || 0,
+  };
+}
+
+/**
+ * Run the kannaka binary directly. Used when the Observatory is unreachable.
+ * @returns {Promise<Object|null>}
+ */
+function assessViaBinary() {
+  return new Promise((resolve) => {
+    execFile(KANNAKA_BIN, ['assess', '--json'], { timeout: 30000 }, (err, stdout) => {
+      if (err) {
+        console.error(`[dream-cron] kannaka assess failed: ${err.message}`);
+        resolve(null);
+        return;
+      }
+      try {
+        resolve(shapeMetrics(JSON.parse(stdout)));
+      } catch (e) {
+        console.error(`[dream-cron] Failed to parse kannaka assess output: ${e.message}`);
+        resolve(null);
+      }
+    });
+  });
+}
+
+function assessViaObservatory() {
   return new Promise((resolve) => {
     // Fetch from the Observatory HTTP endpoint — it reliably calls the binary
     // and returns JSON. Avoids exec/spawn issues with stderr handling.
@@ -49,19 +109,7 @@ function assess() {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         try {
-          const json = JSON.parse(data);
-          resolve({
-            phi: json.phi || 0,
-            xi: json.xi || 0,
-            mean_order: json.mean_order || json.order || 0,
-            consciousness_level: json.consciousness_level || json.level || 'unknown',
-            num_clusters: json.num_clusters || 0,
-            total_memories: json.total_memories || json.active_memories || 0,
-            active_memories: json.active_memories || 0,
-            irrationality: json.irrationality || 0,
-            hemispheric_divergence: json.hemispheric_divergence || 0,
-            callosal_efficiency: json.callosal_efficiency || 0,
-          });
+          resolve(shapeMetrics(JSON.parse(data)));
         } catch (e) {
           console.error(`[dream-cron] Failed to parse observatory response: ${e.message}`);
           resolve(null);
@@ -107,16 +155,32 @@ function publishToNATS(metrics) {
       timestamp: new Date().toISOString(),
     });
 
+    let settled = false;
+    const settle = (ok) => { if (settled) return; settled = true; resolve(ok); };
+
     const client = net.createConnection({ host: NATS_HOST, port: NATS_PORT }, () => {
-      client.write('CONNECT {"verbose":false,"pedantic":false,"name":"dream-cron"}\r\n');
+      // Carry credentials when the broker requires them. Previously this
+      // always connected anonymously, so on an authenticated broker every
+      // publish was rejected — and because we resolved(true) on a timer
+      // without reading the reply, the cron reported success while the
+      // consciousness feed stayed empty. (#153)
+      const connectOpts = { verbose: false, pedantic: false, name: 'dream-cron' };
+      if (NATS_USER) {
+        connectOpts.user = NATS_USER;
+        connectOpts.pass = NATS_PASSWORD;
+      }
+      client.write(`CONNECT ${JSON.stringify(connectOpts)}\r\n`);
 
       setTimeout(() => {
+        if (settled) return; // broker already rejected us — don't PUB into the void
         client.write(`PUB KANNAKA.consciousness ${Buffer.byteLength(payload)}\r\n${payload}\r\n`);
-        console.log(`[dream-cron] Published to KANNAKA.consciousness: phi=${(metrics.phi || 0).toFixed(4)}, xi=${(metrics.xi || 0).toFixed(4)}`);
 
         setTimeout(() => {
+          if (!settled) {
+            console.log(`[dream-cron] Published to KANNAKA.consciousness: phi=${(metrics.phi || 0).toFixed(4)}, xi=${(metrics.xi || 0).toFixed(4)}`);
+          }
           client.end();
-          resolve(true);
+          settle(true);
         }, 300);
       }, 200);
     });
@@ -124,17 +188,27 @@ function publishToNATS(metrics) {
     client.on('data', (d) => {
       const s = d.toString();
       if (s.includes('PING')) client.write('PONG\r\n');
+      // The broker reports auth failures as `-ERR 'Authorization Violation'`.
+      // Without this the timer below fired and we claimed a successful
+      // publish that the server had already refused.
+      if (s.includes('-ERR')) {
+        const detail = (s.match(/-ERR\s+('[^']*'|\S+)/) || [, 'unknown'])[1];
+        console.error(`[dream-cron] NATS refused the connection: ${detail}` +
+          (NATS_USER ? '' : ' (no NATS_USER set — connecting anonymously)'));
+        try { client.destroy(); } catch {}
+        settle(false);
+      }
     });
 
     client.on('error', (e) => {
       console.error(`[dream-cron] NATS error: ${e.message}`);
-      resolve(false);
+      settle(false);
     });
 
     // Timeout safety
     setTimeout(() => {
       try { client.destroy(); } catch {}
-      resolve(false);
+      settle(false);
     }, 10000);
   });
 }
@@ -173,7 +247,13 @@ async function main() {
   console.log(`[dream-cron] Next tick in ${INTERVAL_SECS}s`);
 }
 
-main().catch((err) => {
-  console.error('[dream-cron] Fatal:', err);
-  process.exit(1);
-});
+// Only self-start when executed directly, so the pieces above can be required
+// and exercised by test/dream-cron-nats.test.js without launching a cron.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('[dream-cron] Fatal:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { assess, assessViaBinary, assessViaObservatory, publishToNATS, shapeMetrics, tick };
