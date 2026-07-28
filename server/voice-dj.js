@@ -11,6 +11,43 @@ const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
 const voiceEngine = require("./voice-engine");
 
+/**
+ * Base URL for the Observatory. Genuinely external, so the production default
+ * is preserved and simply made overridable via OBSERVATORY_URL. (#107)
+ */
+function observatoryBaseUrl() {
+  const u = (process.env.OBSERVATORY_URL || "").trim();
+  return (u || "https://observatory.ninja-portal.com").replace(/\/+$/, "");
+}
+
+/**
+ * Base URL for THIS radio's own HTTP surface.
+ *
+ * /api/gshub/stats is served by this very process (see server/routes.js), so
+ * the DJ should read it locally rather than round-tripping to whatever host
+ * happens to be in production. Port resolution mirrors server/index.js:
+ * --port flag > RADIO_PORT > PORT > 8888.
+ *
+ * RADIO_PUBLIC_URL is deliberately NOT used here: it is the externally
+ * advertised origin (often behind nginx/TLS), and pointing a self-call at it
+ * reintroduces the network round-trip this is removing.
+ */
+function localRadioBaseUrl() {
+  const args = process.argv.slice(2);
+  const portIdx = args.indexOf("--port");
+  const candidates = [
+    portIdx >= 0 ? args[portIdx + 1] : undefined,
+    process.env.RADIO_PORT,
+    process.env.PORT,
+  ];
+  for (const raw of candidates) {
+    if (raw === undefined || raw === null || String(raw).trim() === "") continue;
+    const n = parseInt(String(raw).trim(), 10);
+    if (Number.isInteger(n) && n >= 0 && n <= 65535) return `http://127.0.0.1:${n}`;
+  }
+  return "http://127.0.0.1:8888";
+}
+
 // ── Mood system ────────────────────────────────────────────
 const MOODS = {
   contemplative: {
@@ -856,10 +893,19 @@ class VoiceDJ {
       total_trades: null,
     };
 
-    // Fetch both in parallel with 2s timeout each
+    // Fetch both in parallel with 2s timeout each.
+    //
+    // Both URLs used to be production literals. The GhostSignals one was the
+    // worse of the two: /api/gshub/stats is served by THIS radio
+    // (server/routes.js), so every non-production install round-tripped to
+    // radio.ninja-portal.com to read somebody else's stats instead of its own,
+    // and a box with no internet just got nulls. It is now a local call. (#100)
+    //
+    // The Observatory is a genuinely external service, so its production
+    // default is preserved and simply made overridable. (#107)
     const [constellation, gsStats] = await Promise.all([
-      this._fetchJSON("https://observatory.ninja-portal.com/api/constellation", 2000).catch(() => null),
-      this._fetchJSON("https://radio.ninja-portal.com/api/gshub/stats", 2000).catch(() => null),
+      this._fetchJSON(`${observatoryBaseUrl()}/api/constellation`, 2000).catch(() => null),
+      this._fetchJSON(`${localRadioBaseUrl()}/api/gshub/stats`, 2000).catch(() => null),
     ]);
 
     if (constellation) {
@@ -1687,4 +1733,4 @@ class VoiceDJ {
   _ELEVENLABS_REMOVED() { return true; }
 }
 
-module.exports = { VoiceDJ };
+module.exports = { VoiceDJ, observatoryBaseUrl, localRadioBaseUrl };
