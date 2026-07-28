@@ -1455,13 +1455,51 @@ module.exports = function setupRoutes(deps) {
 
     // POST /api/dreams/trigger
     if (parsed.pathname === "/api/dreams/trigger" && req.method === "POST") {
-      execFile(config.kannakabin, ["dream", "--include-audio"], { timeout: 60000 }, (err, stdout) => {
+      // `--include-audio` is not a flag `kannaka dream` has ever had. Its arg
+      // loop ends in `else { i += 1 }`, so unknown flags are silently dropped
+      // — and dream_mode then defaults to "deep". This endpoint was therefore
+      // kicking off a FULL deep annealing pass on every call: dream-cron.sh
+      // budgets 30 MINUTES for that, against this route's 60s execFile
+      // timeout, so it reliably timed out and answered with a mock dream while
+      // the real dream ran on unattended. (#152)
+      //
+      // Default to the quick pass, which is what a request/response endpoint
+      // can actually wait for. `?mode=deep` remains available for a caller
+      // that explicitly wants the long one and understands it will time out.
+      const rawMode = (parsed.searchParams.get("mode") || "lite").trim().toLowerCase();
+      if (rawMode !== "lite" && rawMode !== "deep") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "invalid mode",
+          mode: parsed.searchParams.get("mode"),
+          message: "mode must be 'lite' (default) or 'deep'",
+        }));
+        return;
+      }
+      execFile(config.kannakabin, ["dream", "--mode", rawMode], { timeout: 60000 }, (err, stdout) => {
         if (err) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
             ok: false,
             error: "Dream cycle failed",
+            mode: rawMode,
+            // A deep dream cannot finish inside the 60s budget; say so rather
+            // than leaving the caller to guess why it "failed".
+            hint: err.killed ? `dream timed out after 60s (mode=${rawMode})` : undefined,
             fallback: djEngine.generateMockDream()
+          }));
+          return;
+        }
+        // Single-writer policy: if another writer or dream holds the lock the
+        // binary prints a notice and exits 0 WITHOUT dreaming. That is not a
+        // dream result, and it must not be dressed up as one.
+        if (/holds the write lock|single-writer policy/i.test(String(stdout))) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            ok: false,
+            error: "dream_skipped_write_lock",
+            mode: rawMode,
+            message: "another writer or dream holds the HRM write lock; no dream was run",
           }));
           return;
         }
@@ -1469,10 +1507,10 @@ module.exports = function setupRoutes(deps) {
           const result = JSON.parse(stdout);
           broadcast({ type: "dream", data: result });
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, dream: result }));
+          res.end(JSON.stringify({ ok: true, mode: rawMode, dream: result }));
         } catch {
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, dream: djEngine.generateMockDream() }));
+          res.end(JSON.stringify({ ok: true, mode: rawMode, dream: djEngine.generateMockDream(), synthetic: true }));
         }
       });
       return;
