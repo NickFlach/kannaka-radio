@@ -99,6 +99,53 @@ function broadcast(msg) {
   wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(str); });
 }
 
+/**
+ * Publish one KANNAKA.attention.ear gravity event for a track change.
+ *
+ * Call this ONLY from PerceptionEngine's onRealPerception hook. It must never
+ * be fed generateMockPerception() output: the attention beam treats these as
+ * observations, and perception.js already refuses to cache mock numbers for
+ * exactly that reason ("fabricated numbers are exactly what we're trying to
+ * stop"). The envelope now forwards `perception.source` so a subscriber can
+ * see the provenance rather than having to trust it. (#124)
+ *
+ * @param {object} track the track the measurement belongs to
+ * @param {object} perc  a real perception (source === "kannaka-ear")
+ */
+function publishEarAttention(track, perc) {
+  if (!track || !perc || perc.source !== "kannaka-ear") return;
+  try {
+    // Envelope per consciousness-core/docs/nats-contract.yaml:
+    //   schema_version: "1.0" (string)
+    //   ts:             unix-ms (number)
+    //   agent_id:       publisher identity (was missing pre-fix)
+    // Strict validators after 2026-06-01 drop payloads with the
+    // old integer/ISO shape. (#26)
+    nats.publish("KANNAKA.attention.ear", JSON.stringify({
+      schema_version: "1.0",
+      ts: Date.now(),
+      agent_id: process.env.RADIO_AGENT_ID || "kannaka-radio",
+      source: "kannaka-radio",
+      hemisphere: "right", // arbitrary fixed mapping; ears mirror eyes
+      track: {
+        title: track.title,
+        album: track.album,
+        file: track.file,
+        commercial: !!track.commercial,
+      },
+      perception: {
+        tempo_bpm: perc.tempo_bpm,
+        spectral_centroid: perc.spectral_centroid,
+        rms_energy: perc.rms_energy,
+        pitch: perc.pitch,
+        // Provenance travels with the numbers, so a subscriber never has to
+        // assume they were measured.
+        source: perc.source,
+      },
+    }));
+  } catch (_) { /* best-effort — a publish failure must not break playback */ }
+}
+
 // Icecast listener cache — populated by the poller below. /api/listeners
 // is hot-path for the SPA, the floor counter, and any external dashboard,
 // so we don't fetch /status-json.xsl on every request. 5s freshness is
@@ -289,41 +336,14 @@ const djEngine = new DJEngine({
           // effects against the *actual* (post-switch) track.
           broadcastState();
           flux.publishTrackChange(actual);
-          perception_.hearTrack(actual);
+          // Publish KANNAKA.attention.ear only once REAL perception lands.
+          // Pre-fix this read getCurrentPerception() synchronously right after
+          // hearTrack(), but hearTrack seeds `current` with the mock and only
+          // fills in `kannaka hear` output ~500ms later — so the attention bus
+          // received fabricated tempo/centroid/RMS/pitch on every single track
+          // change and never once saw the real measurement. (#124)
+          perception_.hearTrack(actual, (perc) => publishEarAttention(actual, perc));
           syncManager.trackChanged(actual.file);
-          // Publish to KANNAKA.attention.ear — every track-change is an
-          // ear gravity event. The kannaka-attention beam (kannaka
-          // attention serve daemon) subscribes to this and feeds the
-          // current perception snapshot (tempo, spectral, energy, pitch)
-          // as one observation. Sister subject to KANNAKA.attention.eye.
-          try {
-            const perc = perception_.getCurrentPerception() || {};
-            // Envelope per consciousness-core/docs/nats-contract.yaml:
-            //   schema_version: "1.0" (string)
-            //   ts:             unix-ms (number)
-            //   agent_id:       publisher identity (was missing pre-fix)
-            // Strict validators after 2026-06-01 drop payloads with the
-            // old integer/ISO shape. (#26)
-            nats.publish("KANNAKA.attention.ear", JSON.stringify({
-              schema_version: "1.0",
-              ts: Date.now(),
-              agent_id: process.env.RADIO_AGENT_ID || "kannaka-radio",
-              source: "kannaka-radio",
-              hemisphere: "right", // arbitrary fixed mapping; ears mirror eyes
-              track: {
-                title: actual.title,
-                album: actual.album,
-                file: actual.file,
-                commercial: !!actual.commercial,
-              },
-              perception: {
-                tempo_bpm: perc.tempo_bpm,
-                spectral_centroid: perc.spectral_centroid,
-                rms_energy: perc.rms_energy,
-                pitch: perc.pitch,
-              },
-            }));
-          } catch (_) { /* best-effort */ }
           // Create market for the track
           if (gsHub && actual.title) {
             gsHub.createMarket({
@@ -347,7 +367,12 @@ const djEngine = new DJEngine({
       // ── Normal track change flow (exactly ONE broadcastState) ──
       broadcastState();
       flux.publishTrackChange(actual);
-      perception_.hearTrack(actual);
+      // This is the COMMON track-change path, and it published no ear event at
+      // all — only the talk-segment branch above did, and that one published
+      // the mock. So KANNAKA.attention.ear was both fabricated and rare. Same
+      // real-perception hook here, so an ear observation lands on every track
+      // change that actually got measured. (#124)
+      perception_.hearTrack(actual, (perc) => publishEarAttention(actual, perc));
       // Push the same metadata to Icecast so listeners on /preview see
       // a Now-Playing update (ADR-0004 Phase 2 stopgap, no Liquidsoap).
       try { require("./icecast-metadata").updateMetadata(actual); } catch (_) {}
