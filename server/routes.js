@@ -1940,10 +1940,41 @@ load();
         return;
       }
       const album = parsed.searchParams.get("album");
-      const durationMin = parseInt(parsed.searchParams.get("duration") || "60", 10);
       if (!album) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "album parameter required" }));
+        return;
+      }
+      // Only "is it non-empty" was checked, so any string was accepted and
+      // setOverride happily pinned programming to an album that does not
+      // exist — 200 OK, and the schedule stayed broken until someone thought
+      // to DELETE the override. Reject unknown albums and name the valid
+      // ones, so a typo is self-correcting instead of silently breaking the
+      // station. (#138)
+      if (!Object.prototype.hasOwnProperty.call(ALBUMS, album)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "unknown album",
+          album,
+          valid_albums: Object.keys(ALBUMS),
+        }));
+        return;
+      }
+      // `duration` was equally unchecked: parseInt("abc") is NaN, and
+      // NaN * 60000 is NaN, so ?duration=abc set an override with a NaN
+      // expiry — never expiring cleanly. Negative and absurd values were
+      // accepted too.
+      const rawDuration = parsed.searchParams.get("duration");
+      const durationMin = rawDuration === null || rawDuration === "" ? 60 : Number(rawDuration);
+      const MAX_OVERRIDE_MIN = 24 * 60;
+      if (!Number.isFinite(durationMin) || !Number.isInteger(durationMin)
+          || durationMin <= 0 || durationMin > MAX_OVERRIDE_MIN) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "invalid duration",
+          duration: rawDuration,
+          message: `duration must be a whole number of minutes in 1..${MAX_OVERRIDE_MIN}`,
+        }));
         return;
       }
       const override = deps.programming.setOverride(album, durationMin * 60000);
