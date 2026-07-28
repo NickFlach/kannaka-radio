@@ -170,6 +170,7 @@ function _request(method, path, jwt, body, contentType) {
           resolve({ ok: false, error: "bad json: " + e.message + " body=" + data.slice(0, 200) });
         }
       });
+      res.on("close", () => resolve({ ok: false, error: "connection closed" }));
     });
     req.on("error", (e) => resolve({ ok: false, error: e.message }));
     req.on("timeout", () => { req.destroy(new Error("obc timeout")); });
@@ -208,6 +209,7 @@ function _getJson(path, jwt) {
       res.on("end", () => {
         try { resolve(JSON.parse(data)); } catch { resolve(null); }
       });
+      res.on("close", () => resolve(null));
     });
     req.on("error", () => resolve(null));
     req.on("timeout", () => { req.destroy(new Error("obc timeout")); resolve(null); });
