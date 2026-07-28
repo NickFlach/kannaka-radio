@@ -49,7 +49,28 @@ const BASE_DIR = path.join(__dirname, "..");
 
 const args = process.argv.slice(2);
 const portIdx = args.indexOf("--port");
-const PORT = parseInt(process.env.PORT || (portIdx >= 0 ? args[portIdx + 1] : '')) || 8888;
+// Precedence: explicit --port flag, then RADIO_PORT, then PORT, then 8888.
+// An explicit flag has to win over ambient env — scripts/radio.sh computes the
+// port from RADIO_PORT and passes it as `--port`, so a stray PORT in the
+// environment used to bind the server somewhere radio.sh's own BASE_URL (and
+// scripts/drop.js, which reads RADIO_PORT) would then fail to reach.
+// RADIO_PORT outranks PORT because it is the documented, radio-specific name.
+const PORT = firstPort([
+  portIdx >= 0 ? args[portIdx + 1] : undefined,
+  process.env.RADIO_PORT,
+  process.env.PORT,
+]) || 8888;
+
+/** First value that parses as a usable TCP port, else undefined. */
+function firstPort(candidates) {
+  for (const raw of candidates) {
+    if (raw === undefined || raw === null || String(raw).trim() === "") continue;
+    const n = parseInt(String(raw).trim(), 10);
+    if (Number.isInteger(n) && n >= 0 && n <= 65535) return n;
+    console.warn(`[config] ignoring invalid port value ${JSON.stringify(String(raw))}`);
+  }
+  return undefined;
+}
 const musicIdx = args.indexOf("--music-dir");
 
 let MUSIC_DIR = musicIdx >= 0
