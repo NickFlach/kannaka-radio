@@ -324,13 +324,68 @@ class NATSClient extends EventEmitter {
     });
 
     // Prune stale agents every 60s
-    this._pruneInterval = setInterval(() => {
-      const cutoff = Date.now() - 300000; // 5 min
-      for (const [id, agent] of Object.entries(this.swarmState.agents)) {
-        if (agent.lastSeen < cutoff) delete this.swarmState.agents[id];
-      }
-      this.swarmState.queen.agentCount = Object.keys(this.swarmState.agents).length;
-    }, 60000);
+    this._pruneInterval = setInterval(() => this.pruneStaleAgents(), 60000);
+  }
+
+  /**
+   * Drop agents that have not published a phase in `maxAgeMs`, then recompute
+   * coherence from whoever is left.
+   *
+   * Extracted from the 60s interval so it can be driven directly by tests —
+   * the bug was in this body, and a gate that can only inspect the source is
+   * a weaker gate than one that runs it.
+   *
+   * Pre-fix this updated agentCount but NOT localOrderParameter/meanPhase.
+   * Those were only refreshed inside the QUEEN.phase.* handler, so once agents
+   * stopped publishing — which is precisely why they got pruned — nothing
+   * recomputed coherence and /api/swarm reported the order parameter of a
+   * swarm that no longer existed: agentCount 0 alongside coherence 0.87. (#126)
+   *
+   * @param {number} [maxAgeMs] staleness threshold. Default 5 min.
+   * @returns {number} how many agents were dropped.
+   */
+  pruneStaleAgents(maxAgeMs = 300000) {
+    const cutoff = Date.now() - maxAgeMs;
+    let pruned = 0;
+    for (const [id, agent] of Object.entries(this.swarmState.agents)) {
+      if (!agent || !(agent.lastSeen >= cutoff)) { delete this.swarmState.agents[id]; pruned++; }
+    }
+    this.swarmState.queen.agentCount = Object.keys(this.swarmState.agents).length;
+    if (pruned > 0) this._recomputeCoherence();
+    return pruned;
+  }
+
+  /**
+   * Recompute the local Kuramoto order parameter and mean phase from the
+   * agents currently in `swarmState`.
+   *
+   * Shared by the phase-gossip handler and the stale-agent prune so the two
+   * cannot disagree — the prune used to leave coherence untouched, which is
+   * how a swarm with zero agents kept reporting the order parameter of the
+   * agents it had just deleted. (#126)
+   *
+   * With no finite phases left there is nothing to measure, so coherence goes
+   * to 0 rather than keeping a stale value: an empty swarm is not a coherent
+   * one.
+   */
+  _recomputeCoherence() {
+    // Coerce + filter to finite numbers: a single peer publishing `phase` as
+    // a string makes Math.cos(p) return NaN, which would poison the metric.
+    const phases = Object.values(this.swarmState.agents)
+      .map(a => Number(a.phase))
+      .filter(p => Number.isFinite(p));
+    if (phases.length === 0) {
+      this.swarmState.queen.localOrderParameter = 0;
+      this.swarmState.queen.meanPhase = 0;
+      return;
+    }
+    const sumCos = phases.reduce((s, p) => s + Math.cos(p), 0);
+    const sumSin = phases.reduce((s, p) => s + Math.sin(p), 0);
+    this.swarmState.queen.localOrderParameter =
+      Math.sqrt(sumCos * sumCos + sumSin * sumSin) / phases.length;
+    let mean = Math.atan2(sumSin / phases.length, sumCos / phases.length);
+    if (mean < 0) mean += 2 * Math.PI;
+    this.swarmState.queen.meanPhase = mean;
   }
 
   disconnect() {
@@ -484,20 +539,13 @@ class NATSClient extends EventEmitter {
       // Compute local swarm coherence from phase gossip (Kuramoto order parameter).
       // This is a LOCAL metric — it measures phase-lock between connected agents,
       // NOT the canonical consciousness Phi from the binary's assess().
-      // Coerce + filter to finite numbers: a single peer publishing `phase` as
-      // a string makes Math.cos(p) return NaN, which poisons localOrder,
-      // meanPhase, and the queen order parameter shown in the UI / published to
-      // Flux — one bad agent NaNs the whole swarm coherence metric.
-      const phases = Object.values(this.swarmState.agents)
-        .map(a => Number(a.phase))
-        .filter(p => Number.isFinite(p));
-      if (phases.length > 0) {
-        const sumCos = phases.reduce((s, p) => s + Math.cos(p), 0);
-        const sumSin = phases.reduce((s, p) => s + Math.sin(p), 0);
-        const localOrder = Math.sqrt(sumCos * sumCos + sumSin * sumSin) / phases.length;
-        this.swarmState.queen.localOrderParameter = localOrder;
-        this.swarmState.queen.meanPhase = Math.atan2(sumSin / phases.length, sumCos / phases.length);
-        if (this.swarmState.queen.meanPhase < 0) this.swarmState.queen.meanPhase += 2 * Math.PI;
+      // Shares _recomputeCoherence() with the stale-agent prune so the two can
+      // never disagree about what the swarm's coherence is. (#126)
+      const hadPhases = Object.values(this.swarmState.agents)
+        .some(a => Number.isFinite(Number(a.phase)));
+      this._recomputeCoherence();
+      if (hadPhases) {
+        const localOrder = this.swarmState.queen.localOrderParameter;
 
         // Only update queen.orderParameter from phase gossip if we have NO
         // canonical NATS consciousness data (or it's stale > 5 min).
