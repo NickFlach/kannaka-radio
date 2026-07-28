@@ -239,6 +239,10 @@ let _inTrackChange = false; // re-entrancy guard: loadAlbum inside programming c
 
 const djEngine = new DJEngine({
   getMusicDir: () => MUSIC_DIR,
+  // Fired when playback drains a request out of userQueue (#142), so the
+  // queue panel drops it at the moment it starts airing rather than showing
+  // a track that is already playing as still "up next".
+  onQueueChange: () => broadcastQueue(),
   onTrackChange: (track) => {
     // ── Re-entrancy guard ────────────────────────────────
     // programming.onTrackChange may call loadAlbum which resets the playlist.
