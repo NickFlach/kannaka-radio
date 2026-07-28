@@ -343,6 +343,18 @@ const djEngine = new DJEngine({
           // received fabricated tempo/centroid/RMS/pitch on every single track
           // change and never once saw the real measurement. (#124)
           perception_.hearTrack(actual, (perc) => publishEarAttention(actual, perc));
+          // Push the new metadata to Icecast. The normal track-change path
+          // below does this; this branch did not, so every track that followed
+          // a DJ talk segment left /stream and /preview listeners looking at
+          // the PREVIOUS track's now-playing text until the next non-talk
+          // change came round. (#140)
+          //
+          // These two branches have now drifted in both directions — #124 was
+          // the mirror image, where this branch published an ear event and the
+          // normal one did not. There is a test asserting both paths refresh
+          // Icecast metadata, because a comment saying "keep these in sync"
+          // has demonstrably not been enough.
+          try { require("./icecast-metadata").updateMetadata(actual); } catch (_) {}
           syncManager.trackChanged(actual.file);
           // Create market for the track
           if (gsHub && actual.title) {
