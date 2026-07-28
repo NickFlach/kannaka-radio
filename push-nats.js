@@ -33,8 +33,15 @@ const KANNAKA_DATA = process.env.KANNAKA_DATA_DIR
   || (IS_WINDOWS
     ? path.join(HOME, '.kannaka')
     : '/home/opc/.kannaka');
-const NATS_HOST = 'swarm.ninja-portal.com';
-const NATS_PORT = 4222;
+// Broker resolution is shared with the radio's own NATS client so the two
+// cannot drift: KANNAKA_NATS_URL > NATS_HOST/NATS_PORT > 127.0.0.1:4222.
+//
+// These were hardcoded to the PRODUCTION broker, which is the dangerous
+// direction of this bug: every install — a laptop, a test box, a fork —
+// published its metrics straight into the live swarm, and no env var could
+// stop it. There was no way to point this bridge anywhere else. (#112)
+const { resolveNatsEndpoint } = require('./server/nats-client');
+const { host: NATS_HOST, port: NATS_PORT, source: NATS_SOURCE } = resolveNatsEndpoint();
 
 const OBSERVE_CACHE = path.join(KANNAKA_DATA, 'observe-cache.json');
 const METRICS_SIDECAR = path.join(KANNAKA_DATA, 'kannaka.metrics.json');
@@ -162,7 +169,7 @@ function buildPayloads(metrics) {
 
 function publish(payloads) {
   const client = net.createConnection({ host: NATS_HOST, port: NATS_PORT }, () => {
-    console.log(`Connected to NATS at ${NATS_HOST}:${NATS_PORT}`);
+    console.log(`Connected to NATS at ${NATS_HOST}:${NATS_PORT} (via ${NATS_SOURCE})`);
     // ADR-0026 #73 — auth via NATS_USER + NATS_PASSWORD when set, anon otherwise.
     const u = process.env.NATS_USER || '';
     const p = process.env.NATS_PASSWORD || '';
