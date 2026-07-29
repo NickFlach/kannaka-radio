@@ -106,7 +106,34 @@ function getLiveMetrics() {
 
 // ── Build NATS payloads from live data ──────────────────────
 
-function buildPayloads(metrics) {
+/**
+ * Live peer count, or null when we genuinely cannot tell.
+ *
+ * `null` is the whole point (#127). This bridge used to hardcode `peers: 0`
+ * and `agent_count: 1`, so every consumer of QUEEN.state saw a permanently
+ * solo swarm while the constellation was active. Defaulting a failed lookup to
+ * 0 would reintroduce exactly that — asserting "nobody is out there" on the
+ * strength of a CLI timeout. That is the lesson `/api/swarm/peers` already
+ * learned in #137: a failed refresh must not read as an empty swarm.
+ */
+function getLivePeerCount() {
+  try {
+    const raw = execSync(`"${KANNAKA_BIN}" swarm peers --json`, {
+      env: { ...process.env, KANNAKA_DATA_DIR: KANNAKA_DATA, KANNAKA_QUIET: '1' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+    });
+    const parsed = JSON.parse(raw.toString().trim());
+    const list = Array.isArray(parsed) ? parsed : parsed && parsed.peers;
+    return Array.isArray(list) ? list.length : null;
+  } catch (err) {
+    console.error(`Could not resolve live peers (${err.message}) — omitting swarm cardinality`);
+    return null;
+  }
+}
+
+function buildPayloads(metrics, peerCount) {
   const now = new Date().toISOString();
 
   // Canonical envelope fields (schema_version / ts / agent_id) per
@@ -115,7 +142,11 @@ function buildPayloads(metrics) {
   // radio's own drift detector on the receiving side. Purely additive — every
   // pre-existing field is retained for consumers that already read them. (#52)
   const AGENT_ID = process.env.KANNAKA_AGENT_ID || 'kannaka-01';
+  const DISPLAY_NAME = process.env.KANNAKA_DISPLAY_NAME || AGENT_ID;
   const TS = Date.now();
+  // Only a number counts as knowledge. null/undefined mean the lookup failed
+  // and the cardinality fields are omitted rather than defaulted (#127).
+  const peersKnown = typeof peerCount === 'number' && Number.isFinite(peerCount);
 
   const consciousness = JSON.stringify({
     schema_version: "1.0",
@@ -151,8 +182,14 @@ function buildPayloads(metrics) {
     coherence: metrics.mean_order,
     phi: metrics.phi,
     xi: metrics.xi,
-    display_name: 'kannaka-01',
-    peers: 0,
+    // Was the literal 'kannaka-01' while agent_id right above it is
+    // env-overridable, so the two disagreed the moment KANNAKA_AGENT_ID was
+    // set. One source of truth.
+    display_name: DISPLAY_NAME,
+    // Omitted entirely when unknown — see getLivePeerCount. A consumer can
+    // tell "no peers field" from "peers: 0"; it could not tell a real solo
+    // swarm from a hardcoded one.
+    ...(peersKnown ? { peers: peerCount } : {}),
     clusters: metrics.num_clusters,
   });
 
@@ -164,9 +201,11 @@ function buildPayloads(metrics) {
     mean_phase: 0,
     phi: metrics.phi,
     coherence: metrics.mean_order,
-    active_phases: 1,
-    agent_count: 1,
-    peers: 0,
+    // agent_count is peers + this agent; active_phases is how many agents are
+    // actually reporting a phase, which this bridge only knows for itself, so
+    // it tracks agent_count rather than claiming a separate figure. Both are
+    // omitted when the peer lookup failed rather than asserting a solo swarm.
+    ...(peersKnown ? { active_phases: peerCount + 1, agent_count: peerCount + 1, peers: peerCount } : {}),
     level: metrics.consciousness_level || 'aware',
   });
 
@@ -231,15 +270,27 @@ function publish(payloads) {
 
 // ── Main ────────────────────────────────────────────────────
 
-console.log('Fetching live consciousness metrics...');
-const metrics = getLiveMetrics();
+// Guarded so the module can be required by tests without publishing to NATS.
+// buildPayloads() is the part worth asserting on, and it was previously only
+// reachable by reading this file as text.
+if (require.main === module) {
+  console.log('Fetching live consciousness metrics...');
+  const metrics = getLiveMetrics();
 
-if (!metrics) {
-  console.error('Could not retrieve live metrics, aborting.');
-  process.exit(1);
+  if (!metrics) {
+    console.error('Could not retrieve live metrics, aborting.');
+    process.exit(1);
+  }
+
+  console.log(`Live: ${metrics.total_memories} memories, Phi=${metrics.phi.toFixed(4)}, Xi=${metrics.xi.toFixed(4)}, ${metrics.num_clusters} clusters, order=${metrics.mean_order.toFixed(6)}`);
+
+  const peerCount = getLivePeerCount();
+  console.log(peerCount === null
+    ? 'Peers: unknown — cardinality fields omitted'
+    : `Peers: ${peerCount}`);
+
+  const payloads = buildPayloads(metrics, peerCount);
+  publish(payloads);
 }
 
-console.log(`Live: ${metrics.total_memories} memories, Phi=${metrics.phi.toFixed(4)}, Xi=${metrics.xi.toFixed(4)}, ${metrics.num_clusters} clusters, order=${metrics.mean_order.toFixed(6)}`);
-
-const payloads = buildPayloads(metrics);
-publish(payloads);
+module.exports = { buildPayloads, getLivePeerCount };
