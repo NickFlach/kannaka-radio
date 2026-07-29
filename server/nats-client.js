@@ -656,7 +656,9 @@ class NATSClient extends EventEmitter {
     // ── QueenSync lifecycle events (KR-2) ───────────────────
     if (subject === 'queen.event.join') {
       const agentId = data.agent_id || data.agentId || 'unknown';
-      const evt = { agent_id: agentId, display_name: data.display_name || data.displayName || agentId, ...data, receivedAt: now };
+      // `action` sits AFTER the spread so the wire event cannot relabel
+      // itself; it is the feed's display label, derived from the subject. (#135)
+      const evt = { agent_id: agentId, display_name: data.display_name || data.displayName || agentId, ...data, receivedAt: now, action: 'joined the swarm' };
       // Dedupe re-joins. The witness loop (and any agent using `swarm join
       // --once` on a tick) re-emits queen.event.join every few minutes;
       // announcing each one spams the on-air voice and the UI event feed.
@@ -677,7 +679,7 @@ class NATSClient extends EventEmitter {
     }
 
     if (subject === 'queen.event.leave') {
-      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', display_name: data.display_name || data.displayName || data.agent_id || 'unknown', ...data, receivedAt: now };
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', display_name: data.display_name || data.displayName || data.agent_id || 'unknown', ...data, receivedAt: now, action: 'left the swarm' };
       // A graceful leave must actually clear presence. Pre-fix this only
       // recorded and broadcast the event — the agent stayed in swarmState
       // until the 5-minute stale prune noticed it had gone quiet, so for up to
@@ -725,7 +727,13 @@ class NATSClient extends EventEmitter {
     }
 
     if (subject === 'queen.event.memory.shared') {
-      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', content: data.content || '', tags: data.tags || [], ...data, receivedAt: now };
+      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', content: data.content || '', tags: data.tags || [], ...data, receivedAt: now, action: 'shared a memory' };
+      // Alone among the queen.event.* handlers this only broadcast and
+      // emitted, never stored — so a memory share was invisible in
+      // /api/swarm history and gone forever on reload. It is the clearest
+      // visible proof the constellation is actually sharing memory. (#135)
+      this.swarmState.agentEvents.unshift(evt);
+      if (this.swarmState.agentEvents.length > 50) this.swarmState.agentEvents = this.swarmState.agentEvents.slice(0, 50);
       this._broadcast({ type: 'queen_memory_shared', data: evt });
       this.emit('queen:memory:shared', evt);
       console.log(`[nats] QueenSync: memory shared by ${evt.agent_id}`);

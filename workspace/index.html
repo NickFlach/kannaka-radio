@@ -5067,6 +5067,34 @@ function connectWS() {
       if (msg.type === 'agent_activity') {
         addAgentActivity(msg.data);
       }
+      // ── QueenSync lifecycle ──
+      // server/nats-client.js has always broadcast these five, and nothing
+      // here listened, so join/leave/dream/memory-share activity was invisible
+      // until a reload — and loadSwarmData() only runs once on DOMContentLoaded,
+      // so for memory shares it never appeared at all. (#135)
+      if (msg.type === 'queen_join' || msg.type === 'queen_leave' || msg.type === 'queen_memory_shared') {
+        addAgentActivity(msg.data);
+      }
+      if (msg.type === 'queen_dream_start' || msg.type === 'queen_dream_end') {
+        // Same shape the dream timeline already renders, so these land in the
+        // existing section rather than needing a parallel one.
+        if (!dreamsData) dreamsData = { dreams: [] };
+        var qd = msg.data || {};
+        var isEnd = msg.type === 'queen_dream_end';
+        dreamsData.dreams.unshift({
+          id: 'queen-dream-' + (qd.agent_id || 'unknown') + '-' + Date.now(),
+          type: isEnd ? 'dream_end' : 'dream_start',
+          agent_id: qd.agent_id,
+          timestamp: qd.timestamp || new Date(qd.receivedAt || Date.now()).toISOString(),
+          content: isEnd
+            ? ((qd.agent_id || 'An agent') + ' finished dreaming — ' +
+               (qd.memories_strengthened || 0) + ' strengthened, ' + (qd.memories_faded || 0) + ' faded')
+            : ((qd.agent_id || 'An agent') + ' began a dream cycle'),
+          intensity: isEnd ? 0.6 : 0.4,
+        });
+        if (dreamsData.dreams.length > 40) dreamsData.dreams = dreamsData.dreams.slice(0, 40);
+        renderDreamTimeline(dreamsData);
+      }
       // ── Shared listening sync ── REMOVED in kr#15 / ADR-0004 Phase 6.
       // DJ mode now plays /stream (Icecast), which is inherently synced
       // for all listeners — no per-client seek dance needed. Library tab
