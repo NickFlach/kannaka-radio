@@ -31,6 +31,7 @@ const { PeaceOration } = require("./peace-oration");
 const { NewsBroadcast } = require("./news-broadcast");
 const { NewsTeaser } = require("./news-teaser");
 const { GossipBroadcast } = require("./gossip-broadcast");
+const diskSpace = require("./disk-space");
 const { IcecastSource } = require("./icecast-source");
 const { FloorManager } = require("./floor");
 
@@ -1142,6 +1143,42 @@ function reabsorbTopTrack() {
 
 // Start periodic Flux state broadcast
 flux.startPeriodicPublish();
+
+// ── Disk pressure self-check (#36) ─────────────────────────
+//
+// The 2026-05-19 incident filled the root disk to 100% over WEEKS with no
+// alarm: 12,779 TTS intro files nothing was pruning. prune-cron fixed the leak,
+// but a cron that silently stops looks exactly like a cron with nothing to do —
+// which is why it ran for weeks unnoticed. This is the inner of two rings: a
+// check that lives in the service cannot itself be the thing that stopped
+// running.
+//
+// It does NOT replace external monitoring. A genuinely full disk can also stop
+// the service from writing this very warning, so the outer ring still matters.
+// CHUNKS_DIR is watched rather than "/" because it is where the growth happens
+// and it is the volume writes will actually fail on.
+const DISK_CHECK_INTERVAL_MS = Number(process.env.RADIO_DISK_CHECK_MS) || 30 * 60 * 1000;
+let lastDiskLevel = null;
+function checkDiskPressure() {
+  const verdict = diskSpace.classifyUsage(diskSpace.diskUsage(CHUNKS_DIR), {
+    warnPct: Number(process.env.RADIO_DISK_WARN_PCT) || undefined,
+    criticalPct: Number(process.env.RADIO_DISK_CRITICAL_PCT) || undefined,
+  });
+  const line = diskSpace.usageReport(verdict, CHUNKS_DIR);
+  // Log on every escalation, and once when it first goes bad — but do not
+  // repeat an unchanged warning every 30 minutes, which is how an operator
+  // learns to filter it out.
+  if (line && verdict.level !== lastDiskLevel) console.warn(line);
+  if (verdict.level === 'ok' && lastDiskLevel && lastDiskLevel !== 'ok') {
+    console.log(`[disk] recovered — ${verdict.usedPct}% used on ${CHUNKS_DIR}`);
+  }
+  lastDiskLevel = verdict.level;
+}
+checkDiskPressure();
+const diskTimer = setInterval(checkDiskPressure, DISK_CHECK_INTERVAL_MS);
+// Unref'd on purpose, unlike the shutdown drain timer (#54): this one must
+// never hold the process open at exit — it has nothing in flight to protect.
+if (typeof diskTimer.unref === 'function') diskTimer.unref();
 
 // ── Graceful shutdown ──────────────────────────────────────
 
