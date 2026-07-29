@@ -32,6 +32,22 @@ const https = require("https");
 const http = require("http");
 const crypto = require("crypto");
 
+/**
+ * Default ceiling for the graceful voice drain on shutdown (#54).
+ *
+ * 80s deliberately sits under systemd's default `TimeoutStopSec=90`: once
+ * SIGTERM is sent, systemd — not this code — decides how long the process
+ * actually gets before SIGKILL. A ceiling above that would be SIGKILLed
+ * mid-drain and produce exactly the cut this exists to prevent, while looking
+ * configured. Raise `RADIO_DRAIN_MAX_MS` only together with `TimeoutStopSec`
+ * in the unit (the radio's unit is not in this repo, so that is an operator
+ * step — see the issue).
+ */
+const DEFAULT_DRAIN_MAX_MS = (() => {
+  const raw = Number(process.env.RADIO_DRAIN_MAX_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 80000;
+})();
+
 // Return byte length of the leading ID3v2 tag in an mp3 file, or 0 if
 // none. Parses just the 10-byte header — synchsafe-encoded size in the
 // last 4 bytes. Used by _streamFileToFfmpeg to start the read past the
@@ -88,6 +104,10 @@ class IcecastSource {
     // advances. Used for peace orations + DJ intros so they're audible on
     // /stream, not just the SPA's separate <audio> elements.
     this._voiceQueue = [];
+    // The voice item currently streaming, or null. Read by stop({drain}) so a
+    // shutdown can wait for a one-shot performance to finish (#54).
+    this._currentVoice = null;
+    this._draining = false;
     // Skip-cascade protection. If multiple tracks are missing/unfetchable
     // in rapid succession (e.g. a URL-only album with all dead links), the
     // loop would otherwise busy-cycle through advanceTrack() calls. We
@@ -130,14 +150,79 @@ class IcecastSource {
     console.log("\u{1F4FB} icecast-source: starting (mount " + this._cfg.icecastMount + ")");
   }
 
-  stop() {
+  /**
+   * Stop the source. Returns a promise so a caller can await a graceful drain.
+   *
+   * `{ drain: true }` lets an in-flight VOICE file finish before ffmpeg is
+   * killed (#54). A restart used to SIGTERM ffmpeg mid-sentence: a listener
+   * heard ~80s of a 217s peace oration, then silence, then the next track.
+   *
+   * Only VOICE audio is drained, never music. Music is resumable — the next
+   * boot picks a track and the listener hears a normal transition — whereas an
+   * oration is a one-shot performance that cannot be rejoined. Draining a
+   * 5-minute music track on every deploy would make restarts worse, not better.
+   *
+   * `_running = false` is set first so the voice loop takes no NEW items; only
+   * the file already streaming is allowed to complete.
+   *
+   * The ceiling is bounded by systemd, not by this code: once SIGTERM is sent,
+   * `TimeoutStopSec` (default 90s) decides how long the process actually has
+   * before SIGKILL. The default here stays under that so the drain works on an
+   * unmodified unit; raising `RADIO_DRAIN_MAX_MS` past ~80s only helps if
+   * `TimeoutStopSec` is raised to match, or systemd kills us mid-drain and the
+   * listener hears the same cut this fix exists to prevent.
+   */
+  stop(opts = {}) {
+    const drain = opts.drain === true;
+    const maxDrainMs = Number.isFinite(opts.maxDrainMs)
+      ? opts.maxDrainMs
+      : DEFAULT_DRAIN_MAX_MS;
+
     this._running = false;
     if (this._restartTimer) { clearTimeout(this._restartTimer); this._restartTimer = null; }
-    if (this._ffmpeg) {
-      try { this._ffmpeg.stdin.end(); } catch (_) {}
-      try { this._ffmpeg.kill("SIGTERM"); } catch (_) {}
-      this._ffmpeg = null;
+
+    const hardStop = () => {
+      if (this._ffmpeg) {
+        try { this._ffmpeg.stdin.end(); } catch (_) {}
+        try { this._ffmpeg.kill("SIGTERM"); } catch (_) {}
+        this._ffmpeg = null;
+      }
+    };
+
+    if (!drain || !this._currentVoice || maxDrainMs <= 0) {
+      hardStop();
+      return Promise.resolve({ drained: false, reason: this._currentVoice ? "drain-disabled" : "no-voice-in-flight" });
     }
+
+    const label = (this._currentVoice.meta && this._currentVoice.meta.label) || "voice";
+    console.log(`   \u{1F399} /stream draining in-flight voice before shutdown: ${label} (max ${Math.round(maxDrainMs / 1000)}s)`);
+    this._draining = true;
+
+    return new Promise((resolve) => {
+      const deadline = Date.now() + maxDrainMs;
+      const tick = setInterval(() => {
+        if (!this._currentVoice) {
+          clearInterval(tick);
+          this._draining = false;
+          hardStop();
+          console.log("   \u{1F399} /stream voice drained cleanly; shutting down");
+          resolve({ drained: true, reason: "completed" });
+          return;
+        }
+        if (Date.now() >= deadline) {
+          clearInterval(tick);
+          this._draining = false;
+          hardStop();
+          console.warn(`   \u{1F399} /stream drain ceiling hit (${Math.round(maxDrainMs / 1000)}s) — cutting ${label}`);
+          resolve({ drained: false, reason: "ceiling" });
+        }
+      }, 200);
+      // Deliberately NOT unref'd. This timer is the only thing keeping the
+      // process alive while the oration plays out — unref'ing it lets node
+      // exit the moment the other handles close, which cuts the audio and
+      // silently defeats the drain. Both branches above clearInterval, so it
+      // cannot outlive the shutdown.
+    });
   }
 
   status() {
@@ -300,11 +385,15 @@ class IcecastSource {
         }
         console.log(`   \u{1F399} /stream VOICE: ${v.meta.label || require("path").basename(v.path)}`);
         let voiceErr = null;
+        // Marks a one-shot performance as in flight so stop({drain:true}) can
+        // wait for it instead of cutting mid-sentence (#54).
+        this._currentVoice = v;
         try { await this._streamFileToFfmpeg(v.path); }
         catch (e) {
           voiceErr = e;
           console.warn(`[icecast-source] voice ${v.path}: ${e.message}`);
         }
+        finally { this._currentVoice = null; }
         // Notify the injector that the audio has actually drained through
         // the realtime pipeline. peace-oration uses this to mark "complete"
         // only AFTER on-air playback finishes — previously it relied on a
