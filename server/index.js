@@ -1145,8 +1145,28 @@ flux.startPeriodicPublish();
 
 // ── Graceful shutdown ──────────────────────────────────────
 
-function shutdown() {
+let shuttingDown = false;
+
+async function shutdown() {
+  // SIGINT then SIGTERM (or systemd's SIGTERM twice) would otherwise run the
+  // whole teardown concurrently and abandon a drain already in progress.
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log("\n\uD83D\uDC7B Kannaka Radio shutting down...");
+
+  // Let an in-flight oration/intro finish before anything else tears down.
+  // This ran nowhere previously \u2014 shutdown() never called icecastSource.stop()
+  // at all, so ffmpeg died with the process and a listener heard the oration
+  // cut mid-sentence (#54). Awaited FIRST: stopping the perception loop or
+  // dj-engine underneath a streaming voice file would strand it.
+  if (icecastSource) {
+    try {
+      await icecastSource.stop({ drain: true });
+    } catch (e) {
+      console.warn(`[shutdown] voice drain failed: ${e && e.message}`);
+    }
+  }
+
   perception_.stopPerceptionLoop();
   flux.stopPeriodicPublish();
   syncManager.stop();
