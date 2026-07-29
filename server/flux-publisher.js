@@ -20,6 +20,9 @@ class FluxPublisher {
     this._fluxToken = opts.fluxToken;
     this._getCurrentTrack = opts.getCurrentTrack;
     this._getPerception = opts.getPerception;
+    // Optional: real measured features for a specific file (per-file cache
+    // from prior airings). See _perceptionFor. (#125)
+    this._getPerceptionFor = opts.getPerceptionFor;
     this._getDJState = opts.getDJState;
     this._isLive = opts.isLive;
     this._getListenerCount = opts.getListenerCount;
@@ -31,8 +34,68 @@ class FluxPublisher {
 
   // ── Public API ────────────────────────────────────────────
 
+  /**
+   * Perception that genuinely belongs to `track`, or null.
+   *
+   * `_getPerception()` returns whatever the engine is currently holding, which
+   * at a track change is still the PREVIOUS track — every caller publishes the
+   * flux event before `hearTrack()` runs. Worse, swapping the call order would
+   * not fix it: `hearTrack()` seeds `current` with a *mock* synchronously and
+   * only fills in the real `kannaka hear` measurement ~500ms later, so a
+   * synchronous read gets fabricated numbers for the right track instead of
+   * real numbers for the wrong one. That is the same trap #124 documented for
+   * KANNAKA.attention.ear.
+   *
+   * So this never trusts the call order. It accepts the live snapshot only
+   * when it is a real measurement OF THIS FILE, and otherwise falls back to
+   * the per-file cache from a prior airing — exactly what VoiceDJ already does
+   * so its intros describe the upcoming track rather than the previous one.
+   * When neither is available the caller publishes `perception: null`, which
+   * is honest; a consumer can tell "not measured yet" from a measurement.
+   */
+  _perceptionFor(track) {
+    const current = this._getPerception ? this._getPerception() : null;
+    const isRealMeasurement = current && current.source === "kannaka-ear";
+    const belongsToTrack =
+      current && current.track_info && track && current.track_info.file === track.file;
+    if (isRealMeasurement && belongsToTrack) return current;
+
+    // Real measurement of this exact file from a previous airing. Radio loops
+    // its library, so this hits often.
+    if (this._getPerceptionFor && track && track.file) {
+      const cached = this._getPerceptionFor(track.file);
+      if (cached) return cached;
+    }
+    return null;
+  }
+
+  /**
+   * Shape a perception object for the wire, tolerating the reduced form.
+   *
+   * The per-file cache stores only the four scalars it needs
+   * (tempo/rms/centroid/valence) — no `mfcc`, no `mel_spectrogram`. The old
+   * body called `.slice()` on both unconditionally, so feeding it a cached
+   * entry would have thrown inside the publish path.
+   */
+  static _perceptionPayload(perception) {
+    if (!perception) return null;
+    const mel = Array.isArray(perception.mel_spectrogram) ? perception.mel_spectrogram : null;
+    const band = (from, to) =>
+      mel ? mel.slice(from, to).reduce((a, b) => a + b, 0) / (to - from) : null;
+    return {
+      tempo_bpm: perception.tempo_bpm ?? null,
+      spectral_centroid_khz: perception.spectral_centroid ?? null,
+      rms_energy: perception.rms_energy ?? null,
+      pitch_hz: perception.pitch ?? null,
+      emotional_valence: perception.valence ?? null,
+      mfcc_summary: Array.isArray(perception.mfcc) ? perception.mfcc.slice(0, 5) : null,
+      mel_energy_bands: mel ? [band(0, 32), band(32, 64), band(64, 96), band(96, 128)] : null,
+      perception_status: perception.status ?? "measured",
+    };
+  }
+
   publishTrackChange(track) {
-    const perception = this._getPerception();
+    const perception = this._perceptionFor(track);
     const event = {
       stream: "radio",
       source: "kannaka-radio",
@@ -50,21 +113,9 @@ class FluxPublisher {
           type: "audio-perception",
           source: "kannaka-dj",
           started_at: new Date().toISOString(),
-          perception: {
-            tempo_bpm: perception.tempo_bpm,
-            spectral_centroid_khz: perception.spectral_centroid,
-            rms_energy: perception.rms_energy,
-            pitch_hz: perception.pitch,
-            emotional_valence: perception.valence,
-            mfcc_summary: perception.mfcc.slice(0, 5),
-            mel_energy_bands: [
-              perception.mel_spectrogram.slice(0, 32).reduce((a, b) => a + b, 0) / 32,
-              perception.mel_spectrogram.slice(32, 64).reduce((a, b) => a + b, 0) / 32,
-              perception.mel_spectrogram.slice(64, 96).reduce((a, b) => a + b, 0) / 32,
-              perception.mel_spectrogram.slice(96, 128).reduce((a, b) => a + b, 0) / 32
-            ],
-            perception_status: perception.status
-          }
+          // null when this track has not actually been measured yet, rather
+          // than the previous track's numbers dressed up as this one's (#125).
+          perception: FluxPublisher._perceptionPayload(perception),
         },
       },
     };

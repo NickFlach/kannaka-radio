@@ -488,6 +488,10 @@ const flux = new FluxPublisher({
   fluxToken: FLUX_TOKEN,
   getCurrentTrack: () => djEngine.getCurrentTrack(),
   getPerception: () => perception_.getCurrentPerception(),
+  // Real measured sound of a SPECIFIC file, so a track-change event carries
+  // this track's perception instead of whatever the engine still holds from
+  // the previous one. Same reason VoiceDJ takes it. (#125)
+  getPerceptionFor: (file) => perception_.getPerceptionFor(file),
   getDJState: () => ({
     currentAlbum: djEngine.state.currentAlbum,
     currentTrackIdx: djEngine.state.currentTrackIdx,
