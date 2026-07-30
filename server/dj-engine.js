@@ -5,7 +5,8 @@
 
 const path = require("path");
 const fs = require("fs");
-const { findAudioFile } = require("./utils");
+const https = require("https");
+const { findAudioFile, getFiles } = require("./utils");
 const { interleaveCommercials } = require("./commercials");
 
 // ── The Consciousness Series — DJ Setlist ──────────────────
@@ -925,7 +926,6 @@ class DJEngine {
    * Fetch audio artifacts from kax. Returns array of { title, url }.
    */
   async _fetchKaxArtifacts() {
-    const https = require('https');
     return new Promise((resolve, reject) => {
       const req = https.get('https://kax.ninja-portal.com/api/artifacts', (res) => {
         let data = '';
@@ -1610,7 +1610,6 @@ class DJEngine {
    * @param {string} [opts.tag] — optional tag filter; only return tracks matching this tag
    */
   getLibraryStatus(musicDir, opts) {
-    const { getFiles } = require("./utils");
     const files = getFiles(musicDir);
     const tagFilter = opts && opts.tag ? opts.tag : null;
     const result = {};

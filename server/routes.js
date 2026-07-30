@@ -4,6 +4,7 @@
  */
 
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
@@ -846,7 +847,6 @@ module.exports = function setupRoutes(deps) {
       let body = "";
       req.on("data", c => body += c);
       req.on("end", () => {
-        const http = require("http");
         const data = body || "{}";
         const opts = {
           hostname: "127.0.0.1",
@@ -945,7 +945,6 @@ module.exports = function setupRoutes(deps) {
         // back to the HTTP endpoint. Still first-page-only and still without
         // file_path, so the response says so rather than implying a full
         // search happened.
-        const http = require("http");
         http.get("http://127.0.0.1:3001/stems", (pres) => {
           let buf = "";
           pres.on("data", c => buf += c);
@@ -1226,7 +1225,6 @@ module.exports = function setupRoutes(deps) {
         sendPeers();
         return;
       }
-      const { execFile } = require("child_process");
       const bin = config.kannakabin || "/home/opc/.local/bin/kannaka";
       execFile(bin, ["swarm", "peers", "--json"], {
         timeout: 30000,
@@ -1992,7 +1990,6 @@ load();
         res.end(JSON.stringify({ error: "programming or peaceOration not initialized" }));
         return;
       }
-      const { ALBUMS } = require("./dj-engine");
       const album = ALBUMS[albumName];
       if (!album) {
         res.writeHead(404, { "Content-Type": "application/json" });
