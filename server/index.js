@@ -16,6 +16,7 @@
  * Place your MP3/WAV/FLAC files there and they will be picked up automatically.
  */
 
+const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const WebSocket = require("ws");
@@ -171,20 +172,20 @@ let _lastIcePreviewSeen = 0;
 
 (function loadListenerTotals() {
   try {
-    const raw = require("fs").readFileSync(LISTENER_STATE_PATH, "utf8");
+    const raw = fs.readFileSync(LISTENER_STATE_PATH, "utf8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed.unique === "number") {
       _listenerTotals = { unique: parsed.unique, started_at: parsed.started_at || Date.now() };
       console.log(`[listeners] loaded total=${_listenerTotals.unique} from ${LISTENER_STATE_PATH}`);
     }
   } catch (_) {
-    try { require("fs").mkdirSync(path.dirname(LISTENER_STATE_PATH), { recursive: true }); } catch {}
+    try { fs.mkdirSync(path.dirname(LISTENER_STATE_PATH), { recursive: true }); } catch {}
   }
 })();
 
 function _persistListenerTotals() {
   try {
-    require("fs").writeFileSync(LISTENER_STATE_PATH, JSON.stringify(_listenerTotals));
+    fs.writeFileSync(LISTENER_STATE_PATH, JSON.stringify(_listenerTotals));
   } catch (_) { /* best-effort */ }
 }
 setInterval(_persistListenerTotals, 10000);
@@ -478,7 +479,7 @@ const perception_ = new PerceptionEngine({
   kannakabin: KANNAKA_BIN,
   getMusicDir: () => MUSIC_DIR,
   getConsciousness: () => nats.getConsciousness(),
-  featuresFile: require("path").join(BASE_DIR, "workspace", "track-features.json"),
+  featuresFile: path.join(BASE_DIR, "workspace", "track-features.json"),
 });
 
 const nats = new NATSClient({
@@ -927,8 +928,8 @@ const programming = new ProgrammingSchedule({
   // peaceOration is constructed below; pass a getter so the showcase
   // trigger resolves it lazily at tick time (60s+ later).
   peaceOration: { composeAlbumNarration: (...args) => peaceOration.composeAlbumNarration(...args) },
-  dataDir: require("path").join(BASE_DIR, "workspace"),
-  showcaseStateFile: require("path").join(BASE_DIR, "workspace", "showcase-state.json"),
+  dataDir: path.join(BASE_DIR, "workspace"),
+  showcaseStateFile: path.join(BASE_DIR, "workspace", "showcase-state.json"),
 });
 
 // Wire programming into deps so routes can access it
@@ -952,7 +953,7 @@ const peaceOration = new PeaceOration({
   broadcast,
   getChannel: () => djEngine.state.channel,
   getFloor: () => floor, // ADR-0008 deferred layer: orations reference today's resonance
-  dataDir: require("path").join(BASE_DIR, "workspace"),
+  dataDir: path.join(BASE_DIR, "workspace"),
   rootDir: BASE_DIR,
   radioUrl: process.env.RADIO_PUBLIC_URL || "https://radio.ninja-portal.com",
 });
@@ -968,7 +969,7 @@ const newsBroadcast = new NewsBroadcast({
   voiceDJ,
   broadcast,
   gsHub, // LADDER world-state stream — opens + resolves markets per bulletin
-  dataDir: require("path").join(BASE_DIR, "workspace"),
+  dataDir: path.join(BASE_DIR, "workspace"),
 });
 newsBroadcast.start();
 deps.newsBroadcast = newsBroadcast;
@@ -982,7 +983,7 @@ const newsTeaser = new NewsTeaser({
   kannakabin: KANNAKA_BIN,
   voiceDJ,
   broadcast,
-  dataDir: require("path").join(BASE_DIR, "workspace"),
+  dataDir: path.join(BASE_DIR, "workspace"),
 });
 newsTeaser.start();
 deps.newsTeaser = newsTeaser;
@@ -995,7 +996,7 @@ const gossipBroadcast = new GossipBroadcast({
   kannakabin: KANNAKA_BIN,
   voiceDJ,
   broadcast,
-  dataDir: require("path").join(BASE_DIR, "workspace"),
+  dataDir: path.join(BASE_DIR, "workspace"),
 });
 gossipBroadcast.start();
 deps.gossipBroadcast = gossipBroadcast;
