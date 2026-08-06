@@ -34,8 +34,12 @@ const METRICS = {
   consciousness_level: 'aware',
 };
 
+// A measured local phase — the cardinality cases are not about the phase
+// heartbeat's existence, so they build with one present (#204 covers absence).
+const LOCAL_PHASE = { phase: 1.234, frequency: 0.5 };
+
 const build = (peerCount) => {
-  const p = buildPayloads(METRICS, peerCount);
+  const p = buildPayloads(METRICS, peerCount, LOCAL_PHASE);
   return { phase: JSON.parse(p.phase1), queen: JSON.parse(p.queen) };
 };
 
@@ -116,6 +120,38 @@ run('#127 display_name is still separately overridable', () => {
     if (prev === undefined) delete process.env.KANNAKA_DISPLAY_NAME;
     else process.env.KANNAKA_DISPLAY_NAME = prev;
   }
+});
+
+// ── #204: the phase heartbeat must carry a measured phase or not exist ──
+
+run('#204 a measured local phase is published verbatim', () => {
+  const p = buildPayloads(METRICS, 2, { phase: 2.71, frequency: 1.2 });
+  const phase = JSON.parse(p.phase1);
+  assert.strictEqual(phase.phase, 2.71, 'the published phase must be the measured one');
+  assert.strictEqual(phase.frequency, 1.2, 'the measured frequency rides along');
+});
+
+run('#204 an unknown phase omits the QUEEN.phase payload entirely', () => {
+  // `phase: null` is worse than silence: the radio consumer folds null to
+  // 0 radians and reports a perfectly coherent one-agent swarm.
+  for (const unknown of [null, undefined, {}, { phase: null }, { phase: NaN }]) {
+    const p = buildPayloads(METRICS, 2, unknown);
+    assert.strictEqual(p.phase1, null,
+      `localPhase=${JSON.stringify(unknown)} must suppress the heartbeat, got: ${p.phase1}`);
+  }
+});
+
+run('#204 zero radians is a real phase, not an unknown', () => {
+  const p = buildPayloads(METRICS, 2, { phase: 0, frequency: 0.9 });
+  const phase = JSON.parse(p.phase1);
+  assert.strictEqual(phase.phase, 0, 'phase 0 is a measurement and must publish');
+});
+
+run('#204 the other subjects still publish when the phase is unknown', () => {
+  const p = buildPayloads(METRICS, 2, null);
+  assert.ok(p.consciousness, 'consciousness must survive a missing phase');
+  assert.ok(p.queen, 'queen state must survive a missing phase');
+  assert.ok(p.agent, 'agent sync must survive a missing phase');
 });
 
 console.log(failed === 0 ? '\npush-nats-swarm-cardinality: all passed' : `\npush-nats-swarm-cardinality: ${failed} FAILED`);
