@@ -82,8 +82,10 @@ test('#52 push-nats KANNAKA.consciousness carries every required field', () => {
 });
 
 test('#52 push-nats QUEEN.phase carries every required field', () => {
+  // Since #204 the heartbeat is conditional: built only from a measured
+  // phase, null (and unpublished) otherwise.
   const block = between(readSrc('push-nats.js'),
-    'const phase1 = JSON.stringify({', 'const queen =');
+    'const phase1 = !phaseKnown ? null : JSON.stringify({', 'const queen =');
   const missing = NATS_REQUIRED_FIELDS['QUEEN.phase.<agent_id>'].filter((f) => !hasField(block, f));
   assert.strictEqual(missing.length, 0, `missing ${missing.join(', ')}`);
 });

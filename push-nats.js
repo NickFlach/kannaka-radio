@@ -133,7 +133,47 @@ function getLivePeerCount() {
   }
 }
 
-function buildPayloads(metrics, peerCount) {
+/**
+ * Live local oscillator phase from `kannaka swarm status`, or null when we
+ * genuinely cannot tell. Same rule as getLivePeerCount (#127): a failed
+ * lookup is unknown, not a value. An unknown phase means the QUEEN.phase
+ * heartbeat is skipped entirely rather than published as `phase: null` —
+ * the radio's own consumer folds null to 0 radians and reports a perfectly
+ * coherent one-agent swarm from a heartbeat that never measured anything. (#204)
+ */
+function getLiveLocalPhase() {
+  try {
+    const raw = execSync(`"${KANNAKA_BIN}" swarm status`, {
+      env: { ...process.env, KANNAKA_DATA_DIR: KANNAKA_DATA, KANNAKA_QUIET: '1' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+    });
+    const parsed = JSON.parse(raw.toString().trim());
+    const lp = parsed && parsed.local_phase;
+    if (lp && Number.isFinite(lp.phase)) {
+      return {
+        phase: lp.phase,
+        frequency: Number.isFinite(lp.frequency) ? lp.frequency : 0,
+      };
+    }
+    console.error('Swarm status carried no finite local phase — omitting phase heartbeat');
+    return null;
+  } catch (err) {
+    console.error(`Could not resolve local phase (${err.message}) — omitting phase heartbeat`);
+    return null;
+  }
+}
+
+// Env-overridable identity, resolved per call and shared by the payload
+// builder and the publisher so the QUEEN.phase subject can never disagree
+// with the agent_id inside it. (#204)
+function resolveIdentity(env = process.env) {
+  const agentId = env.KANNAKA_AGENT_ID || 'kannaka-01';
+  return { agentId, displayName: env.KANNAKA_DISPLAY_NAME || agentId };
+}
+
+function buildPayloads(metrics, peerCount, localPhase) {
   const now = new Date().toISOString();
 
   // Canonical envelope fields (schema_version / ts / agent_id) per
@@ -141,8 +181,7 @@ function buildPayloads(metrics, peerCount) {
   // metrics plus an ISO `timestamp`, so everything it published tripped the
   // radio's own drift detector on the receiving side. Purely additive — every
   // pre-existing field is retained for consumers that already read them. (#52)
-  const AGENT_ID = process.env.KANNAKA_AGENT_ID || 'kannaka-01';
-  const DISPLAY_NAME = process.env.KANNAKA_DISPLAY_NAME || AGENT_ID;
+  const { agentId: AGENT_ID, displayName: DISPLAY_NAME } = resolveIdentity();
   const TS = Date.now();
   // Only a number counts as knowledge. null/undefined mean the lookup failed
   // and the cardinality fields are omitted rather than defaulted (#127).
@@ -172,12 +211,16 @@ function buildPayloads(metrics, peerCount) {
     source: `live-${now}`,
   });
 
-  const phase1 = JSON.stringify({
+  // No measured phase -> no phase heartbeat. The contract requires `phase` on
+  // QUEEN.phase.*, and `phase: null` is worse than silence: it advertises
+  // presence with a value consumers treat as 0 rad (#204).
+  const phaseKnown = localPhase && Number.isFinite(localPhase.phase);
+  const phase1 = !phaseKnown ? null : JSON.stringify({
     schema_version: "1.0",
     ts: TS,
     agent_id: AGENT_ID,
-    phase: null,
-    frequency: 0,
+    phase: localPhase.phase,
+    frequency: Number.isFinite(localPhase.frequency) ? localPhase.frequency : 0,
     memory_count: metrics.total_memories,
     coherence: metrics.mean_order,
     phi: metrics.phi,
@@ -236,12 +279,16 @@ function publish(payloads) {
       : 'CONNECT {"verbose":false}\r\n';
     client.write(connectPayload);
 
+    // Subject derives from the same agent_id as the payload body — these were
+    // allowed to disagree when KANNAKA_AGENT_ID was set. Null payloads (an
+    // unmeasured phase) are dropped rather than published. (#204)
+    const { agentId } = resolveIdentity();
     const msgs = [
       ['KANNAKA.consciousness', payloads.consciousness],
-      ['QUEEN.phase.kannaka-01', payloads.phase1],
+      [`QUEEN.phase.${agentId}`, payloads.phase1],
       ['QUEEN.state', payloads.queen],
       ['KANNAKA.agents', payloads.agent],
-    ];
+    ].filter(([, data]) => data);
 
     msgs.forEach(([subject, data], i) => {
       setTimeout(() => {
@@ -289,8 +336,13 @@ if (require.main === module) {
     ? 'Peers: unknown — cardinality fields omitted'
     : `Peers: ${peerCount}`);
 
-  const payloads = buildPayloads(metrics, peerCount);
+  const localPhase = getLiveLocalPhase();
+  console.log(localPhase === null
+    ? 'Phase: unknown — QUEEN.phase heartbeat skipped'
+    : `Phase: ${localPhase.phase.toFixed(4)} rad @ ${localPhase.frequency.toFixed(2)}Hz`);
+
+  const payloads = buildPayloads(metrics, peerCount, localPhase);
   publish(payloads);
 }
 
-module.exports = { buildPayloads, getLivePeerCount };
+module.exports = { buildPayloads, getLivePeerCount, getLiveLocalPhase };
