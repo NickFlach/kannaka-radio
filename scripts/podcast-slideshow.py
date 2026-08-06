@@ -39,7 +39,7 @@ COVER_SECONDS = 6.0
 SLIDE_SECONDS = 45.0
 FADE = 0.6
 FPS = 24
-SEG_WORKERS = 5
+SEG_WORKERS = int(os.environ.get("SEG_WORKERS", "5"))
 ART_STRIDE = 4  # art rotation offset between consecutive episodes
 
 FONT_BOLD = "C:/Windows/Fonts/segoeuib.ttf"
