@@ -142,6 +142,29 @@ module.exports = function setupRoutes(deps) {
   // only so the capped log doesn't misreport (#68)
   deps._getPendingRequestCount = () => listeners.requests.filter(r => !r.fulfilled).length;
 
+  // Mark matching requests fulfilled when a track actually plays. Without
+  // this, `fulfilled: false` was written once and never updated, so the
+  // "pending" count exposed to Flux was really a lifetime request total —
+  // a permanently growing backlog signal for downstream consumers. (#199)
+  deps._markRequestsFulfilled = (track) => {
+    if (!track) return 0;
+    const playedFile = track.file || track.path || null;
+    const playedTitle = (track.title || "").trim().toLowerCase();
+    let marked = 0;
+    for (const r of listeners.requests) {
+      if (r.fulfilled) continue;
+      const byFile = r.file && playedFile && r.file === playedFile;
+      const byTitle = r.trackTitle && playedTitle &&
+        r.trackTitle.trim().toLowerCase() === playedTitle;
+      if (byFile || byTitle) {
+        r.fulfilled = true;
+        r.fulfilledAt = Date.now();
+        marked++;
+      }
+    }
+    return marked;
+  };
+
   // Expose handleTrackRequest for WS message handling
   deps._handleTrackRequest = handleTrackRequest;
 
@@ -1496,10 +1519,14 @@ module.exports = function setupRoutes(deps) {
     if (parsed.pathname === "/api/dreams") {
       execFile(config.kannakabin, ["search", "audio perception dream", "--limit", "20", "--json"],
         { timeout: 15000 }, (err, stdout) => {
+          // Mock fallbacks are labelled `synthetic: true` so the SPA (and
+          // any API consumer) can tell placeholder dreams from live
+          // HRM-backed results — the trigger endpoint already does this,
+          // and unlabelled mocks were the remaining half of #206.
           if (err || !stdout) {
             const mockDreams = djEngine.generateMockDreams();
             res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(mockDreams));
+            res.end(JSON.stringify({ ...mockDreams, synthetic: true }));
             return;
           }
           try {
@@ -1512,7 +1539,7 @@ module.exports = function setupRoutes(deps) {
             res.end(JSON.stringify({ dreams }));
           } catch {
             res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(djEngine.generateMockDreams()));
+            res.end(JSON.stringify({ ...djEngine.generateMockDreams(), synthetic: true }));
           }
         });
       return;

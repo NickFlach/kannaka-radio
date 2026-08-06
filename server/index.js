@@ -325,6 +325,11 @@ const djEngine = new DJEngine({
       // never dereferences null. (#null-album-switch)
       if (!actual) actual = track;
 
+      // Settle any listener requests this track satisfies, so the
+      // pending_requests count Flux publishes is a live backlog rather
+      // than a lifetime total. (#199)
+      if (deps._markRequestsFulfilled) deps._markRequestsFulfilled(actual);
+
       // ── Talk segment check ────────────────────────────────
       // Every 3-5 non-commercial tracks, the DJ does a talk-only segment
       // BEFORE the next track starts. Music pauses on the client while
