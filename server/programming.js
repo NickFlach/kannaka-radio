@@ -10,6 +10,7 @@
  */
 
 const { ALBUMS } = require("./dj-engine");
+const { loadState, saveState } = require('./lib/scheduler-helpers');
 
 // ── Programming schedule (CST) ────────────────────────────
 
@@ -316,22 +317,12 @@ class ProgrammingSchedule {
   }
 
   _loadShowcaseState() {
-    try {
-      const fs = require("fs");
-      if (fs.existsSync(this._showcaseStateFile)) {
-        return JSON.parse(fs.readFileSync(this._showcaseStateFile, "utf8"));
-      }
-    } catch (_) { /* ignore */ }
-    return {};
+    return loadState(this._showcaseStateFile);
   }
 
   _saveShowcaseState() {
     try {
-      const fs = require("fs");
-      const path = require("path");
-      const dir = path.dirname(this._showcaseStateFile);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this._showcaseStateFile, JSON.stringify(this._lastShowcaseFired, null, 2));
+      saveState(this._showcaseStateFile, this._lastShowcaseFired);
     } catch (e) {
       console.warn(`[programming] showcase state save: ${e && e.message}`);
     }
@@ -611,7 +602,6 @@ class ProgrammingSchedule {
       const key = `${dateKey}T${String(hour).padStart(2, "0")}-${showcase.album}`;
       if (this._lastShowcaseFired[key]) continue; // already fired today
 
-      const { ALBUMS } = require("./dj-engine");
       const album = ALBUMS[showcase.album];
       if (!album) {
         console.warn(`[programming] showcase album not found: ${showcase.album}`);
