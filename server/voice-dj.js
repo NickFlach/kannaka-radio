@@ -945,6 +945,14 @@ class VoiceDJ {
         let data = "";
         res.on("data", c => data += c);
         const settle = () => {
+          // A structured error body (503 {"error":"offline"} during an outage
+          // or deploy) parses fine — and then gets narrated on-air as live
+          // phi / market activity. An error status is an error, whatever the
+          // body looks like. (#201)
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`HTTP ${res.statusCode} from ${url}`));
+            return;
+          }
           try { resolve(JSON.parse(data)); }
           catch (e) { reject(e); }
         };
