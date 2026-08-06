@@ -134,7 +134,7 @@ class IcecastSource {
       return;
     }
     this._voiceQueue.push({ path: audioPath, meta, onDone: typeof onDone === "function" ? onDone : null });
-    console.log(`   \u{1F4FB} /stream voice queued: ${meta.label || require("path").basename(audioPath)} (${this._voiceQueue.length} pending)`);
+    console.log(`   \u{1F4FB} /stream voice queued: ${meta.label || path.basename(audioPath)} (${this._voiceQueue.length} pending)`);
   }
 
   start() {
@@ -378,12 +378,12 @@ class IcecastSource {
             expected = (cur && cur.file !== track.file) ? cur : this._djEngine.peekNextTrack();
           } catch (_) {}
           if (!expected || expected.file !== v.meta.introFor) {
-            console.log(`   \u{1F399} /stream VOICE dropped — stale intro (announced ${require("path").basename(v.meta.introFor)}, next is ${expected ? require("path").basename(expected.file) : "unknown"})`);
+            console.log(`   \u{1F399} /stream VOICE dropped — stale intro (announced ${path.basename(v.meta.introFor)}, next is ${expected ? path.basename(expected.file) : "unknown"})`);
             if (v.onDone) { try { v.onDone(new Error("stale intro")); } catch (_) {} }
             continue;
           }
         }
-        console.log(`   \u{1F399} /stream VOICE: ${v.meta.label || require("path").basename(v.path)}`);
+        console.log(`   \u{1F399} /stream VOICE: ${v.meta.label || path.basename(v.path)}`);
         let voiceErr = null;
         // Marks a one-shot performance as in flight so stop({drain:true}) can
         // wait for it instead of cutting mid-sentence (#54).
