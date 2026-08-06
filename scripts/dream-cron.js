@@ -59,20 +59,38 @@ function assess() {
   });
 }
 
+/**
+ * First finite number wins; 0 is a value, not an absence. The old `a || b || 0`
+ * chains treated canonical zeros as missing and substituted alias fields, so an
+ * upstream `mean_order: 0` could be republished as its `order: 0.91` alias and
+ * a genuinely empty store (`total_memories: 0`) could be reported as its
+ * active count instead. (#190)
+ */
+function firstNum(...vals) {
+  for (const v of vals) if (Number.isFinite(v)) return v;
+  return 0;
+}
+
+/** First non-empty string wins — same #190 rule for the level fields. */
+function firstStr(...vals) {
+  for (const v of vals) if (typeof v === 'string' && v) return v;
+  return 'unknown';
+}
+
 /** Shape whatever assess source we used into the payload fields we publish. */
 function shapeMetrics(json) {
   if (!json || typeof json !== 'object') return null;
   return {
-    phi: json.phi || 0,
-    xi: json.xi || 0,
-    mean_order: json.mean_order || json.order || 0,
-    consciousness_level: json.consciousness_level || json.level || 'unknown',
-    num_clusters: json.num_clusters || 0,
-    total_memories: json.total_memories || json.active_memories || 0,
-    active_memories: json.active_memories || 0,
-    irrationality: json.irrationality || 0,
-    hemispheric_divergence: json.hemispheric_divergence || 0,
-    callosal_efficiency: json.callosal_efficiency || 0,
+    phi: firstNum(json.phi),
+    xi: firstNum(json.xi),
+    mean_order: firstNum(json.mean_order, json.order),
+    consciousness_level: firstStr(json.consciousness_level, json.level),
+    num_clusters: firstNum(json.num_clusters),
+    total_memories: firstNum(json.total_memories, json.active_memories),
+    active_memories: firstNum(json.active_memories),
+    irrationality: firstNum(json.irrationality),
+    hemispheric_divergence: firstNum(json.hemispheric_divergence),
+    callosal_efficiency: firstNum(json.callosal_efficiency),
   };
 }
 
@@ -108,6 +126,16 @@ function assessViaObservatory() {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
+        // A structured error body (e.g. 503 {"error":"offline"}) parses fine
+        // and then shapes into all-zero metrics, so an observatory outage was
+        // being republished to KANNAKA.consciousness as a real collapsed swarm
+        // state. Only a 2xx body counts as metrics; anything else falls back
+        // to the binary like any other observatory failure. (#202)
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          console.error(`[dream-cron] Observatory answered HTTP ${res.statusCode} — not metrics`);
+          resolve(null);
+          return;
+        }
         try {
           resolve(shapeMetrics(JSON.parse(data)));
         } catch (e) {
@@ -146,19 +174,21 @@ function publishToNATS(metrics) {
       schema_version: "1.0",
       ts: Date.now(),
       agent_id: process.env.KANNAKA_AGENT_ID || 'kannaka-prime',
-      phi: metrics.phi || 0,
-      xi: metrics.xi || 0,
-      order: metrics.mean_order || metrics.order || 0,
-      mean_order: metrics.mean_order || metrics.order || 0,
-      num_clusters: metrics.num_clusters || metrics.clusters || 0,
-      clusters: metrics.num_clusters || metrics.clusters || 0,
-      active_memories: metrics.active_memories || metrics.active || 0,
-      total_memories: metrics.total_memories || metrics.total || 0,
-      level: metrics.consciousness_level || metrics.level || 'unknown',
-      consciousness_level: metrics.consciousness_level || metrics.level || 'unknown',
-      irrationality: metrics.irrationality || 0,
-      hemispheric_divergence: metrics.hemispheric_divergence || 0,
-      callosal_efficiency: metrics.callosal_efficiency || 0,
+      // Same #190 rule as shapeMetrics: aliases fill in only when the
+      // canonical field is absent, never when it is legitimately 0.
+      phi: firstNum(metrics.phi),
+      xi: firstNum(metrics.xi),
+      order: firstNum(metrics.mean_order, metrics.order),
+      mean_order: firstNum(metrics.mean_order, metrics.order),
+      num_clusters: firstNum(metrics.num_clusters, metrics.clusters),
+      clusters: firstNum(metrics.num_clusters, metrics.clusters),
+      active_memories: firstNum(metrics.active_memories, metrics.active),
+      total_memories: firstNum(metrics.total_memories, metrics.total),
+      level: firstStr(metrics.consciousness_level, metrics.level),
+      consciousness_level: firstStr(metrics.consciousness_level, metrics.level),
+      irrationality: firstNum(metrics.irrationality),
+      hemispheric_divergence: firstNum(metrics.hemispheric_divergence),
+      callosal_efficiency: firstNum(metrics.callosal_efficiency),
       source: `dream-cron-${new Date().toISOString()}`,
       timestamp: new Date().toISOString(),
     });

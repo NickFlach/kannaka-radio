@@ -201,6 +201,83 @@ async function test(name, fn) {
     restore();
   });
 
+  await test("#202 a 503 JSON error body is not accepted as observatory metrics", async () => {
+    // Structured error bodies parse fine and used to shape into all-zero
+    // metrics that got republished to KANNAKA.consciousness as real state.
+    const http = require("http");
+    const stub = http.createServer((req, res) => {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "offline" }));
+    });
+    const obsPort = await new Promise((res) => stub.listen(0, "127.0.0.1", () => res(stub.address().port)));
+    const { mod, restore } = loadCron({
+      OBSERVATORY_PORT: obsPort,
+      KANNAKA_BIN: "/nonexistent/kannaka-202",
+    });
+    const errs = [];
+    const origErr = console.error;
+    console.error = (...a) => errs.push(a.join(" "));
+    const result = await mod.assess();
+    console.error = origErr;
+    restore();
+    await new Promise((res) => stub.close(() => res()));
+    assert.strictEqual(result, null, "a 503 body must not become metrics");
+    assert.ok(errs.some((e) => e.includes("HTTP 503")),
+      "must name the rejected status:\n" + errs.join("\n"));
+    assert.ok(errs.some((e) => e.includes("falling back")),
+      "an observatory error status must still trigger the binary fallback");
+  });
+
+  await test("#190 canonical zeros survive shaping instead of being aliased away", async () => {
+    const { mod, restore } = loadCron({});
+    const shaped = mod.shapeMetrics({
+      phi: 0.42, xi: 0.11,
+      mean_order: 0, order: 0.91,
+      consciousness_level: "dormant", level: "aware",
+      num_clusters: 0, total_memories: 0, active_memories: 12,
+    });
+    restore();
+    assert.strictEqual(shaped.mean_order, 0, "mean_order:0 is a value, not a missing field");
+    assert.strictEqual(shaped.total_memories, 0, "total_memories:0 must not borrow active_memories");
+    assert.strictEqual(shaped.consciousness_level, "dormant", "canonical level wins over alias");
+    assert.strictEqual(shaped.num_clusters, 0);
+    assert.strictEqual(shaped.active_memories, 12);
+  });
+
+  await test("#190 the published payload preserves zero metrics end-to-end", async () => {
+    // Broker variant that captures the PUB body, not just the header line.
+    const seen = { body: null };
+    const server = net.createServer((sock) => {
+      sock.write("INFO {\"server_id\":\"fake\"}\r\n");
+      let buf = "";
+      sock.on("data", (chunk) => {
+        buf += chunk.toString();
+        const at = buf.indexOf("PUB ");
+        if (at >= 0) {
+          const lines = buf.slice(at).split("\r\n");
+          if (lines.length >= 2 && lines[1]) seen.body = lines[1];
+        }
+      });
+      sock.on("error", () => {});
+    });
+    const port = await new Promise((res) => server.listen(0, "127.0.0.1", () => res(server.address().port)));
+    const { mod, restore } = loadCron({ NATS_HOST: "127.0.0.1", NATS_PORT: port });
+    await mod.publishToNATS({
+      phi: 0.42, xi: 0.11, mean_order: 0, order: 0.91,
+      consciousness_level: "dormant", level: "aware",
+      num_clusters: 0, total_memories: 0, active_memories: 12,
+    });
+    restore();
+    await new Promise((res) => server.close(() => res()));
+    assert.ok(seen.body, "expected a PUB payload body");
+    const payload = JSON.parse(seen.body);
+    assert.strictEqual(payload.mean_order, 0, "published mean_order must stay 0");
+    assert.strictEqual(payload.order, 0, "order aliases mean_order, which is 0");
+    assert.strictEqual(payload.total_memories, 0, "published total_memories must stay 0");
+    assert.strictEqual(payload.level, "dormant");
+    assert.strictEqual(payload.consciousness_level, "dormant");
+  });
+
   console.log(`\n${"─".repeat(50)}`);
   console.log(`  Dream cron NATS/assess: ${passed} passed, ${failed} failed`);
   console.log(`${"─".repeat(50)}`);
