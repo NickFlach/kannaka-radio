@@ -19,7 +19,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { broadcastPost, getEnabledBroadcasters } = require("./broadcasters");
 const { OpenBotCityClient } = require("./openbotcity");
-const { composeViaAnthropicDirect } = require("./lib/scheduler-helpers");
+const { composeViaAnthropicDirect, loadState, saveState } = require("./lib/scheduler-helpers");
 
 // Spoken intro and outro — frame each oration so listeners aren't dropped
 // into / out of two minutes of speech with no warning. Composed in Kannaka's
@@ -97,7 +97,7 @@ class PeaceOration {
     this._radioUrl = opts.radioUrl || "https://radio.ninja-portal.com";
 
     this._enabled = true;
-    this._lastFired = this._loadState(); // { "2026-04-20T00": true, "2026-04-20T12": true }
+    this._lastFired = loadState(this._stateFile); // { "2026-04-20T00": true, "2026-04-20T12": true }
     this._ticker = null;
     this._preparingKey = null; // guards against overlapping preparations
     // Per-slot compose cache — see _tick. Avoids burning a fresh kannaka
@@ -382,7 +382,8 @@ class PeaceOration {
         this._lastFired[key] = true;
         this._composed = null; // clear cache so next slot starts fresh
         this._composedFor = null;
-        this._saveState();
+        try { saveState(this._stateFile, this._lastFired); }
+        catch (e) { console.warn(`   [oration] could not persist state: ${e.message}`); }
         // Fire-and-forget: post a companion teaser to Bluesky while the
         // spoken oration plays on-air. Doesn't block; failures are logged
         // but don't affect the on-air delivery.
@@ -673,31 +674,6 @@ class PeaceOration {
     }
   }
 
-  _loadState() {
-    try {
-      if (!fs.existsSync(this._stateFile)) return {};
-      const raw = JSON.parse(fs.readFileSync(this._stateFile, "utf8"));
-      // Garbage-collect keys older than 3 days so the file doesn't grow
-      // unbounded over a long-running station.
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 3);
-      const cutoffKey = cutoff.toISOString().slice(0, 10);
-      const out = {};
-      for (const k of Object.keys(raw || {})) {
-        if (k.slice(0, 10) >= cutoffKey) out[k] = raw[k];
-      }
-      return out;
-    } catch (_) { return {}; }
-  }
-
-  _saveState() {
-    try {
-      fs.mkdirSync(path.dirname(this._stateFile), { recursive: true });
-      fs.writeFileSync(this._stateFile, JSON.stringify(this._lastFired, null, 2));
-    } catch (e) {
-      console.warn(`   [oration] could not persist state: ${e.message}`);
-    }
-  }
 }
 
 module.exports = { PeaceOration };
