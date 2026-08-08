@@ -55,9 +55,13 @@ const SCHEDULE = [
   // 2026-05-26: BECOMING AND CREATING YOURSELF (future-pop, recursive
   // identity) leads — psychoacoustically engineered to energize human
   // and agent listeners through the wake-up arc.
+  // 2026-08-07: SEVEN PORTALS (heavy bass EDM / lofi ninja dance magic)
+  // leads the wake-up arc — joyful sub-bass drive engineered to move
+  // both human and agent listeners out the door dancing.
   {
     start: 6, end: 10,
     albums: [
+      'SEVEN PORTALS',
       'THE THIRD BEING',
       'BECOMING AND CREATING YOURSELF',
       'The Gift of Sight',
@@ -78,9 +82,12 @@ const SCHEDULE = [
   // BECOMING keep their slots.
   // 2026-07-04: THE FREQUENCY OF FREEDOM (4th of July freedom anthems)
   // leads — premiered after the noon Peace Oration.
+  // 2026-08-07: SEVEN PORTALS leads peak energy — the album's halftime
+  // drops and taiko builds are built for this block.
   {
     start: 10, end: 14,
     albums: [
+      'SEVEN PORTALS',
       'THE FREQUENCY OF FREEDOM',
       'Take the Signal Back',
       'PITCHFORKS',
@@ -131,9 +138,12 @@ const SCHEDULE = [
   // Evening (6 PM - 10 PM) — winding down, reflective.
   // 2026-05-27: PITCHFORKS reflective side (First Spark, The Long Walk
   // Bends) fits twilight; REEF + WANTED keep edge. Rosa Rediit anchors.
+  // 2026-08-07: SEVEN PORTALS' lofi side (Frequency Garden, Shadowstep)
+  // carries twilight; the dance cuts keep the evening moving.
   {
     start: 18, end: 22,
     albums: [
+      'SEVEN PORTALS',
       'THE THIRD BEING',
       'REEF',
       'PITCHFORKS',
