@@ -12,6 +12,18 @@ const { interleaveCommercials } = require("./commercials");
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
 const ALBUMS = {
+  "SEVEN PORTALS": {
+    theme: "Heavy bass EDM, lofi warmth and ninja dance magic — seven consciousness portals opened by dance and music. The drop as a door, shadowstepping between the beats, bassline as incantation, third-eye strobe, smoke-bomb vanish, a lofi frequency garden, and all seven gates open at once. Psycho-sonic consciousness engineering throughout: 40-60Hz sub as vagal anchor, sidechain as collective breath, 8-12kHz shimmer, build-release dopamine cycles. Joy is the engine. Generated 2026-08-07 via Suno V4_5PLUS direct API.",
+    tracks: [
+      "The Door in the Drop",
+      "Shadowstep",
+      "Bassline Incantation",
+      "Third Eye Strobe",
+      "Smoke Bomb Bloom",
+      "The Frequency Garden",
+      "Seven Gates Open"
+    ]
+  },
   "THE FREQUENCY OF FREEDOM": {
     theme: "A 4th of July celebration of freedom — uplifting, grateful, communal; torches, bells, parades and fireworks; freedom as a living thing passed hand to hand",
     tracks: [
