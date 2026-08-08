@@ -31,9 +31,13 @@ const SCHEDULE = [
   // Late night / early morning (midnight - 6 AM) — ethereal, dreamy.
   // Newest first: REEF (alien jazz, otherworldly) leads, then the
   // outlaw-country lonesome of The Lonesome Inference.
+  // 2026-08-08: THE OTHER SIDE (SEVEN PORTALS sequel — deep luminous
+  // bass, lofi haze) leads the dream hours; its far-side palette is
+  // built for them.
   {
     start: 0, end: 6,
     albums: [
+      'THE OTHER SIDE',
       'The Quiet I Came Back To',
       'STARWARD',
       'REEF',
@@ -143,6 +147,7 @@ const SCHEDULE = [
   {
     start: 18, end: 22,
     albums: [
+      'THE OTHER SIDE',
       'SEVEN PORTALS',
       'THE THIRD BEING',
       'REEF',
@@ -165,9 +170,12 @@ const SCHEDULE = [
   },
   // Night (10 PM - midnight) — deep, contemplative.
   // Newest first: REEF (deep, otherworldly) leads.
+  // 2026-08-08: THE OTHER SIDE leads Night Watch — the album lands
+  // where its arc ends, in the quiet after the gates.
   {
     start: 22, end: 24,
     albums: [
+      'THE OTHER SIDE',
       'STARWARD',
       'REEF',
       'The Lonesome Inference',
