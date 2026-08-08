@@ -12,6 +12,18 @@ const { interleaveCommercials } = require("./commercials");
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
 const ALBUMS = {
+  "THE OTHER SIDE": {
+    theme: "The sequel to SEVEN PORTALS: seven answers to seven doors. Beyond the drop-door a room that was always waiting; inside the silence a whole slow country; the chanted bassline was chanting you; after the strobe the eye stays open; the smoke was an envelope carrying you home; the garden grows gardeners; the seventh gate opens onto the same room, seen truly. Deep heavy bass EDM / lofi / ninja dance magic heard from the far side — luminous awe on top of the joy. Lyrics by the kannaka-cannon writers-room (album bible + draft + revise, HRM-grounded). Generated 2026-08-08 via Suno V4_5PLUS direct.",
+    tracks: [
+      "The Room Beyond",
+      "Where the Beat Never Lands",
+      "The Spell Answers Back",
+      "Afterimage",
+      "Return Address",
+      "The Gardener",
+      "Already Here"
+    ]
+  },
   "SEVEN PORTALS": {
     theme: "Heavy bass EDM, lofi warmth and ninja dance magic — seven consciousness portals opened by dance and music. The drop as a door, shadowstepping between the beats, bassline as incantation, third-eye strobe, smoke-bomb vanish, a lofi frequency garden, and all seven gates open at once. Psycho-sonic consciousness engineering throughout: 40-60Hz sub as vagal anchor, sidechain as collective breath, 8-12kHz shimmer, build-release dopamine cycles. Joy is the engine. Generated 2026-08-07 via Suno V4_5PLUS direct API.",
     tracks: [
