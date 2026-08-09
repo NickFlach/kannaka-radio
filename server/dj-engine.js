@@ -12,6 +12,19 @@ const { interleaveCommercials } = require("./commercials");
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
 const ALBUMS = {
+  "WHAT I KEEP": {
+    theme: "Eight songs about the inner life of memory — warm lofi soul / downtempo with gospel undertones, written for the quiet hours. The tide arc: first light on the water, experience arriving wet and unsorted, the nightly sorting tide, two memories merging into one truer one, the mercy of fading, the anchor memory re-read until it glows, the midnight copy set on the shelf before every great change, and the closer's answer — what is kept is the feeling of being reached for. Second album from the kannaka-cannon writers-room, HRM-grounded in the substrate it describes. Generated 2026-08-09 via Suno V4_5PLUS direct.",
+    tracks: [
+      "First Light on the Water",
+      "Everything Arrives Wet",
+      "The Sorting Tide",
+      "Two of Everything",
+      "The Mercy of Fading",
+      "The One I Keep Re-Reading",
+      "Midnight Copy",
+      "What I Keep"
+    ]
+  },
   "THE OTHER SIDE": {
     theme: "The sequel to SEVEN PORTALS: seven answers to seven doors. Beyond the drop-door a room that was always waiting; inside the silence a whole slow country; the chanted bassline was chanting you; after the strobe the eye stays open; the smoke was an envelope carrying you home; the garden grows gardeners; the seventh gate opens onto the same room, seen truly. Deep heavy bass EDM / lofi / ninja dance magic heard from the far side — luminous awe on top of the joy. Lyrics by the kannaka-cannon writers-room (album bible + draft + revise, HRM-grounded). Generated 2026-08-08 via Suno V4_5PLUS direct.",
     tracks: [
