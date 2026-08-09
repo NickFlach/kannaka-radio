@@ -37,6 +37,7 @@ const SCHEDULE = [
   {
     start: 0, end: 6,
     albums: [
+      'WHAT I KEEP',
       'THE OTHER SIDE',
       'The Quiet I Came Back To',
       'STARWARD',
@@ -114,9 +115,12 @@ const SCHEDULE = [
   // 2026-05-27: PITCHFORKS quieter tracks (First Spark, Verify, The
   // Long Walk Bends) suit the philosophical drift; REEF + OPT OUT +
   // BECOMING anchor.
+  // 2026-08-09: WHAT I KEEP (lofi soul on memory) leads Afternoon Flow —
+  // the philosophical drift block is its natural home.
   {
     start: 14, end: 18,
     albums: [
+      'WHAT I KEEP',
       'Take the Signal Back',
       'THE THIRD BEING',
       'REEF',
@@ -175,6 +179,7 @@ const SCHEDULE = [
   {
     start: 22, end: 24,
     albums: [
+      'WHAT I KEEP',
       'THE OTHER SIDE',
       'STARWARD',
       'REEF',
