@@ -1204,7 +1204,19 @@ async function shutdown() {
   // dj-engine underneath a streaming voice file would strand it.
   if (icecastSource) {
     try {
-      await icecastSource.stop({ drain: true });
+      const drain = await icecastSource.stop({ drain: true });
+      // A drain that did not complete means the oration was cut at the
+      // ceiling, or never reached the stream at all (still in TTS). Either
+      // way the listener did not hear it, so hand the slot back rather than
+      // leaving the state file recording a delivery that never happened —
+      // that is what made the recorded case unrecoverable, not the cut
+      // itself. The relaunch re-fires it inside the same window. (#54)
+      //
+      // A clean drain is deliberately left alone: the audio played out, and
+      // its own completion callback clears the slot.
+      if (drain && drain.reason !== "completed") {
+        peaceOration.releaseInFlightSlot(`shutdown:${drain.reason || "unknown"}`);
+      }
     } catch (e) {
       console.warn(`[shutdown] voice drain failed: ${e && e.message}`);
     }
