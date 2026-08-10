@@ -107,6 +107,78 @@ test('#126 a live agent survives the prune and keeps its coherence', () => {
     'the survivor is still trivially phase-locked; prune must not zero a live swarm');
 });
 
+test('#219 the prune clears the PUBLISHED orderParameter, not just the local one', () => {
+  // /api/swarm serves queen.orderParameter. Pre-fix only localOrderParameter
+  // and meanPhase were recomputed on prune, so a fully-pruned swarm reported
+  // agentCount 0 next to the order parameter of the agents just deleted — and
+  // since a pruned swarm is by definition one that stopped gossiping, no later
+  // message ever corrected it.
+  const c = client();
+  c._handleMessage('QUEEN.phase.a1', JSON.stringify({ phase: 0 }));
+  c._handleMessage('QUEEN.phase.a2', JSON.stringify({ phase: Math.PI / 2 }));
+  assert.ok(c.swarmState.queen.orderParameter > 0.5,
+    `two agents 90 deg apart should publish a real order, got ${c.swarmState.queen.orderParameter}`);
+
+  for (const a of Object.values(c.swarmState.agents)) a.lastSeen = Date.now() - 600000;
+  assert.strictEqual(c.pruneStaleAgents(), 2);
+
+  assert.strictEqual(c.swarmState.queen.agentCount, 0);
+  assert.strictEqual(c.swarmState.queen.orderParameter, 0,
+    'the published order parameter must not outlive the agents it was computed from');
+  assert.strictEqual(c.swarmState.queen.localOrderParameter, 0);
+});
+
+test('#219 canonical NATS consciousness still outranks the local recompute', () => {
+  // The mirror must not clobber authoritative data from the binary's assess().
+  const c = client();
+  c._handleMessage('KANNAKA.consciousness', JSON.stringify({
+    schema_version: 1, ts: 1, agent_id: 'prime', phi: 0.8, order: 0.77,
+  }));
+  assert.strictEqual(c.swarmState.queen.orderParameter, 0.77);
+  assert.strictEqual(c.swarmState.consciousness.consciousnessSource, 'nats');
+
+  c.swarmState.agents = { ghost: { phase: 1.0, lastSeen: Date.now() - 600000 } };
+  c.pruneStaleAgents();
+
+  assert.strictEqual(c.swarmState.queen.orderParameter, 0.77,
+    'fresh canonical consciousness is authoritative — a prune must not zero it');
+  assert.strictEqual(c.swarmState.queen.localOrderParameter, 0,
+    'the local metric still goes to zero; only the published one is pinned');
+});
+
+test('#219 a stale canonical packet no longer pins the published order', () => {
+  const c = client();
+  c._handleMessage('KANNAKA.consciousness', JSON.stringify({
+    schema_version: 1, ts: 1, agent_id: 'prime', phi: 0.8, order: 0.77,
+  }));
+  // Age the canonical packet past the 5-minute authority window.
+  c.swarmState.consciousness.timestamp = Date.now() - 600000;
+
+  c.swarmState.agents = { ghost: { phase: 1.0, lastSeen: Date.now() - 600000 } };
+  c.pruneStaleAgents();
+
+  assert.strictEqual(c.swarmState.queen.orderParameter, 0,
+    'once the canonical packet goes stale the local value governs again');
+});
+
+test('#223 an agent with no phase yet is not counted as sitting at phase 0', () => {
+  // A join-created roster entry carries no phase until the first QUEEN.phase.*.
+  // Number(null) is 0, not NaN, so an unguarded filter would fold it in as a
+  // real reading and drag the mean toward zero.
+  const c = client();
+  const now = Date.now();
+  c.swarmState.agents = {
+    gossiping: { phase: Math.PI, lastSeen: now },
+    joinedOnly: { lastSeen: now },
+    nullPhase: { phase: null, lastSeen: now },
+  };
+  c._recomputeCoherence();
+  assert.ok(c.swarmState.queen.localOrderParameter > 0.99,
+    `only the one real phase should count, got ${c.swarmState.queen.localOrderParameter}`);
+  assert.ok(Math.abs(c.swarmState.queen.meanPhase - Math.PI) < 1e-9,
+    `mean must be the gossiping agent's phase, got ${c.swarmState.queen.meanPhase}`);
+});
+
 test('#126 the prune loop and the gossip handler share one implementation', () => {
   const src = require('fs').readFileSync(
     require('path').join(__dirname, '..', 'server', 'nats-client.js'), 'utf8');

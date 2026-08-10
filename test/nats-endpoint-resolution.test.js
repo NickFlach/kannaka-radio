@@ -54,6 +54,48 @@ test('#99 a URL without a port defaults to 4222', () => {
   assert.strictEqual(resolveNatsEndpoint({ KANNAKA_NATS_URL: 'nats://broker' }).port, 4222);
 });
 
+test('#215 the generic NATS_URL is honoured too', () => {
+  // scripts/disk-monitor.sh already reads NATS_URL. A box configured only that
+  // way used to dial localhost, so /api/swarm showed an empty constellation
+  // while the alert script talked to the real bus.
+  const r = resolveNatsEndpoint({ NATS_URL: 'nats://swarm.ninja-portal.com:4222' });
+  assert.strictEqual(r.host, 'swarm.ninja-portal.com');
+  assert.strictEqual(r.port, 4222);
+  assert.strictEqual(r.source, 'NATS_URL');
+});
+
+test('#215 KANNAKA_NATS_URL outranks NATS_URL', () => {
+  const r = resolveNatsEndpoint({
+    KANNAKA_NATS_URL: 'nats://specific:5222',
+    NATS_URL: 'nats://generic:6222',
+  });
+  assert.strictEqual(r.host, 'specific', 'the constellation-specific name must win');
+  assert.strictEqual(r.port, 5222);
+});
+
+test('#215 NATS_URL outranks NATS_HOST/NATS_PORT', () => {
+  const r = resolveNatsEndpoint({
+    NATS_URL: 'nats://from-url:5222',
+    NATS_HOST: 'from-pair', NATS_PORT: '6222',
+  });
+  assert.strictEqual(r.host, 'from-url');
+  assert.strictEqual(r.port, 5222);
+});
+
+test('#215 a malformed KANNAKA_NATS_URL falls through to NATS_URL, not localhost', () => {
+  const r = resolveNatsEndpoint({
+    KANNAKA_NATS_URL: 'not-a-url',
+    NATS_URL: 'nats://broker:4222',
+  });
+  assert.strictEqual(r.host, 'broker',
+    'a typo in the specific knob must not silently strand the radio on localhost');
+});
+
+test('#215 a blank NATS_URL does not shadow NATS_HOST', () => {
+  const r = resolveNatsEndpoint({ NATS_URL: '  ', NATS_HOST: 'h3' });
+  assert.strictEqual(r.host, 'h3', 'an empty env var is not a configured broker');
+});
+
 test('#99 NATS_HOST/NATS_PORT still work (no regression)', () => {
   const r = resolveNatsEndpoint({ NATS_HOST: 'oracle.internal', NATS_PORT: '4999' });
   assert.strictEqual(r.host, 'oracle.internal');
