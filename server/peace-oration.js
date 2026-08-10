@@ -104,6 +104,11 @@ class PeaceOration {
     // ask on every retry when _say keeps returning false.
     this._composed = null;
     this._composedFor = null;
+    // The scheduled slot whose audio has been QUEUED but not yet confirmed
+    // delivered. Set when _say accepts an oration, cleared when the delivery
+    // callback reports success — or handed back by releaseInFlightSlot when
+    // it turns out the listener never heard it. (#54)
+    this._inFlightKey = null;
     // Optional FloorManager accessor so _compose can fold today's top
     // reaction tracks into the oration prompt (ADR-0008 deferred layer).
     this._getFloor = opts.getFloor || (() => null);
@@ -377,7 +382,7 @@ class PeaceOration {
       }
       this._composed = text;
       this._composedFor = key;
-      const ok = this._say(text);
+      const ok = this._say(text, key);
       if (ok) {
         this._lastFired[key] = true;
         this._composed = null; // clear cache so next slot starts fresh
@@ -624,7 +629,44 @@ class PeaceOration {
     }
   }
 
-  _say(text) {
+  /**
+   * Hand back the slot whose oration was queued but never actually aired, so
+   * it can fire again inside its own window.
+   *
+   * `_lastFired[key]` is persisted the moment the audio is QUEUED — it has to
+   * be, or the 30s ticker would keep queueing the same oration while it plays.
+   * The cost was that anything failing AFTER the queue left the slot recording
+   * a delivery the listener never heard, and the day's oration was gone: the
+   * case in #54 heard 80s of a 217s oration across a restart and nothing more.
+   * The delivery-failure branch even logged "audio never aired" while leaving
+   * the slot burned.
+   *
+   * Releasing is bounded by the slot window in _tick (minute 0..14 of hour 0
+   * or 12), so a released slot can only re-fire within the same window — a
+   * restart 20 minutes in cannot produce a surprise oration hours later.
+   *
+   * @param {string} reason — for the log: 'tts-failed', 'shutdown:ceiling', …
+   * @returns {string|null} the released slot key, or null if there was
+   *   nothing in flight to release.
+   */
+  releaseInFlightSlot(reason = "unknown") {
+    const key = this._inFlightKey;
+    this._inFlightKey = null;
+    if (!key || !this._lastFired[key]) return null;
+    delete this._lastFired[key];
+    try { saveState(this._stateFile, this._lastFired); }
+    catch (e) { console.warn(`   [oration] could not persist released slot: ${e.message}`); }
+    console.warn(`🕔 Peace oration slot ${key} released (${reason}) — it did not air; its window can retry it`);
+    return key;
+  }
+
+  /**
+   * @param {string} text
+   * @param {string} [slotKey] — the scheduled slot this delivery belongs to.
+   *   Only _tick passes one; deliverNow and showcaseAlbum are manual and own
+   *   no slot, so a failure there must not release anything.
+   */
+  _say(text, slotKey = null) {
     if (!this._voiceDJ || typeof this._voiceDJ.executeOration !== "function") return false;
     // Intro/outro frame the oration so listeners hear it coming and going
     // — orations are otherwise injected mid-stream and used to start and
@@ -638,13 +680,30 @@ class PeaceOration {
     // narrator register + cathedral DSP (slower cadence, chest-resonant low
     // end, hall reverb). Stateless — no more mutating voice-dj's private
     // _orationVoiceId, which is what caused the #29 wrong-voice overlap race.
-    return this._voiceDJ.executeOration(wrapped, (err) => {
+    // Marked in flight BEFORE the call: executeOration may invoke its callback
+    // synchronously, and a release that ran before the key was set would be a
+    // no-op that silently burned the slot anyway.
+    if (slotKey) this._inFlightKey = slotKey;
+    const accepted = this._voiceDJ.executeOration(wrapped, (err) => {
       if (err) {
         console.warn("🕔 Peace oration NOT delivered — TTS failed after retries (text posted to socials; audio never aired)");
+        // "audio never aired" and "slot delivered" cannot both be true. The
+        // 15-minute window exists so a transient failure can retry, and that
+        // was defeated for anything failing after the queue. (#54)
+        //
+        // Only a delivery that OWNS the in-flight slot may release it: a
+        // manual deliverNow/showcase failure must not hand back the slot a
+        // scheduled oration is holding.
+        if (slotKey && this._inFlightKey === slotKey) this.releaseInFlightSlot("tts-failed");
       } else {
         console.log("🕔 Peace oration complete");
+        if (slotKey && this._inFlightKey === slotKey) this._inFlightKey = null;
       }
     }, { persona: "oration" });
+    // Rejected outright (voiceDJ busy): _tick never marks the slot, so there
+    // is nothing in flight to track.
+    if (!accepted && slotKey && this._inFlightKey === slotKey) this._inFlightKey = null;
+    return accepted;
   }
 
   /**

@@ -11,9 +11,21 @@
 //
 // `stop({ drain: true })` now waits for an in-flight VOICE file to finish,
 // under a ceiling.
+//
+// The drain alone does not save the recorded 217s case, because the ceiling is
+// bounded by systemd's TimeoutStopSec, not by this code. The other half is
+// that a cut oration must not be RECORDED as delivered: `_lastFired[key]` is
+// persisted when the audio is queued, so the relaunch skipped the slot and the
+// oration was lost for good. Releasing the slot lets the same window re-fire
+// it — the second group of tests below.
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { IcecastSource } = require('../server/icecast-source');
+const { PeaceOration } = require('../server/peace-oration');
+const { saveState, loadState } = require('../server/lib/scheduler-helpers');
 
 let failed = 0;
 function run(name, fn) {
@@ -37,6 +49,46 @@ function makeSource() {
     kill() { src._killed += 1; },
   };
   return src;
+}
+
+/** A noon slot key in the shape _keyFor produces. */
+const SLOT_KEY = '2026-08-10T12';
+
+/**
+ * A PeaceOration with a fake voiceDJ and a real temp state file — the bug is
+ * about what the RELAUNCH reads back off disk, so the persistence is exercised
+ * rather than stubbed.
+ */
+function makeOration() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oration-slot-'));
+  let onDone = null;
+  const oration = new PeaceOration({
+    kannakabin: 'kannaka',
+    voiceDJ: { executeOration(text, cb) { onDone = cb; return true; } },
+    broadcast() {},
+    dataDir: dir,
+  });
+  return {
+    oration,
+    dir,
+    /**
+     * What _tick does once _say accepts the oration: mark the slot and persist
+     * it, so the 30s ticker cannot queue the same oration again while it plays.
+     */
+    fire(key = SLOT_KEY) {
+      assert.ok(oration._say('an oration body', key),
+        'setup: the fake voiceDJ should accept the oration');
+      oration._lastFired[key] = true;
+      saveState(oration._stateFile, oration._lastFired);
+      return key;
+    },
+    /** Drive the delivery callback voice-dj invokes when the audio ends. */
+    finish(err) { onDone(err || null); },
+  };
+}
+
+function cleanup(dir) {
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
 }
 
 (async () => {
@@ -119,6 +171,94 @@ function makeSource() {
     const ms = Number(m[1]);
     assert.ok(ms > 0, 'a zero default would disable the drain');
     assert.ok(ms < 90000, `default ceiling ${ms}ms must stay under systemd's 90s default`);
+  });
+
+  // ── The slot must not record a delivery the listener never heard ──────
+
+  await run('#54 a delivery that never aired hands its slot back', async () => {
+    const { oration, dir, fire, finish } = makeOration();
+    try {
+      const key = fire();
+      assert.strictEqual(loadState(oration._stateFile)[key], true,
+        'setup: the slot is marked the moment the audio is queued');
+
+      finish(new Error('TTS failed after retries'));
+
+      assert.strictEqual(oration._lastFired[key], undefined,
+        'a slot whose audio never aired must not stay marked delivered');
+      assert.strictEqual(loadState(oration._stateFile)[key], undefined,
+        'the release must be PERSISTED — the relaunch reads the file, not memory');
+    } finally { cleanup(dir); }
+  });
+
+  await run('#54 a shutdown that cut the oration hands its slot back', async () => {
+    // What server/index.js does when stop({drain:true}) reports it did not
+    // finish: the listener heard part of an oration, so the slot is owed.
+    const { oration, dir, fire } = makeOration();
+    try {
+      const key = fire();
+      const released = oration.releaseInFlightSlot('shutdown:ceiling');
+
+      assert.strictEqual(released, key, 'the cut slot should be reported back');
+      assert.strictEqual(loadState(oration._stateFile)[key], undefined,
+        'the relaunch must see the slot as unfired so its window can retry');
+    } finally { cleanup(dir); }
+  });
+
+  await run('#54 an oration that aired cleanly keeps its slot', async () => {
+    // The other direction, and the one that matters most: a completed
+    // oration must never re-fire, or a restart minutes later would air it
+    // a second time.
+    const { oration, dir, fire, finish } = makeOration();
+    try {
+      const key = fire();
+      finish(null); // delivered
+
+      assert.strictEqual(oration.releaseInFlightSlot('shutdown:ceiling'), null,
+        'nothing is in flight once the oration completed');
+      assert.strictEqual(loadState(oration._stateFile)[key], true,
+        'a delivered oration must stay marked so it cannot air twice');
+    } finally { cleanup(dir); }
+  });
+
+  await run('#54 releasing with nothing in flight is a no-op', async () => {
+    // Shutdown calls this on every non-clean drain, including ones where a
+    // music track was playing and no oration was ever queued.
+    const { oration, dir } = makeOration();
+    try {
+      assert.strictEqual(oration.releaseInFlightSlot('shutdown:no-voice-in-flight'), null);
+      assert.deepStrictEqual(oration._lastFired, {}, 'must not disturb other slots');
+    } finally { cleanup(dir); }
+  });
+
+  await run('#54 a manual deliverNow failure releases nothing', async () => {
+    // deliverNow and showcaseAlbum own no scheduled slot. A failure there
+    // must not hand back a slot that a scheduled oration is holding.
+    const { oration, dir, fire } = makeOration();
+    try {
+      const key = fire();                 // the scheduled oration is in flight
+      let manualDone = null;
+      oration._voiceDJ.executeOration = (t, onDone) => { manualDone = onDone; return true; };
+      oration._say('a manual oration');   // no slot key
+      manualDone(new Error('TTS failed'));
+
+      assert.strictEqual(loadState(oration._stateFile)[key], true,
+        'the scheduled slot must survive an unrelated manual failure');
+    } finally { cleanup(dir); }
+  });
+
+  await run('#54 the scheduler still tells _say which slot it is delivering', async () => {
+    // The wiring that makes all of the above reachable: if _tick goes back to
+    // calling _say(text) with no key, nothing is ever in flight and every
+    // release silently becomes a no-op.
+    const SRC = fs.readFileSync(
+      path.join(__dirname, '..', 'server', 'peace-oration.js'), 'utf8');
+    assert.ok(/const ok = this\._say\(text, key\);/.test(SRC),
+      '_tick must pass the slot key to _say, or the slot can never be released');
+    const IDX = fs.readFileSync(
+      path.join(__dirname, '..', 'server', 'index.js'), 'utf8');
+    assert.ok(/releaseInFlightSlot\(`shutdown:/.test(IDX),
+      'shutdown() must release the slot when the drain did not complete');
   });
 
   console.log(failed === 0 ? '\nshutdown-voice-drain: all passed' : `\nshutdown-voice-drain: ${failed} FAILED`);
