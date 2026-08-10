@@ -124,7 +124,9 @@ class FluxPublisher {
 
   publishFullState() {
     const track = this._getCurrentTrack();
-    const perception = this._getPerception();
+    // _getPerception() returns null before any track has been heard; guard
+    // against that so the field accesses below never throw.
+    const perception = this._getPerception() || {};
     const djState = this._getDJState();
     const event = {
       stream: "radio",
@@ -143,12 +145,12 @@ class FluxPublisher {
           listeners: this._getListenerCount(),
           uptime: Math.floor(process.uptime()),
           current_perception: {
-            tempo_bpm: perception.tempo_bpm,
-            spectral_centroid_khz: perception.spectral_centroid,
-            rms_energy: perception.rms_energy,
-            pitch_hz: perception.pitch,
-            emotional_valence: perception.valence,
-            status: perception.status,
+            tempo_bpm: perception.tempo_bpm ?? null,
+            spectral_centroid_khz: perception.spectral_centroid ?? null,
+            rms_energy: perception.rms_energy ?? null,
+            pitch_hz: perception.pitch ?? null,
+            emotional_valence: perception.valence ?? null,
+            status: perception.status ?? null,
           },
           playlist: {
             album: djState.currentAlbum,
