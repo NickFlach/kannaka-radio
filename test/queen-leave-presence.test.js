@@ -1,5 +1,7 @@
 /**
- * queen-leave-presence.test.js — a graceful leave must clear presence (#134).
+ * queen-leave-presence.test.js — QueenSync lifecycle events must move the
+ * roster in both directions: a graceful leave clears presence (#134) and a
+ * join establishes it (#223).
  *
  * The `queen.event.leave` handler recorded the event and broadcast it, but
  * never removed the agent from swarmState. So for up to five minutes after a
@@ -7,6 +9,11 @@
  * /api/swarm still counted the departed agent and its phase still contributed
  * to swarm coherence. An agent that TOLD us it was leaving should not have to
  * be timed out.
+ *
+ * `queen.event.join` had the mirror-image gap: it only appended to the event
+ * feed, so between a join and the first QUEEN.phase.* heartbeat /api/swarm
+ * contradicted itself — announcing that an agent had joined while omitting it
+ * from `agents` and leaving agentCount unchanged.
  *
  * Drives the real _handleMessage() dispatch. No sockets.
  */
@@ -34,6 +41,12 @@ function clientWithAgents(agents) {
 
 const leave = (c, id) =>
   c._handleMessage('queen.event.leave', JSON.stringify({ agent_id: id, display_name: id }));
+
+const join = (c, id, extra = {}) =>
+  c._handleMessage('queen.event.join', JSON.stringify({ agent_id: id, display_name: id, ...extra }));
+
+const phase = (c, id, p) =>
+  c._handleMessage(`QUEEN.phase.${id}`, JSON.stringify({ agent_id: id, phase: p }));
 
 console.log('\nqueen-leave-presence.test.js');
 
@@ -105,6 +118,71 @@ test('#134 a leave for an unknown agent is harmless', () => {
   leave(c, 'never-seen');
   assert.strictEqual(c.swarmState.queen.agentCount, 1, 'must not disturb existing presence');
   assert.ok('live' in c.swarmState.agents);
+});
+
+test('#223 a join puts the agent on the roster before any phase heartbeat', () => {
+  const c = new NATSClient({ broadcast: () => {} });
+  join(c, 'late-phase');
+  assert.ok('late-phase' in c.swarmState.agents,
+    '/api/swarm must not announce a join while omitting the agent from `agents`');
+  assert.strictEqual(c.swarmState.queen.agentCount, 1, 'agentCount must follow');
+  assert.strictEqual(c.swarmState.agents['late-phase'].displayName, 'late-phase');
+  assert.ok(c.swarmState.agents['late-phase'].lastSeen > 0, 'lastSeen must be set');
+});
+
+test('#223 join and leave agree — the roster returns to empty', () => {
+  const c = new NATSClient({ broadcast: () => {} });
+  join(c, 'ephemeral');
+  assert.strictEqual(c.swarmState.queen.agentCount, 1);
+  leave(c, 'ephemeral');
+  assert.strictEqual(c.swarmState.queen.agentCount, 0, 'the lifecycle must round-trip');
+  assert.ok(!('ephemeral' in c.swarmState.agents));
+});
+
+test('#223 a join does not clobber a phase already on file', () => {
+  const c = new NATSClient({ broadcast: () => {} });
+  phase(c, 'chatty', 1.25);
+  join(c, 'chatty');
+  assert.strictEqual(c.swarmState.agents.chatty.phase, 1.25,
+    'a re-announced join must not erase live gossip');
+});
+
+test('#223 a re-join still refreshes presence even when the announcement is deduped', () => {
+  // The 6h dedup gate suppresses the repeated *announcement* from the witness
+  // loop. Presence is a different concern and must still refresh.
+  const c = new NATSClient({ broadcast: () => {} });
+  join(c, 'witness');
+  const firstSeen = c.swarmState.agents.witness.lastSeen;
+  c.swarmState.agents.witness.lastSeen = firstSeen - 60000; // pretend time passed
+  const eventsBefore = c.swarmState.agentEvents.length;
+
+  join(c, 'witness');
+
+  assert.strictEqual(c.swarmState.agentEvents.length, eventsBefore,
+    'the repeat announcement must still be deduped');
+  assert.ok(c.swarmState.agents.witness.lastSeen > firstSeen - 60000,
+    'presence must refresh even when the announcement is suppressed');
+});
+
+test('#223 a join with no agent_id does not mint a phantom "unknown" peer', () => {
+  const c = new NATSClient({ broadcast: () => {} });
+  c._handleMessage('queen.event.join', JSON.stringify({ display_name: 'Nameless' }));
+  assert.strictEqual(c.swarmState.queen.agentCount, 0,
+    'a malformed join must not create a peer nobody can address');
+  assert.ok(!('unknown' in c.swarmState.agents));
+});
+
+test('#223 a phase-less joiner does not drag swarm coherence toward zero', () => {
+  const c = new NATSClient({ broadcast: () => {} });
+  phase(c, 'a', Math.PI);
+  phase(c, 'b', Math.PI);
+  assert.ok(c.swarmState.queen.localOrderParameter > 0.99, 'the pair is phase-locked');
+
+  join(c, 'quiet'); // on the roster, no phase yet
+
+  assert.strictEqual(c.swarmState.queen.agentCount, 3);
+  assert.ok(c.swarmState.queen.localOrderParameter > 0.99,
+    `a joiner that has not gossiped is not a reading of phase 0, got ${c.swarmState.queen.localOrderParameter}`);
 });
 
 console.log(`\n${'─'.repeat(50)}`);

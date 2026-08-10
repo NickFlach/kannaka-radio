@@ -16,9 +16,25 @@ const DEFAULT_NATS_HOST = "127.0.0.1";
 const DEFAULT_NATS_PORT = 4222;
 
 /**
+ * Parse `nats://[creds@]host[:port]` into host/port. Credentials are handled
+ * separately via NATS_USER/NATS_PASSWORD, so only host/port are taken from the
+ * URL. Returns null when the string is not a usable nats:// URL.
+ *
+ * @param {string} raw
+ * @returns {{host: string, port: number}|null}
+ */
+function parseNatsUrl(raw) {
+  const m = raw.match(/^nats:\/\/(?:[^@]+@)?([^:/]+)(?::(\d+))?/i);
+  if (!m) return null;
+  const port = m[2] ? parseInt(m[2], 10) : DEFAULT_NATS_PORT;
+  if (!m[1] || !Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  return { host: m[1], port };
+}
+
+/**
  * Resolve the broker endpoint from the environment.
  *
- * Precedence: KANNAKA_NATS_URL > NATS_HOST/NATS_PORT > 127.0.0.1:4222.
+ * Precedence: KANNAKA_NATS_URL > NATS_URL > NATS_HOST/NATS_PORT > 127.0.0.1:4222.
  *
  * KANNAKA_NATS_URL is the constellation-wide setting — kannaka-memory resolves
  * it in src/bin/handlers/ask.rs and identity.rs, and kannaka-eye's attention
@@ -26,8 +42,13 @@ const DEFAULT_NATS_PORT = 4222;
  * configured the constellation way silently connected to 127.0.0.1:4222 and
  * the radio sat alone on a swarm nobody else was on. (#99)
  *
- * The specific name wins over the generic pair, the same rule already applied
- * to RADIO_PORT over PORT and KANNAKA_NATS_URL over NATS_URL.
+ * NATS_URL is the generic form the surrounding tooling already accepts —
+ * scripts/disk-monitor.sh reads it to pick the broker it publishes alerts to.
+ * A box configured only that way still dialled localhost, so /api/swarm showed
+ * an empty constellation while the alert script was talking to the real bus. (#215)
+ *
+ * The specific name wins over the generic ones, the same rule already applied
+ * to RADIO_PORT over PORT.
  *
  * Pure and exported so the precedence is testable without a live broker.
  *
@@ -35,21 +56,15 @@ const DEFAULT_NATS_PORT = 4222;
  * @returns {{host: string, port: number, source: string}}
  */
 function resolveNatsEndpoint(env = process.env) {
-  const raw = typeof env.KANNAKA_NATS_URL === "string" ? env.KANNAKA_NATS_URL.trim() : "";
-  if (raw) {
-    // nats://[creds@]host[:port] — credentials are handled separately via
-    // NATS_USER/NATS_PASSWORD, so only host/port are taken from the URL.
-    const m = raw.match(/^nats:\/\/(?:[^@]+@)?([^:/]+)(?::(\d+))?/i);
-    if (m) {
-      const port = m[2] ? parseInt(m[2], 10) : DEFAULT_NATS_PORT;
-      if (m[1] && Number.isInteger(port) && port > 0 && port <= 65535) {
-        return { host: m[1], port, source: "KANNAKA_NATS_URL" };
-      }
-    }
+  for (const name of ["KANNAKA_NATS_URL", "NATS_URL"]) {
+    const raw = typeof env[name] === "string" ? env[name].trim() : "";
+    if (!raw) continue;
+    const parsed = parseNatsUrl(raw);
+    if (parsed) return { ...parsed, source: name };
     // Unparseable: fall through rather than connecting somewhere unintended,
     // but say so — a malformed URL that silently becomes localhost is exactly
     // the failure this fix exists to remove.
-    console.warn(`[nats] KANNAKA_NATS_URL="${raw}" is not a usable nats:// URL — falling back to NATS_HOST/NATS_PORT`);
+    console.warn(`[nats] ${name}="${raw}" is not a usable nats:// URL — falling back to the next source`);
   }
   const host = (typeof env.NATS_HOST === "string" && env.NATS_HOST.trim()) || DEFAULT_NATS_HOST;
   const parsedPort = parseInt(env.NATS_PORT || String(DEFAULT_NATS_PORT), 10);
@@ -73,6 +88,9 @@ class NATSClient extends EventEmitter {
     this._subId = 0;
     this._pendingMsg = null;
     this._pruneInterval = null;
+    // Publishes refused because the socket was gone — surfaced so a reconnect
+    // window shows up as a countable drop instead of silence. (#218)
+    this._droppedPublishes = 0;
 
     this.swarmState = {
       agents: {},
@@ -257,10 +275,18 @@ class NATSClient extends EventEmitter {
       clearInterval(this._pruneInterval);
       this._pruneInterval = null;
     }
-    this._client = net.createConnection({ host: NATS_HOST, port: NATS_PORT });
-    this._client.setKeepAlive(true, 30000);
+    // Bind every handler to THIS socket rather than to `this._client`. A
+    // socket destroyed above emits 'close' asynchronously, by which time
+    // `this._client` is already the replacement — an unguarded handler would
+    // then null out (or schedule a reconnect against, or write subscriptions
+    // onto) the live connection on behalf of a socket that is already gone.
+    // Each handler below no-ops unless it is still the current socket. (#218)
+    const sock = net.createConnection({ host: NATS_HOST, port: NATS_PORT });
+    this._client = sock;
+    sock.setKeepAlive(true, 30000);
 
-    this._client.on('connect', () => {
+    sock.on('connect', () => {
+      if (this._client !== sock) return;
       console.log('[nats] Connected to ' + NATS_HOST + ':' + NATS_PORT + ' (via ' + NATS_SOURCE + ')');
       this._buffer = '';
       this._pendingMsg = null;
@@ -270,7 +296,7 @@ class NATSClient extends EventEmitter {
       var connectMsg = (u && p)
         ? 'CONNECT {"verbose":false,"pedantic":false,"name":"kannaka-radio","user":"' + u.replace(/"/g,'\\"') + '","pass":"' + p.replace(/"/g,'\\"') + '"}\r\n'
         : 'CONNECT {"verbose":false,"pedantic":false,"name":"kannaka-radio"}\r\n';
-      this._client.write(connectMsg);
+      sock.write(connectMsg);
 
       this._subId = 0;
       this._subscribe('QUEEN.phase.*');
@@ -301,16 +327,22 @@ class NATSClient extends EventEmitter {
       this._subscribe('KANNAKA.inbox.audit');
     });
 
-    this._client.on('data', (data) => {
+    sock.on('data', (data) => {
+      if (this._client !== sock) return;
       this._buffer += data.toString();
       this._processBuffer();
     });
 
-    this._client.on('error', (err) => {
+    sock.on('error', (err) => {
       console.log('[nats] Error:', err.message);
     });
 
-    this._client.on('close', () => {
+    sock.on('close', () => {
+      if (this._client !== sock) return; // superseded socket — already replaced
+      // Detach the dead socket. It used to stay attached until the next
+      // connect(), which is what let publish() write through a closed handle
+      // and report success. Reconnect state stays single-owner. (#218)
+      this._client = null;
       // Only reconnect if the close was unintentional. A manual disconnect()
       // sets _manualDisconnect=true beforehand; without this gate, calling
       // disconnect() armed a reconnect timer and the client revived itself,
@@ -371,21 +403,51 @@ class NATSClient extends EventEmitter {
   _recomputeCoherence() {
     // Coerce + filter to finite numbers: a single peer publishing `phase` as
     // a string makes Math.cos(p) return NaN, which would poison the metric.
+    // Skip agents with no phase at all first — `Number(null)` is 0, not NaN,
+    // so a roster entry created by a join that has not yet gossiped a phase
+    // would otherwise be counted as sitting at phase 0 and drag the mean
+    // toward it. (#223)
     const phases = Object.values(this.swarmState.agents)
+      .filter(a => a && a.phase != null)
       .map(a => Number(a.phase))
       .filter(p => Number.isFinite(p));
     if (phases.length === 0) {
       this.swarmState.queen.localOrderParameter = 0;
       this.swarmState.queen.meanPhase = 0;
-      return;
+    } else {
+      const sumCos = phases.reduce((s, p) => s + Math.cos(p), 0);
+      const sumSin = phases.reduce((s, p) => s + Math.sin(p), 0);
+      this.swarmState.queen.localOrderParameter =
+        Math.sqrt(sumCos * sumCos + sumSin * sumSin) / phases.length;
+      let mean = Math.atan2(sumSin / phases.length, sumCos / phases.length);
+      if (mean < 0) mean += 2 * Math.PI;
+      this.swarmState.queen.meanPhase = mean;
     }
-    const sumCos = phases.reduce((s, p) => s + Math.cos(p), 0);
-    const sumSin = phases.reduce((s, p) => s + Math.sin(p), 0);
-    this.swarmState.queen.localOrderParameter =
-      Math.sqrt(sumCos * sumCos + sumSin * sumSin) / phases.length;
-    let mean = Math.atan2(sumSin / phases.length, sumCos / phases.length);
-    if (mean < 0) mean += 2 * Math.PI;
-    this.swarmState.queen.meanPhase = mean;
+    this._syncPublishedOrderParameter();
+  }
+
+  /**
+   * Mirror the locally-computed order parameter into the published
+   * `queen.orderParameter` whenever no fresh canonical consciousness packet is
+   * in force.
+   *
+   * Pre-fix only the QUEEN.phase.* gossip handler did this. The prune and the
+   * leave path recomputed localOrderParameter but left queen.orderParameter
+   * holding the coherence of agents that had just been deleted — and since a
+   * pruned swarm is by definition one that stopped gossiping, no later message
+   * came along to correct it. /api/swarm served `agentCount: 0` next to a
+   * live-looking order parameter. (#219)
+   *
+   * Canonical NATS consciousness stays authoritative: it is only overwritten
+   * once it has gone stale (>5 min), which is the same rule the gossip handler
+   * already applied.
+   */
+  _syncPublishedOrderParameter() {
+    const c = this.swarmState.consciousness;
+    const age = c.timestamp ? (Date.now() - c.timestamp) : Infinity;
+    if (c.consciousnessSource !== 'nats' || age > 300000) {
+      this.swarmState.queen.orderParameter = this.swarmState.queen.localOrderParameter;
+    }
   }
 
   disconnect() {
@@ -416,16 +478,31 @@ class NATSClient extends EventEmitter {
    * forget over TCP. Used by floor.js for KANNAKA.reactions and by the
    * track-change hook for KANNAKA.attention.ear.
    *
+   * A closed socket is a failed publish. Pre-fix the only guard was
+   * `!this._client`, and the socket 'close' handler left the dead handle
+   * attached until the next connect() — so every publish inside a reconnect
+   * window returned true while the bytes went nowhere. Track-change
+   * KANNAKA.attention.ear events and Floor KANNAKA.reactions vanished during
+   * NATS flaps with nothing anywhere saying so. An invisible false positive is
+   * worse than an explicit drop. (#218)
+   *
    * @param {string} subject — NATS subject
    * @param {string} payload — already-stringified body (JSON usually)
    */
   publish(subject, payload) {
-    if (!this._client) return false;
+    const sock = this._client;
+    // `writable === false` rather than `!writable`: test doubles and a socket
+    // mid-handshake leave the property undefined, and those are not failures.
+    if (!sock || sock.destroyed || sock.writable === false) {
+      this._droppedPublishes = (this._droppedPublishes || 0) + 1;
+      return false;
+    }
     try {
       const bytes = Buffer.byteLength(payload, "utf-8");
-      this._client.write(`PUB ${subject} ${bytes}\r\n${payload}\r\n`);
+      sock.write(`PUB ${subject} ${bytes}\r\n${payload}\r\n`);
       return true;
     } catch (_) {
+      this._droppedPublishes = (this._droppedPublishes || 0) + 1;
       return false;
     }
   }
@@ -476,7 +553,9 @@ class NATSClient extends EventEmitter {
       const line = this._buffer.slice(0, crlf);
       this._buffer = this._buffer.slice(crlf + 2);
 
-      if (line === 'PING') { this._client.write('PONG\r\n'); continue; }
+      // _client is nulled the moment the socket closes (#218), so a PING left
+      // in the buffer from the last chunk must not throw on a dead handle.
+      if (line === 'PING') { if (this._client) this._client.write('PONG\r\n'); continue; }
       if (line === 'PONG' || line.startsWith('+OK') || line.startsWith('INFO ')) continue;
       if (line.startsWith('-ERR')) { console.log('[nats] Server error:', line); continue; }
 
@@ -542,17 +621,18 @@ class NATSClient extends EventEmitter {
       // Shares _recomputeCoherence() with the stale-agent prune so the two can
       // never disagree about what the swarm's coherence is. (#126)
       const hadPhases = Object.values(this.swarmState.agents)
-        .some(a => Number.isFinite(Number(a.phase)));
+        .some(a => a && a.phase != null && Number.isFinite(Number(a.phase)));
+      // _recomputeCoherence() publishes queen.orderParameter itself via
+      // _syncPublishedOrderParameter(), under the same "canonical NATS data
+      // wins unless stale" rule — so every path that changes the roster keeps
+      // the published value honest, not just this one. (#219)
       this._recomputeCoherence();
       if (hadPhases) {
-        const localOrder = this.swarmState.queen.localOrderParameter;
-
-        // Only update queen.orderParameter from phase gossip if we have NO
-        // canonical NATS consciousness data (or it's stale > 5 min).
+        // Only claim 'local' as the active source if canonical NATS
+        // consciousness is absent or stale > 5 min.
         const consciousnessAge = this.swarmState.consciousness.timestamp
           ? (now - this.swarmState.consciousness.timestamp) : Infinity;
         if (this.swarmState.consciousness.consciousnessSource !== 'nats' || consciousnessAge > 300000) {
-          this.swarmState.queen.orderParameter = localOrder;
           this.swarmState.consciousness.consciousnessSource = 'local';
         }
       }
@@ -659,6 +739,28 @@ class NATSClient extends EventEmitter {
       // `action` sits AFTER the spread so the wire event cannot relabel
       // itself; it is the feed's display label, derived from the subject. (#135)
       const evt = { agent_id: agentId, display_name: data.display_name || data.displayName || agentId, ...data, receivedAt: now, action: 'joined the swarm' };
+      // A join must put the agent on the roster, not just in the event feed.
+      // Pre-fix presence came only from QUEEN.phase.*, so between the join and
+      // the first phase heartbeat /api/swarm contradicted itself: agentEvents
+      // announced "X joined the swarm" while `agents` omitted X and
+      // agentCount was unchanged. The leave side already evicts on the
+      // lifecycle event (#134); this is the same contract in the other
+      // direction. (#223)
+      //
+      // Upsert BEFORE the dedup gate below — that gate suppresses the repeated
+      // *announcement* from re-joining agents, but their presence must still
+      // refresh. Any phase already on file is preserved; a roster entry with no
+      // phase yet is skipped by _recomputeCoherence rather than counted at 0.
+      if (data.agent_id || data.agentId) {
+        const prior = this.swarmState.agents[agentId];
+        this.swarmState.agents[agentId] = {
+          ...(prior || {}),
+          displayName: (prior && prior.displayName) || evt.display_name,
+          lastSeen: now,
+        };
+        this.swarmState.queen.agentCount = Object.keys(this.swarmState.agents).length;
+        this._recomputeCoherence();
+      }
       // Dedupe re-joins. The witness loop (and any agent using `swarm join
       // --once` on a tick) re-emits queen.event.join every few minutes;
       // announcing each one spams the on-air voice and the UI event feed.
