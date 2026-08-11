@@ -74,6 +74,41 @@ function resolveNatsEndpoint(env = process.env) {
   return { host, port, source: env.NATS_HOST || env.NATS_PORT ? "NATS_HOST/NATS_PORT" : "default" };
 }
 
+/**
+ * Coerce a wire `phase` / `theta` value to a usable radian reading, or null.
+ *
+ * The KANNAKA bus is a PUBLIC read bus — any peer can publish — and the local
+ * Kuramoto metric is an average, so one bad sample moves the whole aggregate.
+ * `Number()` alone is not enough of a filter: it maps `""`, `"   "`, `[]` and
+ * `false` to 0 and `true` to 1, all of which are finite and would be admitted
+ * as if a peer had genuinely reported those angles. Two phase-locked agents
+ * plus one such packet read as coherence 0.33 instead of 1.0. (#227)
+ *
+ * Numbers pass. Numeric strings pass — "1.0" is a real reading published with
+ * the wrong type, which the schema validator already flags as drift, and the
+ * rest of this file is equally tolerant of alias/camelCase drift. Everything
+ * else — booleans, arrays, objects, blank strings, NaN, Infinity, absent —
+ * returns null, which _recomputeCoherence skips.
+ *
+ * Returning null rather than dropping the whole packet keeps PRESENCE separate
+ * from COHERENCE: an agent publishing a malformed phase is still demonstrably
+ * alive and still belongs on the roster, exactly like an agent that has joined
+ * but not yet gossiped (#223). It just does not get to claim an angle.
+ *
+ * @param {unknown} v
+ * @returns {number|null}
+ */
+function coercePhase(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 class NATSClient extends EventEmitter {
   /**
    * @param {object} opts
@@ -606,12 +641,27 @@ class NATSClient extends EventEmitter {
         // older packet — keep what we have
         return;
       }
+      // Sanitize the phase at ingest. `...data` is spread FIRST so the wire
+      // payload cannot overwrite the fields we derive below — the same rule
+      // already applied to the join event's `action` label (#135). Pre-fix the
+      // spread came last, so a publisher could also restamp its own `lastSeen`
+      // and keep stale gossip looking fresh.
+      const phase = coercePhase(data.phase != null ? data.phase : data.theta);
+      if (phase === null && (data.phase != null || data.theta != null)) {
+        this._warnBadPhase(agentId, data.phase != null ? data.phase : data.theta);
+      }
       this.swarmState.agents[agentId] = {
-        phase: data.phase != null ? data.phase : data.theta || 0,
+        ...data,
+        // null, never 0, when there is no usable reading. `data.theta || 0`
+        // used to invent a phase of exactly 0 for any packet carrying neither
+        // field — and `phase` is a REQUIRED field the schema validator already
+        // warns about, so that fabrication fired on precisely the drifted
+        // publishers it should have ignored. Two locked agents plus one
+        // phase-less packet read as coherence 0.33 instead of 1.0. (#227)
+        phase,
         displayName: data.display_name || data.displayName || agentId,
         lastSeen: now,
         publishedTs: incomingTs != null ? incomingTs : now,
-        ...data,
       };
       this.swarmState.queen.agentCount = Object.keys(this.swarmState.agents).length;
 
@@ -864,6 +914,21 @@ class NATSClient extends EventEmitter {
     }
   }
 
+  /**
+   * Surface a rejected phase sample, throttled to one warning per agent per
+   * 30 min — a misconfigured publisher gossips every few seconds and would
+   * otherwise pin the journal, the same reason _validateSchema is throttled.
+   */
+  _warnBadPhase(agentId, raw) {
+    if (!this._badPhaseWarnHistory) this._badPhaseWarnHistory = new Map();
+    const now = Date.now();
+    if (now - (this._badPhaseWarnHistory.get(agentId) || 0) < 30 * 60 * 1000) return;
+    this._badPhaseWarnHistory.set(agentId, now);
+    let shown;
+    try { shown = JSON.stringify(raw); } catch (_) { shown = String(raw); }
+    console.warn(`[nats] QUEEN.phase.${agentId} phase=${shown} is not a usable reading — agent kept as present, excluded from coherence (#227)`);
+  }
+
   _scheduleReconnect() {
     if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
     this._reconnectTimer = setTimeout(() => this.connect(), 5000);
@@ -967,4 +1032,4 @@ const NATS_ALIAS_FIELDS = {
   },
 };
 
-module.exports = { NATSClient, resolveNatsEndpoint, NATS_REQUIRED_FIELDS };
+module.exports = { NATSClient, resolveNatsEndpoint, coercePhase, NATS_REQUIRED_FIELDS };
