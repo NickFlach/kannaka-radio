@@ -9,6 +9,50 @@ const https = require("https");
 const { findAudioFile, getFiles } = require("./utils");
 const { interleaveCommercials } = require("./commercials");
 
+/**
+ * Resolve where the ORC stem-server's SQLite catalog and its sqlite3 build
+ * live.
+ *
+ * The default was the Oracle-absolute `/home/opc/open-resonance-collective/...`,
+ * so the ORC channel could only ever find its catalog on one box (#228). The
+ * sibling-checkout default replaces it and is IDENTICAL on that box: the radio
+ * runs from `/home/opc/kannaka-radio` (see ops/oracle/run-radio.sh.example),
+ * so `<repo>/../open-resonance-collective/...` resolves to exactly the old
+ * string. Nothing changes on Oracle; every other checkout starts working.
+ *
+ * This mirrors how the radio already finds kannaka-memory — a sibling checkout
+ * relative to the repo root (server/index.js KANNAKA_BIN).
+ *
+ * Precedence, most specific first:
+ *   ORC_STEM_DB        — the catalog file itself
+ *   ORC_SQLITE3_PATH   — the sqlite3 module to load
+ *   ORC_STEM_SERVER_ROOT — the stem-server root both are derived from
+ *   <repo>/../open-resonance-collective/packages/stem-server
+ *
+ * Pure and exported so the resolution is testable without sqlite3, a catalog,
+ * or a stem-server present — the same shape as resolveNatsEndpoint.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {string} [repoRoot] — defaults to this checkout's root
+ * @returns {{root: string, dbPath: string, sqlite3Path: string, source: string}}
+ */
+function resolveOrcStemSource(env = process.env, repoRoot = path.resolve(__dirname, "..")) {
+  const envRoot = typeof env.ORC_STEM_SERVER_ROOT === "string" && env.ORC_STEM_SERVER_ROOT.trim()
+    ? env.ORC_STEM_SERVER_ROOT.trim()
+    : "";
+  const root = envRoot || path.join(repoRoot, "..", "open-resonance-collective", "packages", "stem-server");
+  const envDb = typeof env.ORC_STEM_DB === "string" && env.ORC_STEM_DB.trim() ? env.ORC_STEM_DB.trim() : "";
+  const envSqlite = typeof env.ORC_SQLITE3_PATH === "string" && env.ORC_SQLITE3_PATH.trim()
+    ? env.ORC_SQLITE3_PATH.trim()
+    : "";
+  return {
+    root,
+    dbPath: envDb || path.join(root, "data", "stems.db"),
+    sqlite3Path: envSqlite || path.join(root, "node_modules", "sqlite3"),
+    source: envDb || envSqlite || envRoot ? "env" : "sibling-checkout",
+  };
+}
+
 // ── The Consciousness Series — DJ Setlist ──────────────────
 
 const ALBUMS = {
@@ -872,26 +916,38 @@ class DJEngine {
    */
   _fetchOrcStems() {
     return new Promise((resolve) => {
-      // Resolve the sqlite3 module and DB path from env first, falling back
-      // to the historical Oracle-absolute paths. Any failure logs and
-      // resolves empty rather than throwing — ORC is one channel of many
-      // and must not take the engine down on a dev box. (#70)
-      const orcSqlite3Path = process.env.ORC_SQLITE3_PATH ||
-        '/home/opc/open-resonance-collective/packages/stem-server/node_modules/sqlite3';
-      const orcDb = process.env.ORC_STEM_DB ||
-        '/home/opc/open-resonance-collective/packages/stem-server/data/stems.db';
+      // Any failure logs and resolves empty rather than throwing — ORC is one
+      // channel of many and must not take the engine down on a dev box. (#70)
+      const { dbPath, sqlite3Path, source } = resolveOrcStemSource();
+
+      // Say why ORC is unavailable, once, naming the path that was tried and
+      // the knob that fixes it. Pre-fix the catalog being absent produced only
+      // `SQLITE_CANTOPEN` — a driver error with no mention of ORC, no path,
+      // and no hint that an env var existed — and the channel then silently
+      // stayed on the previous playlist. A skip has to be legible. (#228)
+      const unavailable = (why) => {
+        console.warn(
+          `[channel] ORC unavailable — ${why}\n` +
+          `           catalog: ${dbPath} (${source})\n` +
+          `           set ORC_STEM_SERVER_ROOT (or ORC_STEM_DB) to point at a stem-server checkout`
+        );
+        return resolve([]);
+      };
+
       let sqlite3;
       try {
-        sqlite3 = require(orcSqlite3Path).verbose();
+        sqlite3 = require(sqlite3Path).verbose();
       } catch (e) {
-        // Dev fallback — if the env/Oracle path doesn't resolve, try relative
+        // The stem-server's own build is preferred; fall back to the radio's
+        // optionalDependency copy, which a fresh install may have skipped if
+        // the native build failed.
         try { sqlite3 = require('sqlite3').verbose(); }
-        catch (e2) {
-          console.warn('[channel] orc sqlite3 unavailable:', e2.message);
-          return resolve([]);
-        }
+        catch (e2) { return unavailable(`no sqlite3 build available (${e2.message})`); }
       }
-      const dbPath = orcDb;
+      // Checked before opening: sqlite3 creates nothing in OPEN_READONLY, so a
+      // missing catalog surfaces as a bare SQLITE_CANTOPEN otherwise.
+      if (!fs.existsSync(dbPath)) return unavailable('stem catalog not found');
+
       const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
         if (err) { console.warn('[channel] orc db open failed:', err.message); return resolve([]); }
       });
@@ -1860,4 +1916,4 @@ class DJEngine {
     return { clusters, generated: new Date().toISOString() };
   }
 }
-module.exports = { ALBUMS, DJEngine, findAudioFile };
+module.exports = { ALBUMS, DJEngine, findAudioFile, resolveOrcStemSource };
