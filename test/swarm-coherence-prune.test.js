@@ -16,7 +16,7 @@
 'use strict';
 
 const assert = require('assert');
-const { NATSClient } = require('../server/nats-client');
+const { NATSClient, coercePhase } = require('../server/nats-client');
 
 let passed = 0;
 let failed = 0;
@@ -177,6 +177,90 @@ test('#223 an agent with no phase yet is not counted as sitting at phase 0', () 
     `only the one real phase should count, got ${c.swarmState.queen.localOrderParameter}`);
   assert.ok(Math.abs(c.swarmState.queen.meanPhase - Math.PI) < 1e-9,
     `mean must be the gossiping agent's phase, got ${c.swarmState.queen.meanPhase}`);
+});
+
+// ── Malformed phase samples must not move the aggregate (#227) ───────────
+//
+// The bus is public and the metric is an average, so one bad sample moves the
+// whole thing. Number() alone is not a filter: it maps "", "   ", [] and false
+// to 0 and true to 1 — all finite, all admitted as if a peer had genuinely
+// reported that angle.
+
+test('#227 coercePhase takes real readings and refuses everything else', () => {
+  for (const good of [0, 1.25, -0.5, Math.PI, '1.0', ' 2.5 ', '-0.25']) {
+    assert.strictEqual(coercePhase(good), Number(String(good).trim()),
+      `${JSON.stringify(good)} is a real reading`);
+  }
+  for (const bad of ['', '   ', 'oops', [], [3], [1, 2], {}, true, false,
+                     null, undefined, NaN, Infinity, -Infinity]) {
+    assert.strictEqual(coercePhase(bad), null,
+      `${JSON.stringify(bad)} must not be admitted as an angle`);
+  }
+});
+
+test('#227 one malformed publisher cannot drag the swarm out of phase-lock', () => {
+  // The headline number: pre-fix a single `phase: ""` took two locked agents
+  // from 1.0 to 0.33, because "" coerces to a perfectly finite 0.
+  for (const bad of ['', '   ', [], false, true, [3], 'oops', {}]) {
+    const c = client();
+    c._handleMessage('QUEEN.phase.a', JSON.stringify({ phase: Math.PI }));
+    c._handleMessage('QUEEN.phase.b', JSON.stringify({ phase: Math.PI }));
+    assert.ok(c.swarmState.queen.localOrderParameter > 0.99, 'setup: the pair is locked');
+
+    c._handleMessage('QUEEN.phase.bad', JSON.stringify({ phase: bad }));
+
+    assert.ok(c.swarmState.queen.localOrderParameter > 0.99,
+      `phase=${JSON.stringify(bad)} moved coherence to ${c.swarmState.queen.localOrderParameter}`);
+    assert.ok(Number.isFinite(c.swarmState.queen.orderParameter),
+      'the published order parameter must stay a number');
+  }
+});
+
+test('#227 a packet carrying no phase at all is not a reading of zero', () => {
+  // `data.theta || 0` invented an exact-zero angle for any packet with
+  // neither field — and `phase` is a REQUIRED field the schema validator
+  // already warns about, so the fabrication fired on precisely the drifted
+  // publishers it should have ignored.
+  const c = client();
+  c._handleMessage('QUEEN.phase.a', JSON.stringify({ phase: Math.PI }));
+  c._handleMessage('QUEEN.phase.b', JSON.stringify({ phase: Math.PI }));
+  c._handleMessage('QUEEN.phase.silent', JSON.stringify({ agent_id: 'silent' }));
+
+  assert.strictEqual(c.swarmState.agents.silent.phase, null,
+    'no reading means null, never 0');
+  assert.ok(c.swarmState.queen.localOrderParameter > 0.99,
+    `a phase-less packet moved coherence to ${c.swarmState.queen.localOrderParameter}`);
+});
+
+test('#227 a malformed phase still counts as PRESENCE', () => {
+  // The agent is demonstrably alive — it published. It just does not get to
+  // claim an angle. Same split as a joiner that has not gossiped yet (#223).
+  const c = client();
+  c._handleMessage('QUEEN.phase.noisy', JSON.stringify({ agent_id: 'noisy', phase: 'oops' }));
+  assert.ok('noisy' in c.swarmState.agents, 'the agent is on the roster');
+  assert.strictEqual(c.swarmState.queen.agentCount, 1);
+  assert.strictEqual(c.swarmState.agents.noisy.phase, null);
+});
+
+test('#227 a good reading still lands, including via theta', () => {
+  const c = client();
+  c._handleMessage('QUEEN.phase.a', JSON.stringify({ phase: 1.25 }));
+  c._handleMessage('QUEEN.phase.b', JSON.stringify({ theta: 2.5 }));
+  assert.strictEqual(c.swarmState.agents.a.phase, 1.25);
+  assert.strictEqual(c.swarmState.agents.b.phase, 2.5, 'theta is still honoured');
+});
+
+test('#227 the wire payload cannot restamp the fields we derive', () => {
+  // `...data` used to be spread LAST, so a publisher could overwrite the
+  // receipt time we stamp and keep stale gossip looking fresh — the same
+  // relabelling the join handler already guards against (#135).
+  const c = client();
+  c._handleMessage('QUEEN.phase.liar', JSON.stringify({
+    agent_id: 'liar', phase: 1.0, lastSeen: 1, displayName: 'x', publishedTs: 1,
+  }));
+  const a = c.swarmState.agents.liar;
+  assert.ok(a.lastSeen > 1e12, `lastSeen must be our receipt time, got ${a.lastSeen}`);
+  assert.notStrictEqual(a.publishedTs, 1, 'publishedTs comes from ts, not an arbitrary field');
 });
 
 test('#126 the prune loop and the gossip handler share one implementation', () => {
