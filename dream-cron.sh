@@ -3,6 +3,15 @@
 # Runs at 2 AM CDT via cron
 export KANNAKA_DATA_DIR=/home/opc/.kannaka
 export KANNAKA_CONSOLIDATE=on   # ADR-0036 Phase 2: nightly resonance-merge apply (enabled 2026-06-19)
+# ADR-0036 belief-safe gate: once belief phase is on (config [belief].enabled,
+# activated 2026-07-22), KANNAKA_CONSOLIDATE=on is FORCE-DOWNGRADED to dryrun
+# unless this opt-in is also set — the deliberate v0.7.3 safety gate. Without
+# it, enabling belief silently stops nightly consolidation (applied=false):
+# near-duplicates pile up un-merged and recall crowds. The belief-safe
+# guardrails (mean-centered semantic gate + 20% per-pass absorb cap) make the
+# apply safe; verified on a live-HRM copy 2026-07-22 (1294->1036, recall
+# preserved, no corruption). See KANNAKA_MERGE_MAX_ABSORB_FRAC to widen the cap.
+export KANNAKA_MERGE_UNDER_BELIEF=1
 # Load NATS credentials (ADR-0026 #73) so subsequent kannaka + push-nats
 # calls authenticate as kannaka_internal. Best-effort — anon still works
 # until the NATS server is locked down.
@@ -14,9 +23,25 @@ LOG="/home/opc/.kannaka/dream-$(date +%Y-%m-%d).log"
 
 echo "=== Dream Start: $(date -Iseconds) ===" >> "$LOG"
 
+# Overlap guard: a second dream must not run while one holds the writer window
+# (two applies/night = two 20%-cap merges = over-consolidation; observed a
+# double run 2026-07-22 at 02:25 + 07:00). flock is released on process exit.
+exec 9>/home/opc/.kannaka/.dream-cron.lock
+if ! flock -n 9; then
+  echo "another dream holds the lock; exiting" >> "$LOG"
+  exit 0
+fi
+
 # Pre-dream status
 echo "--- PRE-DREAM STATUS ---" >> "$LOG"
 $KANNAKA status 2>/dev/null >> "$LOG"
+
+# Pre-dream backup: consolidation apply is destructive (merges absorb
+# wavefronts), so snapshot the HRM first and keep the 3 most recent so a bad
+# merge is always one restore away. Cheap insurance (~100 MB, rotated).
+BAK="/home/opc/.kannaka/kannaka.hrm.pre-dream-$(date +%Y%m%d)"
+cp -f /home/opc/.kannaka/kannaka.hrm "$BAK" 2>>"$LOG" && echo "pre-dream backup: $BAK" >> "$LOG"
+ls -1t /home/opc/.kannaka/kannaka.hrm.pre-dream-* 2>/dev/null | tail -n +4 | xargs -r rm -f
 
 # Single-writer maintenance window: kannaka-memory (swarm join) is the sole
 # CONTINUOUS HRM writer. A standalone `kannaka dream` is also a writer, so the
