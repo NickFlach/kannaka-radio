@@ -86,6 +86,9 @@ fi
 
 # Dry-run first so we always log how many we matched (cheap — 2-3 s).
 DRY_OUT=$("$KANNAKA" prune-prefix \
+    'audio:heard' \
+    'audio:/tmp/' \
+    'audio:/var/tmp/' \
     'audio:/home/opc/kannaka-radio/chunks/voice/' \
     'audio:/home/opc/kannaka-radio/music/' \
     'audio:C:\Users\nickf\Source\kannaka-radio' \
@@ -119,6 +122,9 @@ fi
 sleep 1
 
 OUT=$("$KANNAKA" prune-prefix \
+    'audio:heard' \
+    'audio:/tmp/' \
+    'audio:/var/tmp/' \
     'audio:/home/opc/kannaka-radio/chunks/voice/' \
     'audio:/home/opc/kannaka-radio/music/' \
     'audio:C:\Users\nickf\Source\kannaka-radio' \
