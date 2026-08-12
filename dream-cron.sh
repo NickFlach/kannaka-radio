@@ -2,6 +2,15 @@
 # Nightly deep dream + OODA harvest
 # Runs at 2 AM CDT via cron
 export KANNAKA_DATA_DIR=/home/opc/.kannaka
+# Identity for the dream-side NATS publishes (dream digest, consciousness). The
+# HRM at KANNAKA_DATA_DIR IS the canonical prime memory (swarm-serve serves it as
+# kannaka-prime via --agent-id), but a bare `kannaka dream` reads the identity
+# from config.toml's [agent] id — a leftover generated placeholder — so the
+# KANNAKA.events.dream.digest events (which the Command Center's dream_digest
+# tool reads) were published under that placeholder instead of kannaka-prime.
+# Setting it here wins: the binary only seeds KANNAKA_AGENT_ID from config when
+# it is unset, so the nightly digest now publishes under the real identity.
+export KANNAKA_AGENT_ID=kannaka-prime
 export KANNAKA_CONSOLIDATE=on   # ADR-0036 Phase 2: nightly resonance-merge apply (enabled 2026-06-19)
 # ADR-0036 belief-safe gate: once belief phase is on (config [belief].enabled,
 # activated 2026-07-22), KANNAKA_CONSOLIDATE=on is FORCE-DOWNGRADED to dryrun
