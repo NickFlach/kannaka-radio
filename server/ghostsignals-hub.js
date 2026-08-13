@@ -289,8 +289,10 @@ class GhostSignalsHub {
       this.db.get('SELECT * FROM traders WHERE id = ?', [traderId], (err, row) => {
         if (err) return reject(err);
         if (row) {
-          // Refresh last_active
-          this.db.run('UPDATE traders SET last_active = CURRENT_TIMESTAMP WHERE id = ?', [traderId]);
+          // Refresh last_active. Callback is load-bearing: a callback-less
+          // db.run that errors (e.g. mid-contention) emits an *unhandled*
+          // 'error' event that would crash the shared radio process.
+          this.db.run('UPDATE traders SET last_active = CURRENT_TIMESTAMP WHERE id = ?', [traderId], () => {});
           return resolve({ ...row, returning: true });
         }
         this.db.run(
@@ -556,62 +558,53 @@ class GhostSignalsHub {
     }
 
     const self = this;
-    return this._serializeTx(() => new Promise((resolve, reject) => {
-      self.db.serialize(() => {
-        self.db.run('BEGIN');
+    // Sequential await-per-statement (mirrors _commitLedgerTradeShares). Every
+    // statement carries a completion callback via _run, so a failing BEGIN/
+    // COMMIT/ROLLBACK rejects this promise instead of emitting an *unhandled*
+    // 'error' event on a callback-less db.run — which used to CRASH the whole
+    // radio process (ghostsignals-hub shares the radio's node process). Ordered
+    // awaits also mean a "transaction within a transaction" can't arise from a
+    // half-issued unit, and _serializeTx only advances once COMMIT/ROLLBACK has
+    // actually completed.
+    return this._serializeTx(async () => {
+      await self._run('BEGIN');
+      try {
         // Compare-and-swap the market q. `AND resolved = 0` also blocks a trade
-        // that races a resolve. changes()===0 => someone moved q (or resolved)
+        // that races a resolve. changes===0 => someone moved q (or resolved)
         // between our read and now; roll back and let the caller retry.
-        self.db.run(
+        const qRes = await self._run(
           `UPDATE markets SET q = ?, volume = volume + ? WHERE id = ? AND q = ? AND resolved = 0`,
           [JSON.stringify(qAfter), shares, market_id, qBeforeJson],
-          function (qErr) {
-            if (qErr) { self.db.run('ROLLBACK'); return reject(qErr); }
-            if (this.changes === 0) {
-              self.db.run('ROLLBACK');
-              return reject(new Error('market state changed concurrently; retry'));
-            }
-            // Guarded debit: the `AND capital >= ?` makes overdraft impossible
-            // even if two concurrent trades both passed the JS precheck above —
-            // the second sees the already-reduced balance and fails here rather
-            // than driving capital negative (a double-spend).
-            self.db.run(
-              `UPDATE traders SET capital = capital - ?, trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ? AND capital >= ?`,
-              [cost, trader_id, cost],
-              function (dErr) {
-                if (dErr) { self.db.run('ROLLBACK'); return reject(dErr); }
-                if (this.changes === 0) {
-                  self.db.run('ROLLBACK');
-                  return reject(new Error('insufficient capital'));
-                }
-                // Append trade
-                self.db.run(
-                  `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost) VALUES (?, ?, ?, ?, ?)`,
-                  [market_id, trader_id, outcome, shares, cost]
-                );
-                // Upsert position
-                self.db.run(
-                  `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
-                   ON CONFLICT(market_id, trader_id, outcome_idx) DO UPDATE SET shares = shares + ?`,
-                  [market_id, trader_id, outcome, shares, shares],
-                  (err) => {
-                    if (err) {
-                      self.db.run('ROLLBACK');
-                      return reject(err);
-                    }
-                    self.db.run('COMMIT', async () => {
-                      const updated = await self.getMarket(market_id);
-                      self.broadcast({ type: 'gs_trade', data: { market_id, trader_id, outcome, shares, cost, prices: updated.prices } });
-                      resolve({ cost, prices: updated.prices, market: updated });
-                    });
-                  }
-                );
-              }
-            );
-          }
         );
-      });
-    }));
+        if (qRes.changes === 0) throw new Error('market state changed concurrently; retry');
+        // Guarded debit: the `AND capital >= ?` makes overdraft impossible even
+        // if two concurrent trades both passed the JS precheck above — the
+        // second sees the already-reduced balance and fails here rather than
+        // driving capital negative (a double-spend).
+        const dRes = await self._run(
+          `UPDATE traders SET capital = capital - ?, trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ? AND capital >= ?`,
+          [cost, trader_id, cost],
+        );
+        if (dRes.changes === 0) throw new Error('insufficient capital');
+        await self._run(
+          `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost) VALUES (?, ?, ?, ?, ?)`,
+          [market_id, trader_id, outcome, shares, cost],
+        );
+        await self._run(
+          `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
+           ON CONFLICT(market_id, trader_id, outcome_idx) DO UPDATE SET shares = shares + ?`,
+          [market_id, trader_id, outcome, shares, shares],
+        );
+        await self._run('COMMIT');
+      } catch (e) {
+        await self._run('ROLLBACK').catch(() => {});
+        throw e;
+      }
+      // Post-commit reads/broadcast happen outside the transaction.
+      const updated = await self.getMarket(market_id);
+      self.broadcast({ type: 'gs_trade', data: { market_id, trader_id, outcome, shares, cost, prices: updated.prices } });
+      return { cost, prices: updated.prices, market: updated };
+    });
   }
 
   /**
@@ -632,73 +625,64 @@ class GhostSignalsHub {
       return this._resolveMarketLedger({ market, winning_outcome, method });
     }
     const finalPrices = market.prices.slice();
-    return this._serializeTx(() => new Promise((resolve, reject) => {
-        self.db.serialize(() => {
-          self.db.run('BEGIN');
-          // Single-flip guard: only the transaction that actually changes
-          // resolved 0->1 proceeds to pay out. A concurrent resolve (the manual
-          // /resolve racing the 10s TTL sweep, or two callers) reads resolved=0
-          // in the async gap before this UPDATE, but only ONE of them flips the
-          // flag; the loser sees changes()===0 and rolls back WITHOUT paying, so
-          // winning positions can never be paid twice (which would mint credits).
-          // The `market.resolved` precheck above is only a fast path; THIS is the
-          // real guard.
-          self.db.run(
-            `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ? WHERE id = ? AND resolved = 0`,
-            [winning_outcome, method, market_id],
-            function (uErr) {
-              if (uErr) { self.db.run('ROLLBACK'); return reject(uErr); }
-              if (this.changes === 0) { self.db.run('ROLLBACK'); return reject(new Error('already resolved')); }
-              // Pay out winning shares + update reputation for every participant
-              self.db.all(
-                `SELECT trader_id, outcome_idx, shares FROM positions WHERE market_id = ?`,
-                [market_id],
-                (err, positions) => {
-                  if (err) { self.db.run('ROLLBACK'); return reject(err); }
-                  const traders = new Map();
-                  for (const p of positions) {
-                    if (!traders.has(p.trader_id)) traders.set(p.trader_id, { yes: 0, no: 0, totalShares: 0 });
-                    const t = traders.get(p.trader_id);
-                    t.totalShares += p.shares;
-                    if (p.outcome_idx === winning_outcome) t.yes += p.shares;
-                    else t.no += p.shares;
-                  }
-                  const tasks = [];
-                  for (const [trader_id, t] of traders.entries()) {
-                    // Payout = winning shares × $1
-                    const payout = t.yes;
-                    // Compute brier-style accuracy update from this trader's
-                    // implied predicted probability (their share allocation
-                    // toward the winning outcome).
-                    const impliedYes = t.totalShares > 0 ? t.yes / t.totalShares : 0.5;
-                    const accuracy = brierAccuracy(impliedYes, 1);
-                    tasks.push(new Promise((ok, fail) => {
-                      self.db.run(
-                        `UPDATE traders SET
-                           capital = capital + ?,
-                           trades_won = trades_won + ?,
-                           reputation = reputation * 0.95 + ? * 0.05,
-                           last_active = CURRENT_TIMESTAMP
-                         WHERE id = ?`,
-                        [payout, t.yes > 0 ? 1 : 0, accuracy, trader_id],
-                        (e) => e ? fail(e) : ok()
-                      );
-                    }));
-                  }
-                  Promise.all(tasks).then(() => {
-                    self.db.run('COMMIT', () => {
-                      self.getMarket(market_id).then(m => {
-                        self.broadcast({ type: 'gs_market_resolved', data: { ...m, finalPrices } });
-                        resolve(m);
-                      });
-                    });
-                  }).catch(e => { self.db.run('ROLLBACK'); reject(e); });
-                }
-              );
-            }
+    // Sequential await-per-statement — see placeTrade for why (callback-less
+    // db.run 'error' events crash the shared radio process; ordered awaits keep
+    // BEGIN/COMMIT from overlapping across units).
+    return this._serializeTx(async () => {
+      await self._run('BEGIN');
+      try {
+        // Single-flip guard: only the transaction that actually changes
+        // resolved 0->1 proceeds to pay out. A concurrent resolve (the manual
+        // /resolve racing the 10s TTL sweep, or two callers) reads resolved=0
+        // in the async gap before this UPDATE, but only ONE of them flips the
+        // flag; the loser sees changes===0 and rolls back WITHOUT paying, so
+        // winning positions can never be paid twice (which would mint credits).
+        // The `market.resolved` precheck above is only a fast path; THIS is the
+        // real guard.
+        const uRes = await self._run(
+          `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ? WHERE id = ? AND resolved = 0`,
+          [winning_outcome, method, market_id],
+        );
+        if (uRes.changes === 0) throw new Error('already resolved');
+        // Pay out winning shares + update reputation for every participant.
+        const positions = await self._all(
+          `SELECT trader_id, outcome_idx, shares FROM positions WHERE market_id = ?`,
+          [market_id],
+        );
+        const traders = new Map();
+        for (const p of positions) {
+          if (!traders.has(p.trader_id)) traders.set(p.trader_id, { yes: 0, no: 0, totalShares: 0 });
+          const t = traders.get(p.trader_id);
+          t.totalShares += p.shares;
+          if (p.outcome_idx === winning_outcome) t.yes += p.shares;
+          else t.no += p.shares;
+        }
+        for (const [trader_id, t] of traders.entries()) {
+          // Payout = winning shares × $1. Brier-style accuracy update from this
+          // trader's implied predicted probability (share allocation toward the
+          // winning outcome).
+          const payout = t.yes;
+          const impliedYes = t.totalShares > 0 ? t.yes / t.totalShares : 0.5;
+          const accuracy = brierAccuracy(impliedYes, 1);
+          await self._run(
+            `UPDATE traders SET
+               capital = capital + ?,
+               trades_won = trades_won + ?,
+               reputation = reputation * 0.95 + ? * 0.05,
+               last_active = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [payout, t.yes > 0 ? 1 : 0, accuracy, trader_id],
           );
-        });
-      }));
+        }
+        await self._run('COMMIT');
+      } catch (e) {
+        await self._run('ROLLBACK').catch(() => {});
+        throw e;
+      }
+      const m = await self.getMarket(market_id);
+      self.broadcast({ type: 'gs_market_resolved', data: { ...m, finalPrices } });
+      return m;
+    });
   }
 
   // ── Ledger-path helpers (ADR-0041 PR 2) ─────────────────────────────
