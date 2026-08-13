@@ -928,6 +928,41 @@ class GhostSignalsHub {
     });
   }
 
+  /** The canonical trading principal to credit a proposer fee to (obc:<id> → kax:agent:<id>). */
+  _canonicalProposer(proposedBy) {
+    const s = String(proposedBy);
+    const m = s.match(/^obc:(.+)$/);
+    return m ? `kax:agent:${m[1]}` : s;
+  }
+
+  /**
+   * Proposer fee (residual-based). A good proposer can't trade their own market
+   * (anti-self-dealing), so reward asking a well-attended question: carve a bounded
+   * cut of the HOUSE RESIDUAL for the proposer — funded entirely from the residual,
+   * so the payout stays balanced and solvency is untouched (pool → winners + fee +
+   * house). Gated on genuine participation (≥ PROPOSER_FEE_MIN_TRADERS distinct
+   * trading operators OTHER than the proposer, using _selfDealKey so obc:X and
+   * kax:agent:X count once) so an untraded/wash market pays nothing. Off by default
+   * (PROPOSER_FEE_BPS=0). Returns { amountMinor: BigInt, principal }.
+   */
+  async _proposerFeeMinor(market_id, residual) {
+    const bps = Math.max(0, Math.min(2000, Number(process.env.PROPOSER_FEE_BPS) || 0));
+    if (bps === 0 || residual <= 0n) return { amountMinor: 0n, principal: null };
+    const row = (await this._all(`SELECT metadata FROM markets WHERE id = ?`, [market_id]))[0];
+    let proposedBy = null;
+    try { proposedBy = row && row.metadata ? JSON.parse(row.metadata).proposedBy : null; } catch { /* not JSON */ }
+    if (!proposedBy) return { amountMinor: 0n, principal: null };
+    const minTraders = Math.max(1, Number(process.env.PROPOSER_FEE_MIN_TRADERS) || 3);
+    const rows = await this._all(`SELECT DISTINCT trader_id FROM trades WHERE market_id = ?`, [market_id]);
+    const proposerKey = this._selfDealKey(proposedBy);
+    const distinct = new Set(rows.map((r) => this._selfDealKey(r.trader_id)).filter((k) => k !== proposerKey));
+    if (distinct.size < minTraders) return { amountMinor: 0n, principal: null };
+    let fee = (residual * BigInt(bps)) / 10000n; // floor toward the house
+    if (fee > residual) fee = residual;           // never exceed the residual (solvency)
+    if (fee <= 0n) return { amountMinor: 0n, principal: null };
+    return { amountMinor: fee, principal: this._canonicalProposer(proposedBy) };
+  }
+
   /** Winners + house residual for a resolved market (pool-favor; never negative). */
   async _computePayout(market_id, winning_outcome, subsidy_minor) {
     const winners = await this._winningPayouts(market_id, winning_outcome);
@@ -939,6 +974,12 @@ class GhostSignalsHub {
       // sweep nothing, let the KAX overdraft guard 409 if the pool is truly short.
       console.error(`gshub SOLVENCY ALERT market ${market_id}: payout ${totalPayout} > pool ${poolValue}`);
       residual = 0n;
+    }
+    // Carve the proposer fee from the residual, in the SAME balanced payout.
+    const fee = await this._proposerFeeMinor(market_id, residual);
+    if (fee.amountMinor > 0n && fee.principal) {
+      winners.push({ principal: fee.principal, amountMinor: fee.amountMinor.toString() });
+      residual = residual - fee.amountMinor;
     }
     return { winners, residual };
   }
