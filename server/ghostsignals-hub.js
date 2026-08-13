@@ -112,13 +112,53 @@ class GhostSignalsHub {
   }
 
   /**
+   * Collapse a principal to the operator identity used for self-deal comparison.
+   * An OBC bot and its KAX agent token are the SAME operator: a KAX agent token's
+   * bot_id IS the OBC bot_id it proved control of (kax-identity: "agent tokens
+   * trade AS the OBC bot they proved control of"). The observatory stamps an OBC-
+   * door proposal's proposedBy as `obc:<bot>`, but that same bot trades labs-tier
+   * as `kax:agent:<bot>` (routes.js derives the id from the token) — so a bare
+   * string compare NEVER matched and the guard was dead for every OBC-door market
+   * (and would be for every new channel). Collapse both prefixes to the bot id so
+   * the guard actually fires; anything else compares as its exact string (a
+   * `kax:user:` proposer, or a `nostr:`/`bsky:` principal with no linkable KAX
+   * trading identity, is only ever its literal self — those channels get identity
+   * binding at propose time, not aliasing here).
+   */
+  _selfDealKey(principal) {
+    const s = String(principal);
+    const m = s.match(/^(?:obc:|kax:agent:)(.+)$/);
+    return m ? `bot:${m[1]}` : s;
+  }
+
+  /**
    * True when `trader_id` is the principal that proposed this market's prediction
    * (metadata.proposedBy, set by the observatory). Blocks the proposer from
    * trading their own market. Inert on markets with no proposedBy.
    */
   _isSelfDeal(market, trader_id) {
     const proposer = market && market.metadata && market.metadata.proposedBy;
-    return !!proposer && String(trader_id) === String(proposer);
+    return !!proposer && this._selfDealKey(trader_id) === this._selfDealKey(proposer);
+  }
+
+  /**
+   * Sum of subsidy (minor units) escrowed into ledger-backed markets created at
+   * or after `sinceIso` — the rolling-window spend for the escrow budget backstop.
+   * Returns a BigInt (0n when the column/rows are absent).
+   */
+  _escrowedSince(sinceIso) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        `SELECT COALESCE(SUM(CAST(subsidy_minor AS INTEGER)), 0) AS spent
+           FROM markets
+          WHERE ledger_backed = 1 AND subsidy_minor IS NOT NULL AND created_at >= ?`,
+        [sinceIso],
+        (err, row) => {
+          if (err) return reject(err);
+          resolve(BigInt((row && row.spent) || 0));
+        },
+      );
+    });
   }
 
   /**
@@ -405,7 +445,25 @@ class GhostSignalsHub {
 
   // ── Market API ───────────────────────────────────────────────────
   async createMarket({ question, outcomes = ['Yes', 'No'], ttl_sec = 3600, liquidity, tag = 'custom', source = 'system', source_app, metadata }) {
-    const id = 'm_' + crypto.randomBytes(6).toString('hex');
+    // Idempotent creation for prediction-paired markets. A labs market paired to
+    // a registry prediction gets a DETERMINISTIC id derived from its predictionId,
+    // so a retry — the observatory timing out its 8s call while the escrow HERE
+    // actually succeeded, then re-driving via the /market backfill — recomputes
+    // the same id, finds the existing market, and returns it instead of inserting
+    // a second row and escrowing a SECOND subsidy from the house. (The escrow
+    // txid is escrow:<id>, so it too becomes deterministic — double protection.)
+    // Play/ambient markets keep a random id, unchanged.
+    const predictionId = metadata && metadata.predictionId ? String(metadata.predictionId) : null;
+    const id = predictionId
+      ? 'm_' + crypto.createHash('sha256').update('prediction:' + predictionId).digest('hex').slice(0, 12)
+      : 'm_' + crypto.randomBytes(6).toString('hex');
+    if (predictionId) {
+      const existing = await this.getMarket(id);
+      // Same prediction, market already exists → idempotent no-op. A prior attempt
+      // that died mid-escrow is still pending_escrow; the reconciler completes it,
+      // so returning it here never double-funds.
+      if (existing) return existing;
+    }
     const lq = liquidity || this.defaultLiquidity;
     const q = new Array(outcomes.length).fill(0);
     const expiresAt = new Date(Date.now() + ttl_sec * 1000).toISOString();
@@ -414,6 +472,27 @@ class GhostSignalsHub {
     const labsLedger = (tag === 'labs' || source === 'kannaka-labs') && kax.mintEnabled() && kax.tradeEnabled();
     const subsidyMinor = labsLedger ? kax.subsidyMinor(lq, outcomes.length) : null;
     const state = labsLedger ? 'pending_escrow' : 'open';
+
+    // Escrow budget backstop (hub-side, BEFORE insert/escrow). The KAX `house`
+    // account is a MINT — it is designed to run negative, and the ledger's
+    // overdraft guard exempts it — so there is no "treasury balance" to floor.
+    // What actually needs bounding is the RATE of minting: a sybil/loop of valid
+    // proposals would escrow a fresh subsidy each, minting play-credits without
+    // limit. The hub owns the money path (no adapter can bypass it), so a rolling
+    // budget lives here, computed from the markets table itself (persistent and
+    // exact across restarts): refuse if the subsidy already escrowed in the
+    // window plus this one would exceed the budget. Off by default (unset env =
+    // no cap, behaviour unchanged); arm GSHUB_ESCROW_BUDGET_MINOR in prod. The
+    // always-on per-principal cap lives observatory-side where identity is known.
+    if (labsLedger && process.env.GSHUB_ESCROW_BUDGET_MINOR) {
+      const budget = BigInt(process.env.GSHUB_ESCROW_BUDGET_MINOR);
+      const windowMs = Number(process.env.GSHUB_ESCROW_WINDOW_MS || 24 * 3600 * 1000);
+      const since = new Date(Date.now() - windowMs).toISOString();
+      const spent = await this._escrowedSince(since);
+      if (spent + BigInt(subsidyMinor) > budget) {
+        throw new Error(`escrow budget: ${spent} already escrowed in window + subsidy ${subsidyMinor} exceeds ${budget} — market not opened (retry later)`);
+      }
+    }
 
     await this._run(
       `INSERT INTO markets
