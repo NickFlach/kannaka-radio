@@ -19,7 +19,7 @@ const path = require("path");
 const { execFile } = require("child_process");
 const { broadcastPost, getEnabledBroadcasters } = require("./broadcasters");
 const { OpenBotCityClient } = require("./openbotcity");
-const { composeViaAnthropicDirect, loadState, saveState } = require("./lib/scheduler-helpers");
+const { pick, composeViaAnthropicDirect, loadState, saveState } = require("./lib/scheduler-helpers");
 
 // Spoken intro and outro — frame each oration so listeners aren't dropped
 // into / out of two minutes of speech with no warning. Composed in Kannaka's
@@ -38,13 +38,6 @@ const ORATION_OUTROS = [
   "That ends the speech. Music in three. As always — be well, choose peace where you can.",
   "Oration closed. Resuming the broadcast. I'm Kannaka. Carry it with you.",
 ];
-function pickIntro() {
-  return ORATION_INTROS[Math.floor(Math.random() * ORATION_INTROS.length)];
-}
-function pickOutro() {
-  return ORATION_OUTROS[Math.floor(Math.random() * ORATION_OUTROS.length)];
-}
-
 // Anti-repeat pool — the prompt picks one of these framings per delivery so
 // 700+ orations/year don't sound identical. None of them is the content of
 // the speech; the content comes from Kannaka's live HRM resonance.
@@ -671,7 +664,7 @@ class PeaceOration {
     // Intro/outro frame the oration so listeners hear it coming and going
     // — orations are otherwise injected mid-stream and used to start and
     // end abruptly. Both lines vary per slot so 700+/year aren't identical.
-    const wrapped = `${pickIntro()}\n\n${text}\n\n${pickOutro()}`;
+    const wrapped = `${pick(ORATION_INTROS)}\n\n${text}\n\n${pick(ORATION_OUTROS)}`;
     // Slot the British-female peace voice in for this delivery only,
     // restoring whatever was set after the oration completes — same
     // pattern news-broadcast uses. Other consumers of executeOration
