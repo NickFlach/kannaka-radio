@@ -51,8 +51,9 @@ function makeSource() {
   return src;
 }
 
-/** A noon slot key in the shape _keyFor produces. */
-const SLOT_KEY = '2026-08-10T12';
+/** A noon slot key in the shape _keyFor produces. Dynamic so it stays within
+ *  loadState's 3-day rolling window regardless of when the suite runs. */
+const SLOT_KEY = new Date().toISOString().slice(0, 10) + 'T12';
 
 /**
  * A PeaceOration with a fake voiceDJ and a real temp state file — the bug is
