@@ -107,4 +107,11 @@ async function run() {
   console.log('\nPASSED ghostsignals-idempotency-budget.test.js');
 }
 
-run().catch((e) => { console.error('\nFAILED ghostsignals-idempotency-budget.test.js:', e.stack || e.message); process.exitCode = 1; });
+run().catch((e) => {
+  if (/sqlite3 module not found/.test(e.message)) {
+    console.log('SKIP ghostsignals-idempotency-budget.test.js — sqlite3 optional dep not available');
+    process.exit(0);
+  }
+  console.error('\nFAILED ghostsignals-idempotency-budget.test.js:', e.stack || e.message);
+  process.exitCode = 1;
+});
