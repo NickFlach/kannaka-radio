@@ -51,8 +51,16 @@ function makeSource() {
   return src;
 }
 
-/** A noon slot key in the shape _keyFor produces. */
-const SLOT_KEY = '2026-08-10T12';
+/** A noon slot key in the shape _keyFor produces, for TODAY (Chicago-local) —
+ *  the delivery path prunes stale slots, so this must track the current day or
+ *  the "delivered slot stays marked" assertions read back a pruned undefined. */
+const SLOT_KEY = (() => {
+  const chi = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+  const y = chi.getFullYear();
+  const m = String(chi.getMonth() + 1).padStart(2, '0');
+  const d = String(chi.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}T12`;
+})();
 
 /**
  * A PeaceOration with a fake voiceDJ and a real temp state file — the bug is
