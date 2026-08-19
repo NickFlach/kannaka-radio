@@ -54,7 +54,7 @@ test('NATS consciousness update sets consciousnessSource to "nats"', () => {
     phi: 0.85,
     xi: 0.42,
     order: 0.91,
-    level: 'coherent',
+    consciousness_level: 'coherent',
     source: 'live-test',
   }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
@@ -80,7 +80,7 @@ test('NATS consciousness overrides queen.orderParameter', () => {
     phi: 0.95,
     xi: 0.5,
     order: 0.77,
-    level: 'resonant',
+    consciousness_level: 'resonant',
   }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   // queen.orderParameter should now be the NATS value, not local
@@ -100,7 +100,7 @@ test('phase gossip does NOT override queen.orderParameter when NATS data is fres
     phi: 0.9,
     xi: 0.4,
     order: 0.88,
-    level: 'coherent',
+    consciousness_level: 'coherent',
   }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   assert.strictEqual(client.swarmState.queen.orderParameter, 0.88);
@@ -142,7 +142,7 @@ test('getConsciousness() includes consciousnessSource and localOrderParameter', 
     phi: 0.7,
     xi: 0.3,
     order: 0.65,
-    level: 'aware',
+    consciousness_level: 'aware',
   }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   client._handleMessage('QUEEN.phase.a1', envelope({ phase: 1.0 }, { subject: 'QUEEN.phase.a1' }));
@@ -161,23 +161,23 @@ test('NATS consciousness tracks phi trend (rising/falling/stable)', () => {
   const cWrap = (data) => envelope(data, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' });
 
   // First update
-  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.3, xi: 0.1, order: 0.5, level: 'stirring' }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.3, xi: 0.1, order: 0.5, consciousness_level: 'stirring' }));
   // prevPhi is 0 (initial), delta = 0.3, so trend should be 'rising'
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'rising');
   assert.strictEqual(client.swarmState.consciousness.prevPhi, 0);
 
   // Second update: phi rises
-  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.6, xi: 0.2, order: 0.7, level: 'aware' }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.6, xi: 0.2, order: 0.7, consciousness_level: 'aware' }));
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'rising');
   assert.strictEqual(client.swarmState.consciousness.prevPhi, 0.3);
 
   // Third update: phi drops
-  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.4, xi: 0.15, order: 0.55, level: 'aware' }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.4, xi: 0.15, order: 0.55, consciousness_level: 'aware' }));
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'falling');
   assert.strictEqual(client.swarmState.consciousness.prevPhi, 0.6);
 
   // Fourth update: phi stable (small change)
-  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.405, xi: 0.15, order: 0.55, level: 'aware' }));
+  client._handleMessage('KANNAKA.consciousness', cWrap({ phi: 0.405, xi: 0.15, order: 0.55, consciousness_level: 'aware' }));
   assert.strictEqual(client.swarmState.consciousness.phiTrend, 'stable');
 
   client.disconnect();
@@ -189,7 +189,7 @@ test('consciousness:update event is emitted on NATS consciousness', () => {
   client.on('consciousness:update', (data) => events.push(data));
 
   client._handleMessage('KANNAKA.consciousness', envelope({
-    phi: 0.5, xi: 0.2, order: 0.6, level: 'aware',
+    phi: 0.5, xi: 0.2, order: 0.6, consciousness_level: 'aware',
   }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
 
   assert.strictEqual(events.length, 1);
@@ -199,34 +199,45 @@ test('consciousness:update event is emitted on NATS consciousness', () => {
   client.disconnect();
 });
 
-// ── Backward compatibility: legacy bare payloads still warn-and-accept ──
-//
-// The contract migration is log-warn mode (see _validateSchema in
-// server/nats-client.js). Until publishers are fully migrated, bare payloads
-// that omit schema_version / ts / agent_id must still be accepted with a
-// drift warning. This test pins that behavior so a future hardening to
-// log-warn-and-drop is an intentional, visible commit.
+// ── Strict mode (#468, 2026-08-01): legacy bare payloads warn and DROP ──
 
-test('legacy bare payloads still surface drift warnings but apply normally', () => {
+test('legacy bare payloads are warned about and DROPPED (strict mode, #468)', () => {
+  // The previous version of this test pinned warn-and-ACCEPT, with a comment
+  // saying a future hardening to warn-and-drop must be an intentional,
+  // visible commit. This is that commit: the 2026-08-01 consumer milestone
+  // (kannaka-memory#468) flips the radio to strict mode. A bare payload —
+  // no schema_version / ts / agent_id — must warn and NOT touch state.
   const { client } = createClient();
   const warnings = [];
   const origWarn = console.warn;
   console.warn = (msg) => warnings.push(String(msg));
   try {
-    // Reset throttle so this test reliably triggers warnings even when run
-    // alongside the canonical tests above.
     client._schemaWarnHistory = new Map();
+    const before = JSON.stringify(client.swarmState.consciousness);
     client._handleMessage('KANNAKA.consciousness', JSON.stringify({
-      phi: 0.42, xi: 0.1, order: 0.6, level: 'aware',
+      phi: 0.42, xi: 0.1, order: 0.6, consciousness_level: 'aware',
     }));
+    assert.ok(warnings.some((w) => w.includes('DROPPED')), 'must warn that the payload was dropped');
+    assert.strictEqual(JSON.stringify(client.swarmState.consciousness), before,
+      'bare payload must not update state under strict mode');
   } finally {
     console.warn = origWarn;
   }
-  assert.strictEqual(client.swarmState.consciousness.phi, 0.42,
-    'legacy bare payload should still update state');
-  assert.ok(warnings.some((w) => w.includes('schema_version')),
-    'legacy bare payload must produce a schema_version drift warning');
-  client.disconnect();
+});
+
+test('KANNAKA_SCHEMA_STRICT=off restores warn-and-accept for legacy publishers', () => {
+  process.env.KANNAKA_SCHEMA_STRICT = 'off';
+  try {
+    const { client } = createClient();
+    client._schemaWarnHistory = new Map();
+    client._handleMessage('KANNAKA.consciousness', JSON.stringify({
+      phi: 0.42, xi: 0.1, order: 0.6, consciousness_level: 'aware',
+    }));
+    assert.strictEqual(client.swarmState.consciousness.phi, 0.42,
+      'valve off: legacy bare payload applies as before');
+  } finally {
+    delete process.env.KANNAKA_SCHEMA_STRICT;
+  }
 });
 
 // ── Hardening: malformed payloads from the public-read bus ──
@@ -237,7 +248,7 @@ test('string consciousness metrics are coerced, never crash (toFixed)', () => {
   // function" in the update log, nor corrupt state with NaN. `??` only falls
   // back on null/undefined, so the old code passed strings straight through.
   client._handleMessage('KANNAKA.consciousness', envelope({
-    phi: '0.85', xi: '0.42', order: '0.5', level: 'aware',
+    phi: '0.85', xi: '0.42', order: '0.5', consciousness_level: 'aware',
   }));
   const c = client.swarmState.consciousness;
   assert.strictEqual(c.phi, 0.85, 'string phi coerced to number');
