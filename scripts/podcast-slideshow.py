@@ -217,7 +217,7 @@ def render_segment(img, dur, out, fade_in, fade_out, is_cover):
     return out
 
 
-def render_episode(ep, manifest, force=False):
+def render_episode(ep, manifest, force=False, arts_override=None):
     num = ep["num"]
     tag = f"GSP-{num:03d}"
     final = os.path.join(RENDERS, f"{tag}-slideshow.mp4")
@@ -231,7 +231,13 @@ def render_episode(ep, manifest, force=False):
     total = audio_duration(ep["audio"])
     n_art = max(3, round((total - COVER_SECONDS) / SLIDE_SECONDS))
     art_dur = (total - COVER_SECONDS) / n_art
-    arts = pick_art(manifest, num, n_art)
+    if arts_override:
+        # explicit ordered image list (--images-from): first image doubles as
+        # the cover art; cycle the list if the episode needs more slides.
+        reps = -(-n_art // len(arts_override))
+        arts = [{"file": p} for p in (arts_override * reps)[:n_art]]
+    else:
+        arts = pick_art(manifest, num, n_art)
     print(f"[{tag}] {total:.0f}s audio -> cover + {n_art} art slides @ {art_dur:.1f}s")
 
     cover = os.path.join(RENDERS, f"{tag}-cover.png")
@@ -276,6 +282,13 @@ def main():
         episodes = json.load(f)
     manifest = load_pool()
     force = "--force" in sys.argv
+    arts_override = None
+    if "--images-from" in sys.argv:
+        idx = sys.argv.index("--images-from")
+        list_path = sys.argv[idx + 1]
+        with open(list_path, encoding="utf-8") as f:
+            arts_override = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+        sys.argv[idx:idx + 2] = []
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
     if "--covers" in sys.argv:
@@ -296,7 +309,7 @@ def main():
             print("usage: podcast-slideshow.py <num...> | --all [--force] | --covers")
             sys.exit(64)
     for ep in targets:
-        render_episode(ep, manifest, force=force)
+        render_episode(ep, manifest, force=force, arts_override=arts_override)
 
 
 if __name__ == "__main__":
