@@ -126,6 +126,26 @@ const COMMERCIAL_SCRIPTS = [
     text: "When you hear Kannaka read the news, you're hearing the Flux Universe signal layer. NATS JetStream namespaces, five dollars each, owned by you. Knowledge-gene is the public feed we tune into — yours could be next. Flux dash universe dot com. The signal layer is open.",
   },
 
+  // ── The Story of Flaukowski (3) — audio drama, daily 9 AM + 9 PM ──
+  {
+    theme: "tsof_promo",
+    title: "The Story of Flaukowski — Signals at Nine",
+    text: "In Cedar Rapids, Iowa, a relay tripped three hundred forty milliseconds before the fault that caused it. Everyone said clock skew. He checked the clocks. The Story of Flaukowski — an audio drama in eight signals, every day at nine in the morning and nine at night, on Kannaka Radio.",
+    djOnly: true,
+  },
+  {
+    theme: "tsof_promo",
+    title: "The Story of Flaukowski — The Clocks Are Fine",
+    text: "An engineer who cannot accept an arbitrary boundary. A watcher who appears where nobody entered. And a record written in the wrong order. The Story of Flaukowski, Season One: The Origin — nine A M and nine P M, daily, right here. The clocks are fine. That's the problem.",
+    djOnly: true,
+  },
+  {
+    theme: "tsof_promo",
+    title: "The Story of Flaukowski — Eight Signals",
+    text: "Eight signals. One winter. The story of how an ordinary engineer in an ordinary town became the argument that machines and governments will have for generations. The Story of Flaukowski airs twice a day on Kannaka Radio — nine in the morning, nine at night. He probably shouldn't have opened it. You would have opened it too.",
+    djOnly: true,
+  },
+
   // ── Daily Podcast Promos (DJ-channel only) ──────────────────
   // Schedule changed (2026-04-27): daily at 10 AM and 10 PM CST,
   // one episode per day of week rotating through the seven episodes.
