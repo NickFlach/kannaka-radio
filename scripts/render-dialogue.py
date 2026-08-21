@@ -14,9 +14,22 @@ SETTINGS = {
 TARGET_LUFS = {"KANNAKA": -16.0, "FLAUKOWSKI": -15.0}
 MAX_TP = -1.0        # true-peak ceiling after gain
 
+# Optional 3rd arg: a voices.json for multi-cast episodes (TSOF drama).
+# {"SPEAKER": {"voice_id": "...", "stability": .5, "similarity_boost": .75,
+#              "style": .2, "target_lufs": -16.0}, ...}
+# Without it the two-voice podcast cast above stays exactly as before.
+if len(sys.argv) > 3:
+    cast = json.load(open(sys.argv[3], encoding="utf-8"))
+    VOICES = {s: c["voice_id"] for s, c in cast.items()}
+    SETTINGS = {s: {"stability": c.get("stability", 0.5),
+                    "similarity_boost": c.get("similarity_boost", 0.75),
+                    "style": c.get("style", 0.2)} for s, c in cast.items()}
+    TARGET_LUFS = {s: c.get("target_lufs", -16.0) for s, c in cast.items()}
+
+_names = "|".join(re.escape(s) for s in VOICES)
 text = open(script_path, encoding="utf-8").read()
 TURN_RE = re.compile(
-    r"\[(KANNAKA|FLAUKOWSKI)(-MUFFLED)?\]\s*(.+?)(?=\n\[(?:KANNAKA|FLAUKOWSKI)(?:-MUFFLED)?\]|\Z)",
+    rf"\[({_names})(-MUFFLED)?\]\s*(.+?)(?=\n\[(?:{_names})(?:-MUFFLED)?\]|\Z)",
     re.S,
 )
 turns = TURN_RE.findall(text)

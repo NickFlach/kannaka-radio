@@ -18,6 +18,18 @@
 const path = require("path");
 const fs = require("fs");
 
+// Default show config = the original hardcoded Ghost Signals behavior.
+// A second PodcastScheduler instance with a different `show` airs another
+// program (e.g. The Story of Flaukowski at 9/21) with zero changes here.
+const DEFAULT_SHOW = {
+  label: "Ghost Signals Podcast",
+  folder: "Ghost Signals Podcast",
+  airHours: [10, 22],           // Chicago local hours, minute :00
+  promoMinutesBefore: 30,
+  intro: (epTitle) =>
+    `It's podcast time. Today's episode: ${epTitle}. Settle in, turn it up, let the ghost signals speak.`,
+};
+
 class PodcastScheduler {
   /**
    * @param {object} opts
@@ -26,6 +38,7 @@ class PodcastScheduler {
    * @param {function} opts.broadcast   — WS broadcast function
    * @param {function} opts.broadcastState — broadcasts full DJ state
    * @param {function} opts.getMusicDir — returns MUSIC_DIR
+   * @param {object}   [opts.show]      — show config overriding DEFAULT_SHOW
    */
   constructor(opts) {
     this._djEngine = opts.djEngine;
@@ -33,6 +46,7 @@ class PodcastScheduler {
     this._broadcast = opts.broadcast;
     this._broadcastState = opts.broadcastState;
     this._getMusicDir = opts.getMusicDir;
+    this._show = Object.assign({}, DEFAULT_SHOW, opts.show || {});
 
     this._podcastPlaying = false;
     this._savedDJState = null;
@@ -45,7 +59,7 @@ class PodcastScheduler {
    * Start the scheduler. Checks every 60 seconds.
    */
   start() {
-    console.log("[podcast-scheduler] Started — daily 10 AM + 10 PM CST, day-of-week rotation");
+    console.log(`[podcast-scheduler] Started — ${this._show.label}, daily at ${this._show.airHours.join(" + ")}h Chicago, day-of-week rotation`);
     this._timer = setInterval(() => this._tick(), 60000);
     // Run once immediately to catch restart-during-window
     this._tick();
@@ -83,10 +97,10 @@ class PodcastScheduler {
   }
 
   /**
-   * Get the list of podcast episode files from the Ghost Signals Podcast dir.
+   * Get the list of episode files from this show's music subfolder.
    */
   _getEpisodes() {
-    const podcastDir = path.join(this._getMusicDir(), "Ghost Signals Podcast");
+    const podcastDir = path.join(this._getMusicDir(), this._show.folder);
     if (!fs.existsSync(podcastDir)) return [];
     return fs.readdirSync(podcastDir)
       .filter(f => /\.(mp3|wav|flac|m4a|ogg)$/i.test(f))
@@ -117,22 +131,21 @@ class PodcastScheduler {
     const min = chicago.getMinutes();
     const minuteKey = this._minuteKey(chicago);
 
-    // ── Pre-show promo (30 min before each airing) ──────────
-    // Daily: 9:30 AM (before 10 AM airing) + 9:30 PM (before 10 PM airing).
-    const isPromoMorning = hour === 9 && min === 30;
-    const isPromoEvening = hour === 21 && min === 30;
+    // ── Pre-show promo (promoMinutesBefore each airing) ─────
+    const nowMinutes = hour * 60 + min;
+    const isPromo = this._show.airHours.some(
+      (h) => nowMinutes === h * 60 - this._show.promoMinutesBefore);
 
-    if ((isPromoMorning || isPromoEvening) && this._lastPromoMinute !== minuteKey) {
+    if (isPromo && this._lastPromoMinute !== minuteKey) {
       this._lastPromoMinute = minuteKey;
       this._voiceDJ._podcastPromo = true;
-      console.log("[podcast-scheduler] Promo flag set — podcast in 30 minutes");
+      console.log(`[podcast-scheduler] Promo flag set — ${this._show.label} in ${this._show.promoMinutesBefore} minutes`);
     }
 
-    // ── Podcast trigger — daily 10 AM and 10 PM CST ─────────
-    const isMorning = hour === 10 && min === 0;
-    const isEvening = hour === 22 && min === 0;
+    // ── Airing trigger — this show's configured hours, :00 ──
+    const isAirtime = min === 0 && this._show.airHours.includes(hour);
 
-    if ((isMorning || isEvening) && !this._podcastPlaying && this._lastTriggeredMinute !== minuteKey) {
+    if (isAirtime && !this._podcastPlaying && this._lastTriggeredMinute !== minuteKey) {
       this._lastTriggeredMinute = minuteKey;
       this._startScheduledPodcast();
     }
@@ -149,13 +162,22 @@ class PodcastScheduler {
   async _startScheduledPodcast() {
     // Only interrupt DJ channel
     if (this._djEngine.state.channel !== "dj") {
-      console.log("[podcast-scheduler] Not on DJ channel, skipping");
+      console.log(`[podcast-scheduler] ${this._show.label}: not on DJ channel, skipping`);
+      return;
+    }
+
+    // Never hijack another scheduled show mid-episode (two scheduler
+    // instances share one engine; each only knows its own flag).
+    const curMeta = this._djEngine.state.playlistMeta &&
+      this._djEngine.state.playlistMeta[this._djEngine.state.currentTrackIdx];
+    if (curMeta && curMeta.isPodcastScheduled) {
+      console.log(`[podcast-scheduler] ${this._show.label}: another scheduled show is airing, skipping this slot`);
       return;
     }
 
     const episodes = this._getEpisodes();
     if (episodes.length === 0) {
-      console.log("[podcast-scheduler] No podcast episodes found");
+      console.log(`[podcast-scheduler] ${this._show.label}: no episodes found`);
       return;
     }
 
@@ -167,7 +189,7 @@ class PodcastScheduler {
     const NEW_RELEASE_MS = 48 * 60 * 60 * 1000;
     let todayEpisode = null;
     let newestMtime = 0;
-    const podcastDir = path.join(this._getMusicDir(), "Ghost Signals Podcast");
+    const podcastDir = path.join(this._getMusicDir(), this._show.folder);
     for (const f of episodes) {
       try {
         const mtime = fs.statSync(path.join(podcastDir, f)).mtimeMs;
@@ -195,7 +217,7 @@ class PodcastScheduler {
     // Friendly intro line — references the episode by its cleaned-up name.
     // The DJ engine's voice-dj already exists for richer intros; this is
     // the explicit "we're switching channels for the next half hour" cue.
-    const introText = `It's podcast time. Today's episode: ${epTitle}. Settle in, turn it up, let the ghost signals speak.`;
+    const introText = this._show.intro(epTitle);
 
     this._voiceDJ.generateTTS(introText, (err, audioPath, text) => {
       if (!err && audioPath) {
@@ -223,15 +245,15 @@ class PodcastScheduler {
    */
   _playAllPodcastEpisodes(episodeFiles) {
     const podcastTracks = episodeFiles.map((f, i) => {
-      const relPath = path.join("Ghost Signals Podcast", f);
+      const relPath = path.join(this._show.folder, f);
       const title = f.replace(/\.[^.]+$/, "");
       return {
         title: `[PODCAST] ${title}`,
-        album: "Ghost Signals Podcast",
+        album: this._show.folder,
         trackNum: i + 1,
         totalTracks: episodeFiles.length,
         file: relPath,
-        theme: "Kannaka Radio podcast — all episodes",
+        theme: `Kannaka Radio — ${this._show.label}`,
         isPodcastScheduled: true,
       };
     });
@@ -240,7 +262,7 @@ class PodcastScheduler {
     this._djEngine.state.playlist = podcastTracks.map(t => t.file);
     this._djEngine.state.playlistMeta = podcastTracks;
     this._djEngine.state.currentTrackIdx = 0;
-    this._djEngine.state.currentAlbum = "Ghost Signals Podcast";
+    this._djEngine.state.currentAlbum = this._show.folder;
 
     // Trigger state update so clients start playing episode 1
     this._broadcastState();
