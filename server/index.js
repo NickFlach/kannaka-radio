@@ -654,6 +654,13 @@ gsHub.init().then(async () => {
 
 // ── Route deps ─────────────────────────────────────────────
 
+// Self-serve radio ads (KAX-ADR-0005 radio-ads). Its own SQLite store; ad TTS
+// renders live under MUSIC_DIR/radio-ads so they are servable via /audio/.
+// Best-effort init — a store failure must never stop the station booting.
+const { RadioAdStore } = require("./radio-ads");
+const adStore = new RadioAdStore({ assetDir: path.join(MUSIC_DIR, "radio-ads") });
+adStore.init().catch(e => { console.warn('[radio-ads] store init failed:', e.message); });
+
 const deps = {
   djEngine,
   perception: perception_,
@@ -668,6 +675,7 @@ const deps = {
   broadcast,
   floor,
   gsHub,
+  adStore,
   config: {
     baseDir: BASE_DIR,
     spaPath: SPA_PATH,

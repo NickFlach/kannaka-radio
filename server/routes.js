@@ -98,7 +98,12 @@ function publicOrigin(req) {
  * @param {object}                                   deps.config
  */
 module.exports = function setupRoutes(deps) {
-  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub } = deps;
+  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub, adStore } = deps;
+  // Rate/concurrency/daily caps for the unauthenticated ad TTS preview — the
+  // one place a stranger can make the station render audio, so it is guarded
+  // against the cost + disk-fill DoS the design review flagged.
+  const { PreviewLimiter } = require("./radio-ad-preview-limiter");
+  const adPreviewLimiter = new PreviewLimiter();
 
   // Hand the NATS client to agent-endpoint so /agent/skills can read
   // the live skill-registry snapshot captured from KANNAKA.skills.*.
@@ -676,6 +681,37 @@ module.exports = function setupRoutes(deps) {
       const { towerBrief } = require("./tower-floor");
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, brief: towerBrief() }));
+      return;
+    }
+
+    // Self-serve radio ad — TTS PREVIEW (KAX-ADR-0005 radio-ads). A customer
+    // hears their spot in Kannaka's voice before paying. Rate-limited (the
+    // only unauth render path), keyed by content hash so what is previewed is
+    // exactly what airs if bought. Returns a /audio/ URL to the frozen render.
+    if (parsed.pathname === "/api/ads/preview" && req.method === "POST") {
+      const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || (req.socket && req.socket.remoteAddress) || "unknown";
+      const gate = adPreviewLimiter.tryAcquire(ip);
+      if (!gate.ok) {
+        res.writeHead(429, { "Content-Type": "application/json", "Retry-After": String(gate.retryAfterSec || 5) });
+        res.end(JSON.stringify({ ok: false, error: gate.reason === "rate" ? "too many previews — slow down" : gate.reason === "busy" ? "the studio is busy — try again in a moment" : "preview capacity reached for today", retryAfterSec: gate.retryAfterSec }));
+        return;
+      }
+      readBody(req, res, async (body) => {
+        try {
+          if (!adStore) { res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "ad previews unavailable" })); return; }
+          let text;
+          try { text = JSON.parse(body).text; } catch { throw Object.assign(new Error("invalid json"), { code: "invalid_ad_text" }); }
+          const r = await adStore.previewRender(text, voiceDJ);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, audioUrl: "/audio/" + r.file, contentHash: r.contentHash, cached: r.cached }));
+        } catch (e) {
+          const bad = e && e.code === "invalid_ad_text";
+          res.writeHead(bad ? 400 : 500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: bad ? e.message : "preview failed" }));
+        } finally {
+          adPreviewLimiter.release();
+        }
+      });
       return;
     }
 

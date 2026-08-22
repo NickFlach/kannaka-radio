@@ -216,6 +216,31 @@ class RadioAdStore {
     return null;
   }
 
+  /**
+   * Render a PREVIEW of arbitrary ad text — pre-payment, pre-draft. Keyed by
+   * content hash into the same asset dir the airing render uses, so when the
+   * customer later buys, createDraft(text)+renderAd find this exact file
+   * (what they previewed IS what airs). Idempotent: identical text is a cache
+   * hit, never a re-render. Validates + normalizes first (throws InvalidAdText).
+   */
+  async previewRender(rawText, voiceDJ) {
+    if (!this.assetDir) throw new Error('radio-ads asset dir not configured');
+    const text = normalizeAdText(rawText); // throws InvalidAdText on bad/oversized
+    const hash = contentHash(text);
+    const relPrefix = path.basename(this.assetDir);
+    const fileName = `ad_${hash}.mp3`;
+    const absPath = path.join(this.assetDir, fileName);
+    const relFile = path.posix.join(relPrefix, fileName); // URL-shaped for /audio/
+    if (fs.existsSync(absPath)) return { file: relFile, contentHash: hash, cached: true, text };
+    if (!fs.existsSync(this.assetDir)) fs.mkdirSync(this.assetDir, { recursive: true });
+    const tmpPath = await new Promise((resolve, reject) => {
+      voiceDJ.generateTTS(text, (err, p) => (err || !p ? reject(err || new Error('tts produced no file')) : resolve(p)));
+    });
+    fs.copyFileSync(tmpPath, absPath);
+    try { fs.unlinkSync(tmpPath); } catch { /* best-effort */ }
+    return { file: relFile, contentHash: hash, cached: false, text };
+  }
+
   /** Operator/debug view of an ad's run. */
   async adStatus(id) {
     const ad = await this.getAd(id);
