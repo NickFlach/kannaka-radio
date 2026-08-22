@@ -119,6 +119,29 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.ok(eveningPick && eveningPick.adId === d.id, 'evening ad airs in the evening');
   });
 
+  await run('the UNIQUE ledger row itself blocks a re-air (CAS, not just the filter)', async () => {
+    // Reach the INSERT path with the eligibleForBand filter NOT excluding the
+    // ad: last_aired_date cleared, but a claim row already present for today.
+    // This exercises the actual CAS (the crash-between-INSERT-and-UPDATE
+    // state) rather than the last_aired_date fast-path the other tests hit.
+    const when = new Date(Date.UTC(2026, 9, 5, 9, 0)); // morning, a fresh day
+    const day = when.toISOString().slice(0, 10);
+    const d = await store.createDraft({ text: 'A spot to prove the ledger CAS blocks a re-air', band: 'morning' });
+    await store.renderAd(d.id, fakeVoiceDJ);
+    await store._run(`UPDATE radio_ads SET status='approved' WHERE id=?`, [d.id]);
+    await store.scheduleAd(d.id, when);
+    // Simulate "claimed today but counter never advanced" (the crash window):
+    await store._run(`INSERT INTO radio_ad_airings (ad_id, air_date) VALUES (?, ?)`, [d.id, day]);
+    // last_aired_date is still NULL, so eligibleForBand WILL return it — the
+    // only thing that can stop the re-air is the UNIQUE constraint.
+    const elig = await store.eligibleForBand('morning', when);
+    assert.ok(elig.some((a) => a.id === d.id), 'candidate passes the filter (last_aired_date null)');
+    const pick = await store.pickAiringForNow(when);
+    assert.strictEqual(pick, null, 'the ledger UNIQUE row blocks the claim → no re-air');
+    const ad = await store.getAd(d.id);
+    assert.strictEqual(ad.airings_done, 0, 'a blocked claim does not advance the counter');
+  });
+
   store.db.close();
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   if (!failed) console.log('\nAll radio-ads-store tests passed');

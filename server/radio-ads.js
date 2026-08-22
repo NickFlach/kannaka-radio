@@ -60,7 +60,7 @@ class RadioAdStore {
             requested_by TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-          )`);
+          )`, (e) => { if (e) reject(e); }); // callback load-bearing: a callback-less run that errors crashes the shared process
           this.db.run(`CREATE TABLE IF NOT EXISTS radio_ad_airings (
             ad_id TEXT NOT NULL,
             air_date TEXT NOT NULL,
@@ -186,13 +186,23 @@ class RadioAdStore {
         if (String(e && e.code).includes('SQLITE_CONSTRAINT')) continue; // already aired today
         throw e;
       }
-      // Claimed. Advance the run counters; flip to completed on the last airing.
+      // Claimed. Advance the run counters — but STATUS-GUARDED on 'scheduled',
+      // so an ad killed between the candidate SELECT and here cannot be
+      // resurrected to 'scheduled' and aired. If the guard matches nothing
+      // (killed mid-flight), undo the day's claim so a killed ad neither airs
+      // nor burns the day, and skip it.
       const done = ad.airings_done + 1;
       const finished = done >= ad.run_days;
-      await this._run(
-        `UPDATE radio_ads SET airings_done = ?, last_aired_date = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+      const upd = await this._run(
+        `UPDATE radio_ads SET airings_done = ?, last_aired_date = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'scheduled'`,
         [done, day, finished ? 'completed' : 'scheduled', ad.id],
       );
+      if (!upd || upd.changes === 0) {
+        // Killed (or no longer scheduled) after we claimed the day — release
+        // the claim so the ad is truly stopped and the day isn't wasted.
+        await this._run(`DELETE FROM radio_ad_airings WHERE ad_id = ? AND air_date = ?`, [ad.id, day]);
+        continue;
+      }
       return {
         adId: ad.id,
         file: ad.tts_file,
