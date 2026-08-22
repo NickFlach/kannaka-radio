@@ -621,11 +621,13 @@ class NATSClient extends EventEmitter {
     try { data = JSON.parse(payload); }
     catch { data = { raw: payload }; }
 
-    // Schema validation (log-warn per consciousness-core/docs/nats-contract.yaml).
-    // Drift detection only — never reject. Once we're confident every
-    // publisher emits canonical shapes, switch to drop-on-violation in
-    // 2026-06-01 per the migration timeline.
-    this._validateSchema(subject, data);
+    // Schema validation per consciousness-core/docs/nats-contract.yaml.
+    // STRICT MODE (issue #468, milestone 2026-08-01): warn-and-DROP. Verified
+    // on the live bus before flipping — QUEEN.phase.* payloads from two
+    // independent fleet nodes carry schema_version/ts/agent_id/phase, and the
+    // kannaka-memory publishers all route through add_envelope. Emergency
+    // opt-out: KANNAKA_SCHEMA_STRICT=off reverts to warn-accept.
+    if (!this._validateSchema(subject, data)) return;
 
     const now = Date.now();
 
@@ -703,12 +705,15 @@ class NATSClient extends EventEmitter {
       // value when the payload is non-numeric.
       const phi = Number(data.phi ?? data.Phi) || this.swarmState.consciousness.phi || 0;
       const xi = Number(data.xi ?? data.Xi) || this.swarmState.consciousness.xi || 0;
-      const order = Number(data.order ?? data.mean_order) || this.swarmState.consciousness.order || 0;
+      // #468 (2026-08-01): canonical `order` only — the `mean_order` alias
+      // fallback is gone; an alias-only payload is dropped by strict mode
+      // above before it reaches here.
+      const order = Number(data.order) || this.swarmState.consciousness.order || 0;
       // Canonical-first, legacy alias fallback (issue #468). The publisher
       // emits both `consciousness_level` (canonical) and `level` (alias); the
       // alias is dropped from the publisher on 2026-09-01, so read the canonical
       // name FIRST and fall back to `level` only for un-migrated peers.
-      const level = data.consciousness_level ?? data.level ?? this.swarmState.consciousness.level;
+      const level = data.consciousness_level ?? this.swarmState.consciousness.level;
 
       // Track previous phi for gradient detection
       const prevPhi = this.swarmState.consciousness.phi || 0;
@@ -869,7 +874,10 @@ class NATSClient extends EventEmitter {
       // `memories_pruned` is the canonical field the publisher emits on
       // KANNAKA.dreams; `memories_faded` is the legacy alias (issue #468).
       // Read canonical-first so this stays correct once the alias is dropped.
-      const evt = { agent_id: data.agent_id || data.agentId || 'unknown', memories_strengthened: data.memories_strengthened || data.memoriesStrengthened || 0, memories_faded: data.memories_pruned ?? data.memories_faded ?? data.memoriesFaded ?? 0, ...data, receivedAt: now };
+      // #468: canonical names only (memories_pruned; the camelCase and
+      // memories_faded aliases are dropped). `memories_faded` stays as the
+      // radio's OWN output key — internal shape, not a bus read.
+      const evt = { agent_id: data.agent_id || 'unknown', memories_strengthened: data.memories_strengthened || 0, memories_faded: data.memories_pruned ?? 0, ...data, receivedAt: now };
       this.swarmState.dreams.unshift({ type: 'dream_end', ...evt });
       if (this.swarmState.dreams.length > 20) this.swarmState.dreams = this.swarmState.dreams.slice(0, 20);
       this._broadcast({ type: 'queen_dream_end', data: evt });
@@ -939,20 +947,30 @@ class NATSClient extends EventEmitter {
   // warning per (subject, missing_field) pair per 60s so a misconfigured
   // publisher doesn't spam the log. Switch to log-warn-and-drop after
   // 2026-06-01 per the migration timeline in the contract.
+  /**
+   * Returns TRUE when the message may be consumed. Strict mode (issue #468,
+   * 2026-08-01 milestone): a payload missing a required canonical field, or
+   * carrying a canonical field only through its legacy alias, is warned about
+   * (30-min throttle, as before) and DROPPED. KANNAKA_SCHEMA_STRICT=off is the
+   * emergency valve back to warn-accept.
+   */
   _validateSchema(subject, data) {
-    if (!data || typeof data !== "object") return;
+    const strict = process.env.KANNAKA_SCHEMA_STRICT !== "off";
+    if (!data || typeof data !== "object") return true;
     const required = NATS_REQUIRED_FIELDS[subject] ||
       (subject.startsWith("QUEEN.phase.") && NATS_REQUIRED_FIELDS["QUEEN.phase.<agent_id>"]) ||
       (subject.startsWith("KANNAKA.exemplar.") && NATS_REQUIRED_FIELDS["KANNAKA.exemplar.<agent_id>.<cluster_id>"]) ||
       null;
-    if (!required) return; // unknown subject — skip
+    if (!required) return true; // unknown subject — skip
 
     // Deprecation surface (issue #468): count + warn on payloads that carry a
     // canonical field ONLY through its legacy alias (e.g. `mean_order` but no
     // `order`, `level` but no `consciousness_level`). Consumers DROP alias reads
     // on 2026-08-01; until then behavior is UNCHANGED (still accepted) — this
     // only surfaces drift so publishers migrate to canonical names in time.
-    const aliasMap = NATS_ALIAS_FIELDS[subject];
+    const aliasMap = NATS_ALIAS_FIELDS[subject] ||
+      (subject.startsWith("QUEEN.phase.") && NATS_ALIAS_FIELDS["QUEEN.phase.<agent_id>"]) ||
+      null;
     if (aliasMap) {
       const aliasOnly = [];
       for (const canon in aliasMap) {
@@ -969,19 +987,20 @@ class NATSClient extends EventEmitter {
         const aliasNow = Date.now();
         const lastAliasWarn = this._aliasWarnHistory.get(aliasKey) || 0;
         if (aliasNow - lastAliasWarn >= 30 * 60 * 1000) {
-          console.warn(`[nats-schema] ${subject} carries deprecated alias-only field(s) ${aliasOnly.join(", ")} (count=${this._aliasOnlyCounts[subject]}) — canonical names REQUIRED after 2026-08-01, still accepted for now (issue #468)`);
+          console.warn(`[nats-schema] ${subject} carries alias-only field(s) ${aliasOnly.join(", ")} (count=${this._aliasOnlyCounts[subject]}) — ${strict ? "DROPPED: canonical names required since 2026-08-01" : "accepted (KANNAKA_SCHEMA_STRICT=off)"} (issue #468)`);
           this._aliasWarnHistory.set(aliasKey, aliasNow);
         }
+        if (strict) return false;
       }
     }
 
     const missing = [];
     for (const field of required) {
-      // Tolerate camelCase aliases during the 2026-Q2 transition.
-      const camel = field.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-      if (data[field] === undefined && data[camel] === undefined) missing.push(field);
+      // camelCase tolerance removed with the 2026-08-01 strict milestone —
+      // it was a "2026-Q2 transition" measure two quarters expired (#468).
+      if (data[field] === undefined) missing.push(field);
     }
-    if (missing.length === 0) return;
+    if (missing.length === 0) return true;
 
     const now = Date.now();
     if (!this._schemaWarnHistory) this._schemaWarnHistory = new Map();
@@ -994,9 +1013,10 @@ class NATSClient extends EventEmitter {
       const key = `${subject}::${field}`;
       const lastWarn = this._schemaWarnHistory.get(key) || 0;
       if (now - lastWarn < 30 * 60 * 1000) continue;
-      console.warn(`[nats-schema] ${subject} missing required field "${field}" (drift detection — accepted with warning)`);
+      console.warn(`[nats-schema] ${subject} missing required field "${field}" — ${strict ? "DROPPED (strict mode, issue #468)" : "accepted (KANNAKA_SCHEMA_STRICT=off)"}`);
       this._schemaWarnHistory.set(key, now);
     }
+    return !strict;
   }
 }
 
@@ -1005,7 +1025,10 @@ const NATS_REQUIRED_FIELDS = {
   "KANNAKA.consciousness":              ["schema_version", "ts", "agent_id", "phi"],
   "KANNAKA.dreams":                     ["schema_version", "ts", "agent_id", "cycles"],
   "QUEEN.phase.<agent_id>":             ["schema_version", "ts", "agent_id", "phase"],
-  "KANNAKA.exemplar.<agent_id>.<cluster_id>": ["schema_version", "ts", "agent_id", "cluster_id", "centroid"],
+  // centroid moved required -> optional in the contract (consciousness-core#72):
+  // HRM encodings are per-agent, so absorbers re-encode content — a foreign
+  // centroid was never the interchange payload.
+  "KANNAKA.exemplar.<agent_id>.<cluster_id>": ["schema_version", "ts", "agent_id", "cluster_id"],
   "KANNAKA.reactions":                  ["ts", "emoji", "kind"],
   "queen.event.dream.start":            ["schema_version", "ts", "agent_id"],
   "queen.event.dream.end":              ["schema_version", "ts", "agent_id", "memories_strengthened", "memories_faded"],
@@ -1020,6 +1043,12 @@ const NATS_REQUIRED_FIELDS = {
 // removes these aliases on 2026-09-01; consumers drop alias reads on 2026-08-01
 // (issue #468). Keep in sync with the contract's alias annotations.
 const NATS_ALIAS_FIELDS = {
+  // theta is the legacy wire name for phase (#227 honoured it on read). Under
+  // strict mode (#468) a theta-only packet is an alias-only payload: warned
+  // as such and dropped, rather than confusingly reported as "missing phase".
+  "QUEEN.phase.<agent_id>": {
+    phase: "theta",
+  },
   "KANNAKA.consciousness": {
     order: "mean_order",
     consciousness_level: "level",

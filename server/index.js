@@ -922,6 +922,25 @@ const podcastScheduler = new PodcastScheduler({
 });
 podcastScheduler.start();
 
+// ── The Story of Flaukowski — audio drama, daily 9 AM + 9 PM ─
+// Second scheduler instance over the same engine; the cross-show guard
+// in podcast-scheduler keeps the two programs from hijacking each other.
+const tsofScheduler = new PodcastScheduler({
+  djEngine,
+  voiceDJ,
+  broadcast,
+  broadcastState,
+  getMusicDir: () => MUSIC_DIR,
+  show: {
+    label: "The Story of Flaukowski",
+    folder: "The Story of Flaukowski",
+    airHours: [9, 21],
+    intro: (epTitle) =>
+      `The signal is coming in. The Story of Flaukowski — ${epTitle}. Lights low; listen close.`,
+  },
+});
+tsofScheduler.start();
+
 // ── Programming schedule — time-of-day album rotation ────
 const { ProgrammingSchedule } = require("./programming");
 const programming = new ProgrammingSchedule({
@@ -929,7 +948,10 @@ const programming = new ProgrammingSchedule({
   voiceDJ,
   broadcast,
   broadcastState,
-  getPodcastStatus: () => podcastScheduler.getStatus(),
+  getPodcastStatus: () => ({
+    podcastPlaying: podcastScheduler.getStatus().podcastPlaying ||
+                    tsofScheduler.getStatus().podcastPlaying,
+  }),
   // peaceOration is constructed below; pass a getter so the showcase
   // trigger resolves it lazily at tick time (60s+ later).
   peaceOration: { composeAlbumNarration: (...args) => peaceOration.composeAlbumNarration(...args) },

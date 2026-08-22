@@ -40,13 +40,15 @@ function clientWithAgents(agents) {
 }
 
 const leave = (c, id) =>
-  c._handleMessage('queen.event.leave', JSON.stringify({ agent_id: id, display_name: id }));
+  // #468: fixtures ride the canonical envelope, as the real announce_event
+  // publisher does (kannaka-memory src/nats.rs, add_envelope).
+  c._handleMessage('queen.event.leave', JSON.stringify({ schema_version: '1.0', ts: Date.now(), agent_id: id, display_name: id }));
 
 const join = (c, id, extra = {}) =>
-  c._handleMessage('queen.event.join', JSON.stringify({ agent_id: id, display_name: id, ...extra }));
+  c._handleMessage('queen.event.join', JSON.stringify({ schema_version: '1.0', ts: Date.now(), agent_id: id, display_name: id, ...extra }));
 
 const phase = (c, id, p) =>
-  c._handleMessage(`QUEEN.phase.${id}`, JSON.stringify({ agent_id: id, phase: p }));
+  c._handleMessage(`QUEEN.phase.${id}`, JSON.stringify({ schema_version: '1.0', ts: Date.now(), agent_id: id, phase: p }));
 
 console.log('\nqueen-leave-presence.test.js');
 

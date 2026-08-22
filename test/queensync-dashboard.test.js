@@ -41,7 +41,11 @@ const QUEEN_WS_TYPES = [
 function deliver(subject, data) {
   const sent = [];
   const client = new NATSClient({ broadcast: (m) => sent.push(m) });
-  client._handleMessage(subject, JSON.stringify(data));
+  // #468: fixtures ride the canonical envelope, as the real announce_event
+  // publisher does (kannaka-memory src/nats.rs applies add_envelope to every
+  // queen.event.*). memory_id is required on memory.shared per the contract.
+  const enveloped = { schema_version: '1.0', ts: Date.now(), memory_id: 'm-test', ...data };
+  client._handleMessage(subject, JSON.stringify(enveloped));
   return { client, sent };
 }
 
@@ -64,7 +68,7 @@ run('#135 the shared-memory history is bounded like the other event history', ()
   const client = new NATSClient({ broadcast: () => {} });
   for (let i = 0; i < 60; i++) {
     client._handleMessage('queen.event.memory.shared',
-      JSON.stringify({ agent_id: 'a' + i, content: 'm' + i }));
+      JSON.stringify({ schema_version: '1.0', ts: Date.now(), memory_id: 'm-' + i, agent_id: 'a' + i, content: 'm' + i }));
   }
   assert.ok(client.swarmState.agentEvents.length <= 50,
     'unbounded growth would be a leak in a long-running server');
