@@ -657,6 +657,28 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // Ghost Signals Tower — the tenant receiver (KAX-ADR-0005 dogfood).
+    // The tower POSTs this floor's signed events here; we verify the HMAC and
+    // fold them into the reading-room brief. readBody hands us the RAW bytes,
+    // which the signature is over. Inert (503) until TOWER_WEBHOOK_SECRET is
+    // set from the once-shown secret the webhook registration returned.
+    if (parsed.pathname === "/api/tower-floor/events" && req.method === "POST") {
+      const { receiveTowerEvent } = require("./tower-floor");
+      readBody(req, res, (body) => {
+        const out = receiveTowerEvent(body, req.headers);
+        res.writeHead(out.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(out.body));
+      });
+      return;
+    }
+    // The reading room, read back — the brief the floor's panel is built from.
+    if (parsed.pathname === "/api/tower-floor/brief" && req.method === "GET") {
+      const { towerBrief } = require("./tower-floor");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, brief: towerBrief() }));
+      return;
+    }
+
     // API: set music directory
     if (parsed.pathname === "/api/set-music-dir" && req.method === "POST") {
       readBody(req, res, (body) => {
