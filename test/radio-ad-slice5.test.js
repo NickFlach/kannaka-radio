@@ -211,6 +211,52 @@ async function paidScheduled(store, text, band, airings) {
     assert.strictEqual((await store.reserveBandHold('ad_ln2', 'late_night', 1)).reserved, true, 'completion freed the band');
   });
 
+  // The stale-hold sweep must respect its grace window in BOTH directions.
+  // Regression: the cutoff was a JS `toISOString()` ("2026-08-23T17:45:34.123Z")
+  // compared as TEXT against a column SQLite writes as "2026-08-23 19:15:07".
+  // Same date prefix, then ' ' (0x20) < 'T' (0x54) — so EVERY same-day unpaid
+  // hold compared as older than the cutoff and the 90-minute grace was really
+  // zero. Observed live 2026-08-23: a real buyer's hold was freed 27s into his
+  // checkout, leaving the band sellable twice while he was still paying.
+  await run('the stale-hold sweep frees an abandoned checkout but NOT one still in progress', async () => {
+    const mk = async (adId, band, minutesAgo) => {
+      await store._run(
+        `INSERT INTO radio_ads (id, status, text, content_hash, band, run_days) VALUES (?, 'draft', ?, ?, ?, 7)`,
+        [adId, 'hold sweep fixture ' + adId, adId, band],
+      );
+      await store._run(
+        `INSERT INTO radio_ad_band_holds (ad_id, band, created_at) VALUES (?, ?, datetime('now', ?))`,
+        [adId, band, `-${minutesAgo} minutes`],
+      );
+    };
+    await mk('ad_fresh', 'drive_time', 10);   // mid-checkout — must survive
+    await mk('ad_stale', 'overnight', 120);   // abandoned — must be freed
+
+    await store.releaseStaleUnpaidHolds(90 * 60 * 1000);
+
+    assert.strictEqual(
+      (await store.reserveBandHold('ad_other1', 'drive_time', 1)).reserved, false,
+      'a 10-minute-old unpaid hold is INSIDE the 90-minute grace and must still occupy the band',
+    );
+    assert.strictEqual(
+      (await store.reserveBandHold('ad_other2', 'overnight', 1)).reserved, true,
+      'a 2-hour-old unpaid hold is outside the grace and must be swept',
+    );
+
+    // And a hold whose ad HAS paid is never swept, however old.
+    await store._run(
+      `INSERT INTO radio_ads (id, status, text, content_hash, band, run_days, paid_at) VALUES ('ad_paid_old', 'paid', 'paid fixture', 'h_paid', 'midday', 7, datetime('now'))`,
+    );
+    await store._run(
+      `INSERT INTO radio_ad_band_holds (ad_id, band, created_at) VALUES ('ad_paid_old', 'midday', datetime('now', '-3 days'))`,
+    );
+    await store.releaseStaleUnpaidHolds(90 * 60 * 1000);
+    assert.strictEqual(
+      (await store.reserveBandHold('ad_other3', 'midday', 1)).reserved, false,
+      'a PAID ad keeps its band slot no matter how old the hold is',
+    );
+  });
+
   store.db.close();
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   if (!failed) console.log('\nAll radio-ad-slice5 tests passed');

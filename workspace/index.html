@@ -1127,6 +1127,9 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 .ad-btn-ghost { background: transparent; color: var(--purple-light, #c084fc); border: 1px solid rgba(139,92,246,0.5); }
 .ad-btn-buy { background: linear-gradient(135deg, #7c3aed, #06b6d4); color: #fff; }
 .ad-status { margin-top: 10px; font-size: 0.85rem; color: #94a3b8; min-height: 1.2em; }
+/* The post-checkout confirmation — the buyer just spent money, so this reads
+   as an acknowledgement rather than another line of grey status text. */
+.ad-status-ok { color: #d1fae5; background: rgba(16,185,129,0.10); border: 1px solid rgba(16,185,129,0.35); border-radius: 8px; padding: 12px 14px; line-height: 1.5; }
 .ad-buy-note { margin-top: 14px; font-size: 0.78rem; color: #64748b; line-height: 1.6; text-align: center; }
 .ad-buy-note a { color: var(--purple-light, #c084fc); }
 .gate-links {
@@ -2566,6 +2569,42 @@ async function buyAd() {
   } catch (e) { status.textContent = 'Could not start checkout — try again.'; }
   btn.disabled = false;
 }
+
+// Stripe sends the buyer back to `/?ad=paid`. Without this the page looked
+// byte-identical to before the purchase — a real buyer paid $5 on 2026-08-23
+// and got no acknowledgement of any kind. Say plainly what happens next: the
+// spot is bought, a human reviews it, and it airs after that (not instantly).
+function showAdReturnNotice() {
+  var params = new URLSearchParams(window.location.search);
+  var state = params.get('ad');
+  if (state !== 'paid' && state !== 'cancelled') return;
+  var section = document.getElementById('air-time');
+  var status = document.getElementById('adStatus');
+  if (!section || !status) return;
+
+  if (state === 'paid') {
+    status.innerHTML = '';
+    var head = document.createElement('strong');
+    head.textContent = "Payment received — your spot is booked.";
+    var body = document.createElement('div');
+    body.style.marginTop = '6px';
+    body.textContent = "It goes to a human for review before it airs, usually within a day. "
+      + "You'll hear it in your chosen slot once a day for a week. If it isn't approved you're "
+      + "refunded in full — you keep the free month of Ghost Signals Analytics either way.";
+    status.appendChild(head);
+    status.appendChild(body);
+    status.className = 'ad-status ad-status-ok';
+  } else {
+    status.textContent = 'Checkout cancelled — nothing was charged. Your spot is still here when you want it.';
+    status.className = 'ad-status';
+  }
+
+  // Drop the query param so a refresh doesn't replay the banner, and scroll the
+  // buyer to the thing that just changed.
+  try { window.history.replaceState({}, '', window.location.pathname); } catch (e) { /* non-fatal */ }
+  section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+showAdReturnNotice();
 
 // ══════════════════════════════════════════════════════
 //  Web Audio Analyser Init

@@ -25,6 +25,7 @@ const crypto = require('crypto');
 const sqlite3 = require('sqlite3');
 const {
   isValidBand, currentBand, stationDay, normalizeAdText, contentHash, airEligible, canTransition,
+  sqliteTimestamp,
 } = require('./radio-ads-core');
 
 class RadioAdStore {
@@ -525,9 +526,17 @@ class RadioAdStore {
   }
 
   /** Release holds for ads that were never paid within the grace window, so an
-   *  abandoned checkout doesn't permanently occupy a band slot. */
+   *  abandoned checkout doesn't permanently occupy a band slot.
+   *
+   *  The cutoff MUST be in SQLite's own TEXT shape. `created_at` is written by
+   *  `datetime('now')` as "2026-08-23 19:15:07"; a JS `toISOString()` is
+   *  "2026-08-23T17:45:34.123Z". Compared as TEXT those share the date prefix
+   *  and then diverge at ' ' (0x20) vs 'T' (0x54) — so every same-day hold
+   *  sorted BELOW the cutoff and the grace window was effectively zero. Live on
+   *  2026-08-23 that freed a paying customer's band slot 27 seconds into his
+   *  checkout, leaving the band sellable twice over. */
   async releaseStaleUnpaidHolds(graceMs = 90 * 60 * 1000, now = new Date()) {
-    const cutoff = new Date(now.getTime() - graceMs).toISOString();
+    const cutoff = sqliteTimestamp(new Date(now.getTime() - graceMs));
     await this._run(
       `UPDATE radio_ad_band_holds SET released_at = datetime('now')
          WHERE released_at IS NULL AND created_at < ?
