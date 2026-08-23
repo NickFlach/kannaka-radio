@@ -40,9 +40,14 @@ class RadioAdStore {
   }
 
   init() {
-    const dir = path.dirname(this.dbPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return new Promise((resolve, reject) => {
+      // Inside the executor so a mkdir failure REJECTS rather than throwing
+      // synchronously — index.js only .catch()es a rejection, and a store
+      // init failure must never take the station down (issue #155).
+      try {
+        const dir = path.dirname(this.dbPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      } catch (e) { return reject(e); }
       this.db = new sqlite3.Database(this.dbPath, (err) => {
         if (err) return reject(err);
         this.db.serialize(() => {
