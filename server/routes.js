@@ -103,6 +103,7 @@ module.exports = function setupRoutes(deps) {
   // one place a stranger can make the station render audio, so it is guarded
   // against the cost + disk-fill DoS the design review flagged.
   const { PreviewLimiter } = require("./radio-ad-preview-limiter");
+  const { MAX_UPLOAD_BYTES } = require("./gs-analytics");
   const adPreviewLimiter = new PreviewLimiter();
   // A separate, cheaper per-IP cap for checkout creation (each call mints a
   // draft + a Stripe session). No render slot needed — admit() only.
@@ -872,9 +873,14 @@ module.exports = function setupRoutes(deps) {
 
       if (parsed.pathname === "/api/gsa/datasets" && req.method === "POST") {
         if (gsa.runner.depth() >= 4) { gsaJson(429, { ok: false, error: "the analysis queue is busy — try again in a minute" }); return; }
-        const kind = parsed.query && parsed.query.kind === "json" ? "json" : "csv";
-        const name = parsed.query ? parsed.query.name : "";
-        readBodyLimited(req, res, 5 * 1024 * 1024, async (body) => {
+        // `parsed` is a WHATWG URL — it has searchParams, NOT .query. Reading
+        // .query silently yielded undefined, so EVERY upload was forced to csv
+        // (breaking the advertised JSON format outright, and persisting the
+        // wrong kind so Re-analyze failed forever) and every dataset was named
+        // "dataset". Every other query read in this file uses searchParams.
+        const kind = parsed.searchParams.get("kind") === "json" ? "json" : "csv";
+        const name = parsed.searchParams.get("name") || "";
+        readBodyLimited(req, res, MAX_UPLOAD_BYTES, async (body) => {
           try {
           const bytes = Buffer.byteLength(body);
           if (bytes < 4) { gsaJson(400, { ok: false, error: "empty upload" }); return; }
@@ -907,7 +913,7 @@ module.exports = function setupRoutes(deps) {
         if (!ds) { gsaJson(404, { ok: false, error: "dataset not found" }); return; }
         if (ds.status === "analyzing") { gsaJson(409, { ok: false, error: "already analyzing" }); return; }
         let text;
-        try { text = gsa.store.readBlob(ds.id); } catch { gsaJson(503, { ok: false, error: "dataset blob unavailable" }); return; }
+        try { text = await gsa.store.readBlob(ds.id); } catch { gsaJson(503, { ok: false, error: "dataset blob unavailable" }); return; }
         runGsaAnalysis(account, ds.id, ds.kind, text);
         gsaJson(202, { ok: true, id: ds.id, status: "analyzing" });
         return;
@@ -953,7 +959,7 @@ module.exports = function setupRoutes(deps) {
         if (err) { res.writeHead(404); res.end("not found"); return; }
         res.writeHead(200, {
           "Content-Type": file.endsWith(".js") ? "application/javascript; charset=utf-8" : "text/html; charset=utf-8",
-          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
           "X-Content-Type-Options": "nosniff",
         });
         res.end(data);

@@ -70,7 +70,7 @@
         view.addEventListener('click', function () { loadReport(d.id); });
         row.appendChild(view);
       }
-      if (d.status === 'failed' || d.status === 'ready') {
+      if (d.status === 'failed' || d.status === 'ready' || d.status === 'uploaded') {
         var re = el('button', 'btn-ghost', 'Re-analyze');
         re.addEventListener('click', function () {
           api('/api/gsa/datasets/' + encodeURIComponent(d.id) + '/analyze', { method: 'POST' }).then(refreshMe);
@@ -99,7 +99,9 @@
         return;
       }
       var rep = j.report;
-      body.appendChild(el('div', 'status', rep.rowCount + ' rows × ' + rep.columnCount + ' columns'));
+      var dims = (rep.rowCount != null ? rep.rowCount + ' rows' : '') + (rep.columnCount != null ? ' × ' + rep.columnCount + ' columns' : '');
+      body.appendChild(el('div', 'status', dims || 'report'));
+      if (rep.truncated) body.appendChild(el('div', 'caveat', 'This report was large, so some detail was trimmed — the signals above are complete.'));
 
       var sigHead = el('h2', null, 'Signals');
       sigHead.style.color = '#c084fc'; sigHead.style.fontSize = '0.95rem'; sigHead.style.marginTop = '14px';

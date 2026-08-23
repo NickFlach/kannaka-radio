@@ -84,7 +84,7 @@ run('pearson: strong pair detected, tiny n refused', () => {
   const b = a.map((x) => 3 * x + 1);
   const { r, n } = pearson(a, b);
   assert.ok(r > 0.999); assert.strictEqual(n, 40);
-  assert.strictEqual(pearson([1, 2, 3], [1, 2, 3]).r, null, 'n<8 → no claim');
+  assert.strictEqual(pearson([1, 2, 3], [1, 2, 3]).r, null, 'n<30 → no claim (honesty floor)');
 });
 
 run('linearTrend: recovers a known slope', () => {

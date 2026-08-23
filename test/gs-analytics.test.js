@@ -166,6 +166,37 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.ok(/restart/.test(ds.error));
   });
 
+  await run('a completion for a dataset deleted mid-analysis is DROPPED, not resurrected', async () => {
+    // A fresh account: `account` has already hit its quota earlier in this file.
+    const racer = { adId: 'ad_racer001' };
+    const d = await gsa.createDataset(racer, { name: 'racy', kind: 'csv', bytes: 10, text: 'a,b\n1,2\n' });
+    assert.strictEqual(d.ok, true, 'fresh account has quota');
+    assert.ok(await gsa.markAnalyzing(racer.adId, d.id));
+    // Customer hits Delete while the worker is still running.
+    await gsa.deleteDataset(racer.adId, d.id);
+    // Worker finishes and reports success + a failure for good measure.
+    await gsa.markReady(racer.adId, d.id, { rowCount: 1, signals: [], caveats: [] });
+    await gsa.markFailed(racer.adId, d.id, 'late failure');
+    assert.strictEqual(await gsa.getDataset(racer.adId, d.id), undefined, 'stays deleted — never reappears with a missing blob');
+    const raw = await radio._get(`SELECT status FROM gsa_datasets WHERE id=?`, [d.id]);
+    assert.strictEqual(raw.status, 'deleted');
+  });
+
+  await run('a failed blob write leaves no .part behind, and the sweep collects stragglers', async () => {
+    // Force a write failure by pointing the store at an unusable dir.
+    const broken = new GsaStore({ radioStore: radio, dataDir: path.join(tmp, 'gsa', 'nope.blob', 'deeper') });
+    const r = await broken.createDataset(account, { name: 'boom', kind: 'csv', bytes: 10, text: 'a,b\n1,2\n' });
+    assert.strictEqual(r.ok, false, 'write failed as intended');
+    // Now prove the sweep reclaims an abandoned .part in the real dir.
+    const stray = path.join(tmp, 'gsa', 'ds_strayaaaa.blob.part-123-456');
+    fs.writeFileSync(stray, 'partial');
+    const old = Date.now() - 2 * 60 * 60 * 1000;
+    fs.utimesSync(stray, old / 1000, old / 1000);
+    const swept = await gsa.sweep();
+    assert.ok(swept.orphans >= 1, 'the .part was collected');
+    assert.strictEqual(fs.existsSync(stray), false, 'abandoned .part removed — it is invisible to the byte budget');
+  });
+
   await run('delete: row CAS first, blob unlinked', async () => {
     const del = await gsa.deleteDataset(account.adId, dsId);
     assert.strictEqual(del.ok, true);
