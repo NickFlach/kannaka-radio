@@ -9,7 +9,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { ALBUMS } = require("./dj-engine");
-const { MIME, readBody, getSPA, findAudioFile } = require("./utils");
+const { MIME, readBody, readBodyLimited, getSPA, findAudioFile } = require("./utils");
 const { handleAgentRequest, attachNatsClient } = require("./agent-endpoint");
 const { verifyKaxToken, traderIdFromClaims } = require("./kax-identity");
 const { handlePodcastRequest } = require("./podcast-feed");
@@ -98,7 +98,7 @@ function publicOrigin(req) {
  * @param {object}                                   deps.config
  */
 module.exports = function setupRoutes(deps) {
-  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub, adStore, adPayments, adBridge } = deps;
+  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub, adStore, adPayments, adBridge, gsa } = deps;
   // Rate/concurrency/daily caps for the unauthenticated ad TTS preview — the
   // one place a stranger can make the station render audio, so it is guarded
   // against the cost + disk-fill DoS the design review flagged.
@@ -107,6 +107,10 @@ module.exports = function setupRoutes(deps) {
   // A separate, cheaper per-IP cap for checkout creation (each call mints a
   // draft + a Stripe session). No render slot needed — admit() only.
   const adCheckoutLimiter = new PreviewLimiter({ perIpMax: 10, perIpWindowMs: 10 * 60_000, maxConcurrent: 1_000_000, dailyMax: 500 });
+  // GSA limiters: redeem is keyed on socket.remoteAddress (NOT the spoofable
+  // XFF — review M5); authed endpoints key per-token (stronger than any IP).
+  const gsaRedeemLimiter = new PreviewLimiter({ perIpMax: 10, perIpWindowMs: 10 * 60_000, maxConcurrent: 1_000_000, dailyMax: 2000 });
+  const gsaApiLimiter = new PreviewLimiter({ perIpMax: 60, perIpWindowMs: 10 * 60_000, maxConcurrent: 1_000_000, dailyMax: 20000 });
 
   // Hand the NATS client to agent-endpoint so /agent/skills can read
   // the live skill-registry snapshot captured from KANNAKA.skills.*.
@@ -795,6 +799,164 @@ module.exports = function setupRoutes(deps) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: "enact error" }));
         }
+      });
+      return;
+    }
+
+    // ── Ghost Signals Analytics (Piece 4) ─────────────────────
+    // Customer analytics: redeem an ad's free-month entitlement → bearer token
+    // (never in a URL — review B3) → upload datasets → worker-thread analysis →
+    // signals report. Every route 503s until the GSA store migrated (M8).
+    if (parsed.pathname.startsWith("/api/gsa/")) {
+      // Defensive responder: a client that disconnected mid-request leaves an
+      // ended response, and writeHead on it THROWS — inside this async handler
+      // that would be an unhandled rejection, and the server has no
+      // process-level guard, so it would take the STATION down. Never throw.
+      const gsaJson = (status, body) => {
+        try {
+          if (res.headersSent || res.writableEnded) return;
+          res.writeHead(status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(body));
+        } catch (_) { /* client vanished — nothing to say */ }
+      };
+      try {
+      if (!gsa || !gsa.ready()) { gsaJson(503, { ok: false, error: "analytics unavailable" }); return; }
+      const bearer = (() => { const m = /^Bearer\s+(.+)$/.exec(req.headers.authorization || ""); return m ? m[1].trim() : null; })();
+      const runGsaAnalysis = (account, id, kind, text) => {
+        gsa.store.markAnalyzing(account.adId, id).then((okA) => {
+          if (!okA) return null;
+          return gsa.runner.analyze(kind, text).then((r) => {
+            if (r.ok) return gsa.store.markReady(account.adId, id, r.report);
+            return gsa.store.markFailed(account.adId, id, r.busy ? "analysis queue was busy — run analysis again" : r.error);
+          });
+        }).catch(() => { gsa.store.markFailed(account.adId, id, "internal error").catch(() => {}); });
+      };
+
+      // Redeem (unauthenticated): {adId} → token. Rate-limited by the SOCKET
+      // address, not XFF (M5).
+      if (parsed.pathname === "/api/gsa/redeem" && req.method === "POST") {
+        const ip = (req.socket && req.socket.remoteAddress) || "unknown";
+        const gate = gsaRedeemLimiter.admit(ip);
+        if (!gate.ok) { gsaJson(429, { ok: false, error: "too many attempts — slow down", retryAfterSec: gate.retryAfterSec }); return; }
+        readBody(req, res, async (body) => {
+          let adId;
+          try { adId = JSON.parse(body).adId; } catch { gsaJson(400, { ok: false, error: "invalid json" }); return; }
+          try {
+            const r = await gsa.store.redeem(adId);
+            if (r.ok) { gsaJson(200, { ok: true, token: r.token, expiresAt: r.expiresAt, rotated: !!r.rotated }); return; }
+            const map = { bad_ad_id: 400, no_entitlement: 404, revoked: 403, offer_expired: 410, account_expired: 410 };
+            gsaJson(map[r.error] || 400, { ok: false, error: r.error });
+          } catch (e) { gsaJson(500, { ok: false, error: "redeem failed" }); }
+        });
+        return;
+      }
+
+      // Everything below requires the bearer token (checked LIVE against the
+      // entitlement so revocation/expiry apply immediately — review B4).
+      const account = bearer ? await gsa.store.auth(bearer).catch(() => null) : null;
+      if (!account) { gsaJson(401, { ok: false, error: "invalid or expired token" }); return; }
+      const tGate = gsaApiLimiter.admit("t:" + account.adId);
+      if (!tGate.ok) { gsaJson(429, { ok: false, error: "too many requests — slow down", retryAfterSec: tGate.retryAfterSec }); return; }
+
+      if (parsed.pathname === "/api/gsa/me" && req.method === "GET") {
+        const datasets = await gsa.store.listDatasets(account.adId).catch(() => []);
+        gsaJson(200, { ok: true, account: { adId: account.adId, expiresAt: account.expiresAt }, datasets });
+        return;
+      }
+
+      if (parsed.pathname === "/api/gsa/datasets" && req.method === "GET") {
+        const datasets = await gsa.store.listDatasets(account.adId).catch(() => []);
+        gsaJson(200, { ok: true, datasets });
+        return;
+      }
+
+      if (parsed.pathname === "/api/gsa/datasets" && req.method === "POST") {
+        if (gsa.runner.depth() >= 4) { gsaJson(429, { ok: false, error: "the analysis queue is busy — try again in a minute" }); return; }
+        const kind = parsed.query && parsed.query.kind === "json" ? "json" : "csv";
+        const name = parsed.query ? parsed.query.name : "";
+        readBodyLimited(req, res, 5 * 1024 * 1024, async (body) => {
+          try {
+          const bytes = Buffer.byteLength(body);
+          if (bytes < 4) { gsaJson(400, { ok: false, error: "empty upload" }); return; }
+          // The byte reservation lives INSIDE createDataset (it owns the whole
+          // check-reserve-write-commit sequence), so the route just calls it.
+          let created;
+          try {
+            created = await gsa.store.createDataset(account, { name, kind, bytes, text: body });
+          } catch (e) { created = { ok: false, error: "store_failed" }; }
+          if (!created.ok) {
+            const map = { too_large: 413, quota: 409, capacity: 503, storage_unavailable: 503, bad_kind: 400, store_failed: 500 };
+            const msg = { quota: "dataset quota reached — delete one first", capacity: "analytics storage is full right now", storage_unavailable: "storage unavailable — try again later" };
+            gsaJson(map[created.error] || 400, { ok: false, error: msg[created.error] || created.error });
+            return;
+          }
+          runGsaAnalysis(account, created.id, kind, body);
+          gsaJson(202, { ok: true, id: created.id, name: created.name, status: "analyzing" });
+          } catch (e) {
+            try { console.warn("[gsa] upload failed:", e && e.message); } catch (_) {}
+            gsaJson(500, { ok: false, error: "upload failed" });
+          }
+        });
+        return;
+      }
+
+      let m = /^\/api\/gsa\/datasets\/(ds_[A-Za-z0-9_-]{4,32})\/analyze$/.exec(parsed.pathname);
+      if (m && req.method === "POST") {
+        if (gsa.runner.depth() >= 4) { gsaJson(429, { ok: false, error: "the analysis queue is busy — try again in a minute" }); return; }
+        const ds = await gsa.store.getDataset(account.adId, m[1]).catch(() => null);
+        if (!ds) { gsaJson(404, { ok: false, error: "dataset not found" }); return; }
+        if (ds.status === "analyzing") { gsaJson(409, { ok: false, error: "already analyzing" }); return; }
+        let text;
+        try { text = gsa.store.readBlob(ds.id); } catch { gsaJson(503, { ok: false, error: "dataset blob unavailable" }); return; }
+        runGsaAnalysis(account, ds.id, ds.kind, text);
+        gsaJson(202, { ok: true, id: ds.id, status: "analyzing" });
+        return;
+      }
+
+      m = /^\/api\/gsa\/reports\/(ds_[A-Za-z0-9_-]{4,32})$/.exec(parsed.pathname);
+      if (m && req.method === "GET") {
+        const ds = await gsa.store.getDataset(account.adId, m[1]).catch(() => null);
+        if (!ds) { gsaJson(404, { ok: false, error: "dataset not found" }); return; }
+        if (ds.status !== "ready" || !ds.report) { gsaJson(200, { ok: true, id: ds.id, status: ds.status, error: ds.error || null, report: null }); return; }
+        let report = null;
+        try { report = JSON.parse(ds.report); } catch { /* report stays null */ }
+        gsaJson(200, { ok: true, id: ds.id, name: ds.name, status: "ready", report });
+        return;
+      }
+
+      m = /^\/api\/gsa\/datasets\/(ds_[A-Za-z0-9_-]{4,32})$/.exec(parsed.pathname);
+      if (m && req.method === "DELETE") {
+        const r = await gsa.store.deleteDataset(account.adId, m[1]).catch(() => ({ ok: false, error: "delete failed" }));
+        gsaJson(r.ok ? 200 : 404, r);
+        return;
+      }
+
+      gsaJson(404, { ok: false, error: "unknown gsa endpoint" });
+      return;
+      } catch (e) {
+        // Belt-and-braces: NOTHING in analytics may reach the process as an
+        // unhandled rejection. Any unexpected throw becomes a 500 here and the
+        // station plays on.
+        try { console.warn("[gsa] request failed:", e && e.message); } catch (_) {}
+        gsaJson(500, { ok: false, error: "analytics error" });
+        return;
+      }
+    }
+
+    // The GSA customer page + its script — served with a strict CSP (no inline
+    // scripts; every customer-derived string is rendered via textContent in
+    // analytics.js — review B2/B3).
+    if ((parsed.pathname === "/analytics" || parsed.pathname === "/analytics.js") && req.method === "GET") {
+      const file = parsed.pathname === "/analytics" ? "analytics.html" : "analytics.js";
+      const fp = path.join(path.dirname(config.spaPath), file);
+      fs.readFile(fp, (err, data) => {
+        if (err) { res.writeHead(404); res.end("not found"); return; }
+        res.writeHead(200, {
+          "Content-Type": file.endsWith(".js") ? "application/javascript; charset=utf-8" : "text/html; charset=utf-8",
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+          "X-Content-Type-Options": "nosniff",
+        });
+        res.end(data);
       });
       return;
     }
