@@ -73,7 +73,14 @@ run('malformed / missing header fails safely', () => {
 
 run('classify: checkout.session.completed paid → paid with metadata + currency', () => {
   const c = classifyWebhookEvent({ type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 500, currency: 'usd', metadata: { radio_ad_id: 'ad_1' } } } });
-  assert.deepStrictEqual(c, { kind: 'paid', adId: 'ad_1', sessionId: 'cs_1', paymentIntent: 'pi_1', amountCents: 500, currency: 'usd' });
+  assert.deepStrictEqual(c, { kind: 'paid', adId: 'ad_1', sessionId: 'cs_1', paymentIntent: 'pi_1', amountCents: 500, currency: 'usd', customerEmail: null });
+});
+
+run("classify: the buyer's Checkout email is carried out for the receipt", () => {
+  // Checkout collects this but never copies it to the PaymentIntent, so it has
+  // to travel out of the event or the buyer gets no receipt at all.
+  const c = classifyWebhookEvent({ type: 'checkout.session.completed', data: { object: { id: 'cs_e', payment_status: 'paid', payment_intent: 'pi_e', amount_total: 500, currency: 'usd', customer_details: { email: 'buyer@example.com' }, metadata: { radio_ad_id: 'ad_e' } } } });
+  assert.strictEqual(c.customerEmail, 'buyer@example.com');
 });
 
 run('classify: checkout.session.completed UNPAID → ignore', () => {

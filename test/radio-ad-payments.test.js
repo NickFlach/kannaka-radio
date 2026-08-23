@@ -17,12 +17,17 @@ const WHSEC = 'whsec_test_xyz';
 const NOWMS = 1_800_000_000_000; // fixed clock (ms)
 const NOWSEC = Math.floor(NOWMS / 1000);
 
-function fakeApi() {
-  const calls = { checkout: [], refund: [] };
+function fakeApi({ updateThrows = false } = {}) {
+  const calls = { checkout: [], refund: [], update: [] };
   return {
     calls,
     async createCheckoutSession(params, idem) { calls.checkout.push({ params, idem }); return { id: 'cs_' + calls.checkout.length, url: 'https://checkout.stripe/' + calls.checkout.length }; },
     async createRefund(params, idem) { calls.refund.push({ params, idem }); return { id: 're_' + calls.refund.length }; },
+    async updatePaymentIntent(id, params) {
+      calls.update.push({ id, params });
+      if (updateThrows) throw new Error('stripe 500');
+      return { id, receipt_email: params.receipt_email };
+    },
   };
 }
 
@@ -172,6 +177,55 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     await assert.rejects(() => bare.createCheckout({ text: 'valid enough text here', band: 'morning' }), /payments unavailable/);
     const out = await bare.handleWebhook('{}', 't=1,v1=deadbeef');
     assert.strictEqual(out.status, 503);
+  });
+
+  // The buyer's only confirmation at purchase time is Stripe's own receipt, and
+  // Checkout does NOT copy customer_details.email onto the PaymentIntent. Live
+  // on 2026-08-23 a real $5 purchase left receipt_email null and the buyer heard
+  // nothing at all.
+  await run("a paid webhook hands Stripe the buyer's email so a receipt is sent", async () => {
+    const s2 = new RadioAdStore({ dbPath: path.join(tmp, 'receipt.sqlite'), assetDir: path.join(tmp, 'r-ads') });
+    await s2.init();
+    const rapi = fakeApi();
+    const p2 = new RadioAdPayments({ store: s2, api: rapi, webhookSecret: WHSEC, now: () => NOWMS });
+    const d = await p2.createCheckout({ text: 'A spot whose buyer deserves a receipt', band: 'morning' });
+    const { body, header } = signedEvent({ id: 'evt_r', type: 'checkout.session.completed', data: { object: { id: 'cs_r', payment_status: 'paid', payment_intent: 'pi_r', amount_total: 500, currency: 'usd', customer_details: { email: 'buyer@example.com' }, metadata: { radio_ad_id: d.adId } } } });
+    const out = await p2.handleWebhook(body, header);
+    assert.strictEqual(out.status, 200);
+    assert.strictEqual((await s2.getAd(d.adId)).status, 'paid');
+    assert.strictEqual(rapi.calls.update.length, 1, 'exactly one receipt_email update');
+    assert.strictEqual(rapi.calls.update[0].id, 'pi_r');
+    assert.strictEqual(rapi.calls.update[0].params.receipt_email, 'buyer@example.com');
+    s2.db.close();
+  });
+
+  await run('a failed receipt update never breaks the money path (payment still recorded, 200)', async () => {
+    const s3 = new RadioAdStore({ dbPath: path.join(tmp, 'receipt-fail.sqlite'), assetDir: path.join(tmp, 'r3-ads') });
+    await s3.init();
+    const rapi = fakeApi({ updateThrows: true });
+    const p3 = new RadioAdPayments({ store: s3, api: rapi, webhookSecret: WHSEC, now: () => NOWMS });
+    const d = await p3.createCheckout({ text: 'A spot where the receipt call falls over', band: 'evening' });
+    const { body, header } = signedEvent({ id: 'evt_rf', type: 'checkout.session.completed', data: { object: { id: 'cs_rf', payment_status: 'paid', payment_intent: 'pi_rf', amount_total: 500, currency: 'usd', customer_details: { email: 'buyer2@example.com' }, metadata: { radio_ad_id: d.adId } } } });
+    const out = await p3.handleWebhook(body, header);
+    // 200, not 500: the charge is recorded, and a cosmetic receipt failure must
+    // not put Stripe into an endless webhook retry loop.
+    assert.strictEqual(out.status, 200, 'a receipt failure must not make Stripe retry');
+    assert.strictEqual((await s3.getAd(d.adId)).status, 'paid', 'payment recorded regardless');
+    assert.strictEqual(rapi.calls.update.length, 1, 'it did try');
+    s3.db.close();
+  });
+
+  await run('a paid webhook with no buyer email touches no receipt API', async () => {
+    const s4 = new RadioAdStore({ dbPath: path.join(tmp, 'receipt-none.sqlite'), assetDir: path.join(tmp, 'r4-ads') });
+    await s4.init();
+    const rapi = fakeApi();
+    const p4 = new RadioAdPayments({ store: s4, api: rapi, webhookSecret: WHSEC, now: () => NOWMS });
+    const d = await p4.createCheckout({ text: 'A spot bought without an email address', band: 'morning' });
+    const { body, header } = signedEvent({ id: 'evt_rn', type: 'checkout.session.completed', data: { object: { id: 'cs_rn', payment_status: 'paid', payment_intent: 'pi_rn', amount_total: 500, currency: 'usd', metadata: { radio_ad_id: d.adId } } } });
+    assert.strictEqual((await p4.handleWebhook(body, header)).status, 200);
+    assert.strictEqual((await s4.getAd(d.adId)).status, 'paid');
+    assert.strictEqual(rapi.calls.update.length, 0, 'no email → no pointless Stripe call');
+    s4.db.close();
   });
 
   store.db.close();

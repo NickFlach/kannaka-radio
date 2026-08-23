@@ -112,8 +112,21 @@ function airEligible(ad, now = new Date()) {
   return true;
 }
 
+/** Render a Date in the exact TEXT shape SQLite's `datetime('now')` writes:
+ *  "YYYY-MM-DD HH:MM:SS", UTC, no 'T', no fraction, no 'Z'.
+ *
+ *  Every timestamp column in this store is TEXT written by `datetime('now')`,
+ *  so any cutoff we compare against one has to match byte-for-byte — in that
+ *  shape lexicographic order IS chronological order. A JS `toISOString()` is
+ *  NOT interchangeable: it shares the date prefix and then diverges at ' '
+ *  (0x20) vs 'T' (0x54), which silently makes every same-day row compare as
+ *  older than the cutoff. Use this for any `<column> < ?` time comparison. */
+function sqliteTimestamp(d = new Date()) {
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 module.exports = {
   RADIO_AD_BANDS, bandForHour, currentBand, isValidBand, stationDay,
   MAX_AD_CHARS, MIN_AD_CHARS, InvalidAdText, normalizeAdText, contentHash,
-  AD_STATES, AD_TRANSITIONS, canTransition, airEligible,
+  AD_STATES, AD_TRANSITIONS, canTransition, airEligible, sqliteTimestamp,
 };

@@ -58,6 +58,10 @@ function makeStripeApi(secretKey) {
   return {
     createCheckoutSession(params, idempotencyKey) { return post('/v1/checkout/sessions', params, idempotencyKey); },
     createRefund(params, idempotencyKey) { return post('/v1/refunds', params, idempotencyKey); },
+    // Setting receipt_email on a succeeded PaymentIntent makes Stripe send the
+    // buyer its own receipt. No idempotency key: this is a last-write-wins
+    // field update, and a replayed webhook writes the same address.
+    updatePaymentIntent(id, params) { return post(`/v1/payment_intents/${encodeURIComponent(id)}`, params); },
   };
 }
 
@@ -151,6 +155,20 @@ class RadioAdPayments {
       // (this slice has no reconciliation sweep to recover a dropped signal).
       // A terminal-state no-op (already refunded/killed/completed) → 200.
       if (!r.ok && r.reason === 'not_found') return { status: 500, body: { error: 'ad not found — will retry' } };
+      // Hand Stripe the buyer's address so it sends its own receipt — the only
+      // confirmation the buyer gets at this point, since the spot is still
+      // awaiting operator review and nothing has aired yet. STRICTLY
+      // best-effort: a receipt is cosmetic, the payment is already recorded,
+      // and throwing here would turn a missing email into an endless Stripe
+      // webhook retry against an idempotent markPaid.
+      if (c.customerEmail && c.paymentIntent) {
+        try {
+          const api = this._stripe();
+          if (api && api.updatePaymentIntent) {
+            await api.updatePaymentIntent(c.paymentIntent, { receipt_email: c.customerEmail });
+          }
+        } catch (e) { /* no receipt — the money path is unaffected */ }
+      }
     }
     if (c.kind === 'disputed' && c.paymentIntent) {
       // A chargeback: stop airing, mark disputed. Issue NO refund (the dispute
