@@ -76,6 +76,27 @@ class RadioAdStore {
   _get(sql, params = []) { return new Promise((res, rej) => this.db.get(sql, params, (e, row) => (e ? rej(e) : res(row)))); }
   _all(sql, params = []) { return new Promise((res, rej) => this.db.all(sql, params, (e, rows) => (e ? rej(e) : res(rows)))); }
 
+  /**
+   * Freeze a rendered temp file to its content-hashed final path ATOMICALLY:
+   * copy to a unique .part in the same dir, then rename into place. A rename
+   * within one dir is atomic, so a concurrent /audio/ GET never reads a
+   * half-written mp3, and a crash mid-copy leaves only a .part (never a
+   * partial file that existsSync would then treat as a permanent cache hit).
+   * If a concurrent render of the same hash won the race (rename-over-existing
+   * throws on Windows; on POSIX it silently replaces with identical bytes),
+   * we treat an already-present target as success and drop our copy.
+   */
+  _freezeAtomic(tmpPath, absPath) {
+    const part = `${absPath}.part-${process.pid}-${Date.now()}`;
+    fs.copyFileSync(tmpPath, part);
+    try {
+      fs.renameSync(part, absPath);
+    } catch (e) {
+      if (fs.existsSync(absPath)) { try { fs.unlinkSync(part); } catch { /* best-effort */ } }
+      else { try { fs.unlinkSync(part); } catch { /* best-effort */ } throw e; }
+    }
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────
 
   /** Create a draft ad. Validates + freezes the content hash. Money and the
@@ -118,7 +139,7 @@ class RadioAdStore {
     const tmpPath = await new Promise((resolve, reject) => {
       voiceDJ.generateTTS(ad.text, (err, p) => (err || !p ? reject(err || new Error('tts produced no file')) : resolve(p)));
     });
-    fs.copyFileSync(tmpPath, absPath);
+    this._freezeAtomic(tmpPath, absPath);
     try { fs.unlinkSync(tmpPath); } catch { /* tmp cleanup best-effort */ }
     await this._run(`UPDATE radio_ads SET tts_file = ?, updated_at = datetime('now') WHERE id = ?`, [relFile, id]);
     return { file: relFile, cached: false };
@@ -236,9 +257,57 @@ class RadioAdStore {
     const tmpPath = await new Promise((resolve, reject) => {
       voiceDJ.generateTTS(text, (err, p) => (err || !p ? reject(err || new Error('tts produced no file')) : resolve(p)));
     });
-    fs.copyFileSync(tmpPath, absPath);
+    this._freezeAtomic(tmpPath, absPath);
     try { fs.unlinkSync(tmpPath); } catch { /* best-effort */ }
+    // A concurrent same-hash render may have won the freeze; either way the
+    // final file now exists and is the identical content.
     return { file: relFile, contentHash: hash, cached: false, text };
+  }
+
+  /**
+   * Sweep abandoned preview renders. A preview writes ad_<hash>.mp3 into the
+   * asset dir with NO db row; only a PURCHASED ad's renderAd sets tts_file. So
+   * any ad_*.mp3 not referenced by a radio_ads.tts_file AND older than
+   * maxAgeMs is an abandoned preview for text nobody bought — delete it.
+   * Deleting is always safe: a later purchase of that exact text just
+   * re-renders the identical content hash. This is the disk-fill bound the
+   * design review required before the preview endpoint is surfaced (O1 runs
+   * ~91% full). The age grace keeps a preview alive long enough for the
+   * customer to complete a purchase against it.
+   */
+  async pruneUnreferencedPreviews({ maxAgeMs = 3 * 24 * 60 * 60 * 1000, now = Date.now() } = {}) {
+    if (!this.assetDir || !fs.existsSync(this.assetDir)) return { scanned: 0, deleted: 0 };
+    const rows = await this._all(`SELECT tts_file FROM radio_ads WHERE tts_file IS NOT NULL`, []);
+    const referenced = new Set(rows.map((r) => path.basename(r.tts_file)));
+    let scanned = 0;
+    let deleted = 0;
+    let names;
+    try { names = fs.readdirSync(this.assetDir); } catch { return { scanned: 0, deleted: 0 }; }
+    for (const name of names) {
+      if (!/^ad_[0-9a-f]{16}\.mp3$/.test(name)) continue; // only our preview/airing renders
+      scanned += 1;
+      if (referenced.has(name)) continue; // a paid ad points at this — keep
+      const abs = path.join(this.assetDir, name);
+      let mtime;
+      try { mtime = fs.statSync(abs).mtimeMs; } catch { continue; }
+      if (now - mtime < maxAgeMs) continue; // still inside the purchase grace
+      try { fs.unlinkSync(abs); deleted += 1; } catch { /* best-effort */ }
+    }
+    return { scanned, deleted };
+  }
+
+  /**
+   * Start a periodic in-process prune of abandoned previews. In-process (not a
+   * cron) so a check that lives in the service can't itself be the thing that
+   * stopped running — the same reasoning as disk-space.js. Returns the timer,
+   * unref'd so it never holds the process open. Runs one sweep on start.
+   */
+  startPreviewSweeper({ intervalMs = 6 * 60 * 60 * 1000 } = {}) {
+    const tick = () => { this.pruneUnreferencedPreviews().catch(() => {}); };
+    tick();
+    const t = setInterval(tick, intervalMs);
+    if (t.unref) t.unref();
+    return t;
   }
 
   /** Operator/debug view of an ad's run. */

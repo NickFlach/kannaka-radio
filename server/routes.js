@@ -690,17 +690,28 @@ module.exports = function setupRoutes(deps) {
     // exactly what airs if bought. Returns a /audio/ URL to the frozen render.
     if (parsed.pathname === "/api/ads/preview" && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || (req.socket && req.socket.remoteAddress) || "unknown";
-      const gate = adPreviewLimiter.tryAcquire(ip);
+      // Cheap per-IP + daily check BEFORE reading the body — a spammer is
+      // rejected without us reading their payload. The concurrency slot is
+      // taken later, wrapping ONLY the render, so a request that dies before
+      // its body arrives (413 oversize, slow-loris abort — readBody's callback
+      // never fires) can never leak a slot.
+      const gate = adPreviewLimiter.admit(ip);
       if (!gate.ok) {
         res.writeHead(429, { "Content-Type": "application/json", "Retry-After": String(gate.retryAfterSec || 5) });
-        res.end(JSON.stringify({ ok: false, error: gate.reason === "rate" ? "too many previews — slow down" : gate.reason === "busy" ? "the studio is busy — try again in a moment" : "preview capacity reached for today", retryAfterSec: gate.retryAfterSec }));
+        res.end(JSON.stringify({ ok: false, error: gate.reason === "rate" ? "too many previews — slow down" : "preview capacity reached for today", retryAfterSec: gate.retryAfterSec }));
         return;
       }
       readBody(req, res, async (body) => {
+        if (!adStore) { res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "ad previews unavailable" })); return; }
+        let text;
+        try { text = JSON.parse(body).text; } catch { res.writeHead(400, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "invalid json" })); return; }
+        // Reserve the render slot only now, immediately before the TTS work.
+        if (!adPreviewLimiter.acquireSlot()) {
+          res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "5" });
+          res.end(JSON.stringify({ ok: false, error: "the studio is busy — try again in a moment", retryAfterSec: 5 }));
+          return;
+        }
         try {
-          if (!adStore) { res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "ad previews unavailable" })); return; }
-          let text;
-          try { text = JSON.parse(body).text; } catch { throw Object.assign(new Error("invalid json"), { code: "invalid_ad_text" }); }
           const r = await adStore.previewRender(text, voiceDJ);
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, audioUrl: "/audio/" + r.file, contentHash: r.contentHash, cached: r.cached }));
@@ -709,7 +720,7 @@ module.exports = function setupRoutes(deps) {
           res.writeHead(bad ? 400 : 500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: bad ? e.message : "preview failed" }));
         } finally {
-          adPreviewLimiter.release();
+          adPreviewLimiter.releaseSlot();
         }
       });
       return;
