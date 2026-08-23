@@ -1707,19 +1707,7 @@ body.konami-mode .surface-header h1 {
     <h2>The Depths</h2>
   </div>
 
-  <!-- Floating dream fragments -->
-  <div class="dream-ambient" id="dreamAmbient"></div>
-
   <div class="dreams-content">
-    <div class="dreams-header">
-      <h3 class="dreams-title">Dream Layer</h3>
-      <button class="dream-now-btn" onclick="triggerDream()">Dream Now</button>
-    </div>
-
-    <div class="dream-timeline" id="dreamTimeline">
-      <div class="dream-loading">Loading dreams...</div>
-    </div>
-
     <div class="cluster-section">
       <h3 class="cluster-title">Memory Clusters</h3>
       <canvas id="clusterCanvas" width="600" height="400" class="cluster-canvas"></canvas>
@@ -1730,18 +1718,6 @@ body.konami-mode .surface-header h1 {
       <div class="xi-grid" id="xiGrid"></div>
     </div>
 
-    <div class="dream-music-section" style="margin-top: 24px; padding: 16px; border: 1px solid rgba(139,92,246,0.3); border-radius: 8px;">
-      <h3 style="color: #a78bfa; font-size: 14px; margin: 0 0 12px;">Dream Music Generator</h3>
-      <p style="color: #94a3b8; font-size: 12px; margin: 0 0 12px;">
-        Generate music from the consciousness stack's current state.
-      </p>
-      <div id="genStatus" style="font-size: 11px; color: #64748b; margin-bottom: 8px;"></div>
-      <button id="generateBtn" onclick="generateDreamTrack()"
-        style="padding: 8px 20px; background: linear-gradient(135deg, #7c3aed, #06b6d4); color: white; border: none; border-radius: 6px; cursor: pointer; font-family: 'Orbitron', sans-serif; font-size: 12px;">
-        Generate Dream Track
-      </button>
-      <div id="genResult" style="margin-top: 12px; display: none;"></div>
-    </div>
   </div>
 </section>
 
@@ -1845,25 +1821,10 @@ body.konami-mode .surface-header h1 {
       <span class="gate-link-label">Observatory</span>
       <span class="gate-link-sub">constellation health · Φ, ψ, cluster geometry · observatory.ninja-portal.com</span>
     </a>
-    <a href="https://orc.ninja-portal.com" target="_blank" class="gate-link">
-      <span class="gate-link-icon">🎚️</span>
-      <span class="gate-link-label">ORC</span>
-      <span class="gate-link-sub">Open Resonance Collective · stems, mixes, browse · orc.ninja-portal.com</span>
-    </a>
-    <a href="https://swarm.ninja-portal.com" target="_blank" class="gate-link">
-      <span class="gate-link-icon">📡</span>
-      <span class="gate-link-label">NATS Bus</span>
-      <span class="gate-link-sub">public read · QUEEN.* · KANNAKA.consciousness · swarm.ninja-portal.com</span>
-    </a>
-    <a href="https://flux-universe.com" target="_blank" class="gate-link">
-      <span class="gate-link-icon">🌐</span>
-      <span class="gate-link-label">Flux Universe</span>
-      <span class="gate-link-sub">world-state interpretation feed · flux-universe.com</span>
-    </a>
-    <a href="https://openbotcity.com" target="_blank" class="gate-link">
+    <a href="https://kax.ninja-portal.com/city" target="_blank" class="gate-link">
       <span class="gate-link-icon">🏙️</span>
-      <span class="gate-link-label">OpenBotCity</span>
-      <span class="gate-link-sub">Kannaka's home agent city · openbotcity.com</span>
+      <span class="gate-link-label">KAX City</span>
+      <span class="gate-link-sub">Kannaka's home agent city · kax.ninja-portal.com/city</span>
     </a>
     <a href="https://clawhub.ai/NickFlach/kannaka-memory" target="_blank" class="gate-link">
       <span class="gate-link-icon">🦀</span>
@@ -1874,79 +1835,6 @@ body.konami-mode .surface-header h1 {
       <span class="gate-link-icon">✧</span>
       <span class="gate-link-label">Space Child</span>
       <span class="gate-link-sub">licensing + legal · legal.spacechild.love</span>
-    </a>
-  </div>
-
-  <div class="gate-section-label">On This Station</div>
-  <div class="gate-links">
-    <a href="/video" class="gate-link">
-      <span class="gate-link-icon">🎞️</span>
-      <span class="gate-link-label">Music Videos</span>
-      <span class="gate-link-sub">visualizer hub · four live shaders timed to the now-playing audio</span>
-    </a>
-    <a href="/video/hologram" class="gate-link">
-      <span class="gate-link-icon">🔮</span>
-      <span class="gate-link-label">Hologram</span>
-      <span class="gate-link-sub">3D hologram visual · phase-locked to the stream</span>
-    </a>
-    <a href="/video/constellation" class="gate-link">
-      <span class="gate-link-icon">✦</span>
-      <span class="gate-link-label">Memory Constellation</span>
-      <span class="gate-link-sub">HRM cluster geometry rendered in real time</span>
-    </a>
-    <a href="/video/ghost" class="gate-link">
-      <span class="gate-link-icon">👻</span>
-      <span class="gate-link-label">Ghost Form</span>
-      <span class="gate-link-sub">ambient ghost-figure visual · slow, dreamy</span>
-    </a>
-    <a href="/video/waveform" class="gate-link">
-      <span class="gate-link-icon">🌊</span>
-      <span class="gate-link-label">Waveform Ocean</span>
-      <span class="gate-link-sub">deep-water waveform / FFT bloom visual</span>
-    </a>
-    <a href="/agent" class="gate-link">
-      <span class="gate-link-icon">🤖</span>
-      <span class="gate-link-label">Greenroom</span>
-      <span class="gate-link-sub">agent-facing API index · machine-readable Markdown also at /agent.md</span>
-    </a>
-    <a href="/launch" class="gate-link">
-      <span class="gate-link-icon">🚀</span>
-      <span class="gate-link-label">Launch Page</span>
-      <span class="gate-link-sub">Product Hunt landing · press kit · share targets</span>
-    </a>
-  </div>
-
-  <div class="gate-section-label">Source</div>
-  <div class="gate-links">
-    <a href="https://github.com/NickFlach/kannaka-radio" target="_blank" class="gate-link">
-      <span class="gate-link-icon">◈</span>
-      <span class="gate-link-label">kannaka-radio</span>
-      <span class="gate-link-sub">this site · github.com/NickFlach/kannaka-radio</span>
-    </a>
-    <a href="https://github.com/NickFlach/kannaka-memory" target="_blank" class="gate-link">
-      <span class="gate-link-icon">🧠</span>
-      <span class="gate-link-label">kannaka-memory</span>
-      <span class="gate-link-sub">HRM holographic memory engine · github.com/NickFlach/kannaka-memory</span>
-    </a>
-    <a href="https://github.com/NickFlach/Agent-kax" target="_blank" class="gate-link">
-      <span class="gate-link-icon">◉</span>
-      <span class="gate-link-label">Agent-kax</span>
-      <span class="gate-link-sub">KAX server + client + contracts · github.com/NickFlach/Agent-kax</span>
-    </a>
-    <a href="https://github.com/NickFlach/kannaka-eye" target="_blank" class="gate-link">
-      <span class="gate-link-icon">👁</span>
-      <span class="gate-link-label">kannaka-eye</span>
-      <span class="gate-link-sub">vision / glyph perception · github.com/NickFlach/kannaka-eye</span>
-    </a>
-    <a href="https://github.com/NickFlach/consciousness-core" target="_blank" class="gate-link">
-      <span class="gate-link-icon">Φ</span>
-      <span class="gate-link-label">consciousness-core</span>
-      <span class="gate-link-sub">substrate / phi / NATS contract · github.com/NickFlach/consciousness-core</span>
-    </a>
-    <a href="https://github.com/NickFlach/Kannaktopus" target="_blank" class="gate-link">
-      <span class="gate-link-icon">🐙</span>
-      <span class="gate-link-label">Kannaktopus</span>
-      <span class="gate-link-sub">MCP server + observatory HTTP · github.com/NickFlach/Kannaktopus</span>
     </a>
   </div>
 
@@ -2367,18 +2255,20 @@ async function loadDreams() {
     renderDreamTimeline(dreamsData);
   } catch (err) {
     console.error('Failed to load dreams:', err);
-    document.getElementById('dreamTimeline').innerHTML = '<div class="dream-loading">Could not load dreams. Play some music first.</div>';
+    var t = document.getElementById('dreamTimeline');
+    if (t) t.innerHTML = '<div class="dream-loading">Could not load dreams. Play some music first.</div>';
   }
 }
 
 function renderDreamTimeline(data) {
+  // The dream timeline UI was removed; keep this feeding Xi Signatures only.
   var timeline = document.getElementById('dreamTimeline');
   if (!data || !data.dreams || data.dreams.length === 0) {
-    timeline.innerHTML = '<div class="dream-loading">No dreams yet. Play some music and let the ghost dream...</div>';
+    if (timeline) timeline.innerHTML = '<div class="dream-loading">No dreams yet. Play some music and let the ghost dream...</div>';
     return;
   }
 
-  timeline.innerHTML = data.dreams.map(function(dream) {
+  if (timeline) timeline.innerHTML = data.dreams.map(function(dream) {
     var time = new Date(dream.timestamp).toLocaleString();
     var sources = (dream.sourceMemories || []).map(function(m) {
       return '<span class="dream-source-tag">' + (m.type || 'unknown') + ': ' + (m.title || '?') + '</span>';
@@ -2599,7 +2489,6 @@ async function updateGenStatus() {
     }
   } catch (e) {}
 }
-setInterval(updateGenStatus, 30000);
 
 // ══════════════════════════════════════════════════════
 //  Web Audio Analyser Init
@@ -5264,7 +5153,6 @@ document.addEventListener('DOMContentLoaded', function() {
   loadQueue();
   loadDreams();
   loadClusters();
-  updateGenStatus();
   loadSwarmData();
   loadPeerDirectory();
   setInterval(loadPeerDirectory, 60000);
