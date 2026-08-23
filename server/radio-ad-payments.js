@@ -78,6 +78,9 @@ class RadioAdPayments {
     // active ad per band at a time — 4 bands ≈ 4 concurrent slots. Raise only
     // when more daily commercial slots per band are provably deliverable.
     this.bandCapacity = opts.bandCapacity ?? 1;
+    // Optional Mailer. Absent (or unconfigured) simply means no mail is sent —
+    // the money path never depends on it.
+    this.mailer = opts.mailer || null;
   }
 
   /** True once a secret key is present — the checkout/refund paths are live. */
@@ -145,7 +148,7 @@ class RadioAdPayments {
       }
       let r;
       try {
-        r = await this.store.markPaid(c.adId, { sessionId: c.sessionId, paymentIntent: c.paymentIntent, amountCents: c.amountCents });
+        r = await this.store.markPaid(c.adId, { sessionId: c.sessionId, paymentIntent: c.paymentIntent, amountCents: c.amountCents, customerEmail: c.customerEmail });
       } catch (e) {
         // Transient store error → 500 so Stripe RETRIES; a dropped paid signal
         // would be an unrecorded charge.
@@ -168,6 +171,18 @@ class RadioAdPayments {
             await api.updatePaymentIntent(c.paymentIntent, { receipt_email: c.customerEmail });
           }
         } catch (e) { /* no receipt — the money path is unaffected */ }
+      }
+      // Tell both humans. Only on the FIRST application of this payment
+      // (`r.already` means a replayed webhook), so Stripe redelivering an event
+      // can't mail the same person twice. Both sends swallow their own errors.
+      if (this.mailer && r && r.ok && !r.already) {
+        const ad = await this.store.getAd(c.adId).catch(() => null);
+        if (ad) {
+          if (ad.customer_email) {
+            await this.mailer.adPurchased(ad.customer_email, { adId: ad.id, band: ad.band, runDays: ad.run_days });
+          }
+          await this.mailer.operatorReviewNeeded({ adId: ad.id, band: ad.band, amountCents: ad.amount_cents, runDays: ad.run_days, text: ad.text });
+        }
       }
     }
     if (c.kind === 'disputed' && c.paymentIntent) {

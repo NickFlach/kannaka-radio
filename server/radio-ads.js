@@ -104,6 +104,12 @@ class RadioAdStore {
     await addCol('refund_amount_cents', 'INTEGER');
     await addCol('disputed_at', 'TEXT');
     await addCol('stripe_dispute_id', 'TEXT');
+    // The buyer's address, as typed into Stripe Checkout. Stored because the
+    // moments worth telling them about — approved, rejected-and-refunded —
+    // happen HOURS after checkout, long after the session object is out of
+    // reach. Write-once (COALESCE), and never used for anything but mail about
+    // this ad.
+    await addCol('customer_email', 'TEXT');
     // Fresh DBs get the reserve/confirm shape directly.
     await this._run(`CREATE TABLE IF NOT EXISTS radio_ad_airings (
       ad_id TEXT NOT NULL,
@@ -233,10 +239,13 @@ class RadioAdStore {
    * only apply once. Identifiers are backfilled regardless of arrival order
    * (payment_intent.succeeded may land before checkout.session.completed).
    */
-  async markPaid(id, { sessionId = null, paymentIntent = null, amountCents = null } = {}) {
+  async markPaid(id, { sessionId = null, paymentIntent = null, amountCents = null, customerEmail = null } = {}) {
     const ad = await this.getAd(id);
     if (!ad) return { ok: false, reason: 'not_found' };
     // Backfill whatever identifiers this event carries (either may arrive first).
+    // The address is write-once: a replayed webhook must not be able to
+    // re-point a paid ad's mail at a different recipient.
+    if (customerEmail) await this._run(`UPDATE radio_ads SET customer_email = COALESCE(customer_email, ?) WHERE id = ?`, [customerEmail, id]);
     if (sessionId && !ad.stripe_session_id) await this._run(`UPDATE radio_ads SET stripe_session_id = ? WHERE id = ? AND stripe_session_id IS NULL`, [sessionId, id]);
     if (paymentIntent && !ad.stripe_payment_intent) await this._run(`UPDATE radio_ads SET stripe_payment_intent = ? WHERE id = ? AND stripe_payment_intent IS NULL`, [paymentIntent, id]);
     if (amountCents != null && ad.amount_cents == null) await this._run(`UPDATE radio_ads SET amount_cents = ? WHERE id = ? AND amount_cents IS NULL`, [amountCents, id]);

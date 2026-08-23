@@ -668,13 +668,22 @@ const { RadioAdStore } = require("./radio-ads");
 const adStore = new RadioAdStore({ assetDir: path.join(MUSIC_DIR, "radio-ads") });
 // Stripe payments for self-serve ads (slice 3). Inert until STRIPE_SECRET_KEY /
 // STRIPE_WEBHOOK_SECRET are set on O1 (slice 6) — checkout/webhook then 503.
+// Transactional mail for advertisers + the operator review nudge. Inert with no
+// SMTP_HOST, so a station without a relay behaves exactly as it did before.
+const { Mailer } = require("./mailer");
+const adMailer = new Mailer({ logger: (m) => console.log(m) });
+if (adMailer.configured()) {
+  console.log(`[mail] relay ${process.env.SMTP_HOST} as ${adMailer.from}${adMailer.operator ? ` · operator ${adMailer.operator}` : " · NO operator address set"}`);
+} else {
+  console.log("[mail] SMTP_HOST unset — advertiser + operator mail disabled");
+}
 const { RadioAdPayments } = require("./radio-ad-payments");
-const adPayments = new RadioAdPayments({ store: adStore });
+const adPayments = new RadioAdPayments({ store: adStore, mailer: adMailer });
 // radio↔KAX approval bridge (slice 4). Renders paid ads early, raises them to
 // Nick's KAX inbox, and enacts his approve/reject. Inert until the bridge env
 // (KAX_RAISE_URL / RADIO_KAX_RAISE_SECRET / KAX_RADIO_ENACT_SECRET) is set.
 const { RadioAdBridge } = require("./radio-ad-bridge");
-const adBridge = new RadioAdBridge({ store: adStore, payments: adPayments, voiceDJ });
+const adBridge = new RadioAdBridge({ store: adStore, payments: adPayments, voiceDJ, mailer: adMailer });
 // Ghost Signals Analytics (Piece 4). Shares the radio-ads SQLite connection;
 // blobs live on /var/oled (never the root FS); ALL analysis runs in
 // spawn-per-job worker threads so a hostile dataset can never stall the
