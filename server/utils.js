@@ -89,6 +89,61 @@ function readBody(req, res, callback) {
   req.on("end", () => { if (!rejected) callback(Buffer.concat(chunks).toString("utf8")); });
 }
 
+/**
+ * Body reader with a CALLER-CHOSEN byte cap — for GSA dataset uploads (up to
+ * 5MB), so the shared 64KB MAX_BODY (which the Stripe webhook and every other
+ * route rely on) is never raised. Guards (review M3):
+ *   - Content-Length precheck rejects oversize before any buffering;
+ *   - streamed byte count enforced regardless (chunked / lying lengths);
+ *   - any Content-Encoding refused (no decompression accepted → the whole
+ *     zip-bomb class is out);
+ *   - a NUL byte in the first chunk refuses binary uploads early.
+ * Calls back with the raw utf8 string; on rejection it has already responded.
+ */
+function readBodyLimited(req, res, maxBytes, callback) {
+  const enc = req.headers["content-encoding"];
+  if (enc && String(enc).toLowerCase() !== "identity") {
+    res.writeHead(415, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: false, error: "compressed uploads are not accepted" }));
+    req.resume();
+    return;
+  }
+  const declared = parseInt(req.headers["content-length"] || "", 10);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    res.writeHead(413, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: false, error: `upload too large (max ${maxBytes} bytes)` }));
+    req.resume();
+    return;
+  }
+  const chunks = [];
+  let size = 0;
+  let rejected = false;
+  let first = true;
+  req.on("data", (d) => {
+    if (rejected) return;
+    if (first) {
+      first = false;
+      if (d.includes(0)) {
+        rejected = true;
+        req.destroy();
+        res.writeHead(415, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "binary uploads are not accepted — send CSV or JSON text" }));
+        return;
+      }
+    }
+    size += d.length;
+    if (size > maxBytes) {
+      rejected = true;
+      req.destroy();
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: `upload too large (max ${maxBytes} bytes)` }));
+      return;
+    }
+    chunks.push(d);
+  });
+  req.on("end", () => { if (!rejected) callback(Buffer.concat(chunks).toString("utf8")); });
+}
+
 // ── Fuzzy audio file matching ──────────────────────────────
 
 function findAudioFile(trackName, musicDir) {
@@ -134,5 +189,6 @@ module.exports = {
   initSPA,
   getSPA,
   readBody,
+  readBodyLimited,
   findAudioFile,
 };

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghost Signals Analytics</title>
+<style>
+  :root { --bg:#07070c; --panel:#101018; --line:rgba(139,92,246,.3); --purple:#c084fc; --cyan:#06b6d4; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.55; }
+  .wrap { max-width:860px; margin:0 auto; padding:40px 20px 80px; }
+  h1 { font-size:1.7rem; letter-spacing:.06em; margin:0 0 4px; background:linear-gradient(135deg,var(--purple),var(--cyan)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tag { color:var(--muted); margin:0 0 28px; font-size:.95rem; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+  .card h2 { margin:0 0 10px; font-size:1.02rem; color:var(--purple); letter-spacing:.04em; }
+  label { display:block; font-size:.8rem; color:var(--muted); margin:10px 0 4px; }
+  input[type=text], select, textarea { width:100%; background:rgba(5,5,10,.7); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:inherit; }
+  textarea { min-height:110px; resize:vertical; font-family:ui-monospace,Consolas,monospace; font-size:.85rem; }
+  button { padding:9px 16px; border:none; border-radius:8px; cursor:pointer; font:inherit; font-size:.88rem; }
+  .btn-main { background:linear-gradient(135deg,#7c3aed,#06b6d4); color:#fff; }
+  .btn-ghost { background:transparent; color:var(--purple); border:1px solid var(--line); }
+  .btn-danger { background:transparent; color:#f87171; border:1px solid rgba(248,113,113,.4); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  .status { color:var(--muted); font-size:.85rem; min-height:1.2em; margin-top:8px; }
+  .ds { border-top:1px solid rgba(255,255,255,.06); padding:10px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .ds-name { font-weight:600; }
+  .ds-meta { color:var(--muted); font-size:.8rem; }
+  .pill { font-size:.72rem; padding:2px 9px; border-radius:99px; border:1px solid var(--line); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .pill.ready { color:#34d399; border-color:rgba(52,211,153,.4); }
+  .pill.failed { color:#f87171; border-color:rgba(248,113,113,.4); }
+  .pill.analyzing { color:var(--cyan); border-color:rgba(6,182,212,.4); }
+  .signal { padding:10px 12px; border-left:3px solid var(--purple); background:rgba(139,92,246,.06); border-radius:0 8px 8px 0; margin:8px 0; font-size:.92rem; }
+  .signal .kind { font-size:.68rem; text-transform:uppercase; letter-spacing:.1em; color:var(--cyan); display:block; margin-bottom:2px; }
+  .caveat { color:var(--muted); font-size:.78rem; font-style:italic; margin:4px 0; }
+  table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.06); }
+  th { color:var(--muted); font-weight:500; }
+  .overflow { overflow-x:auto; }
+  .fineprint { color:#64748b; font-size:.75rem; margin-top:26px; }
+  .hidden { display:none; }
+  a { color:var(--purple); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Ghost Signals Analytics</h1>
+  <p class="tag">Bring us your data — we find the signals. Upload a CSV or JSON dataset and get a ranked report of trends, anomalies, outliers, and correlations.</p>
+
+  <div class="card" id="redeemCard">
+    <h2>Start — redeem your free month</h2>
+    <p class="status">Bought a Kannaka Radio ad? Your ad id (shown at checkout, e.g. <span style="font-family:monospace">ad_XXXXXXXX</span>) unlocks one free month. Re-entering it later issues a fresh access key if you lose yours.</p>
+    <label for="adId">Ad id</label>
+    <input type="text" id="adId" placeholder="ad_…" autocomplete="off">
+    <div class="row"><button class="btn-main" id="redeemBtn">Redeem</button></div>
+    <div class="status" id="redeemStatus"></div>
+  </div>
+
+  <div class="card hidden" id="accountCard">
+    <h2>Your workspace</h2>
+    <div class="status" id="accountStatus"></div>
+    <div class="row"><button class="btn-ghost" id="signOutBtn">Forget my key on this browser</button></div>
+  </div>
+
+  <div class="card hidden" id="uploadCard">
+    <h2>Upload a dataset</h2>
+    <label for="dsName">Name</label>
+    <input type="text" id="dsName" placeholder="e.g. June sales" maxlength="80">
+    <label for="dsKind">Format</label>
+    <select id="dsKind"><option value="csv">CSV (first row = column names)</option><option value="json">JSON (array of flat objects)</option></select>
+    <label for="dsFile">File (max 5 MB)</label>
+    <input type="file" id="dsFile" accept=".csv,.json,.txt">
+    <label for="dsText">…or paste data</label>
+    <textarea id="dsText" placeholder="date,units,revenue&#10;2026-06-01,120,360&#10;…"></textarea>
+    <div class="row"><button class="btn-main" id="uploadBtn">Upload &amp; analyze</button></div>
+    <div class="status" id="uploadStatus"></div>
+  </div>
+
+  <div class="card hidden" id="datasetsCard">
+    <h2>Your datasets</h2>
+    <div id="dsList"></div>
+  </div>
+
+  <div class="card hidden" id="reportCard">
+    <h2 id="reportTitle">Report</h2>
+    <div id="reportBody"></div>
+  </div>
+
+  <p class="fineprint">Your data is analyzed by fixed statistical methods on our servers, is visible only with your access key, never feeds any public surface, and is deleted 30 days after your access expires. Findings are statistical observations, not advice. Questions: <a href="mailto:nflach78@gmail.com">email us</a>.</p>
+</div>
+<script src="/analytics.js"></script>
+</body>
+</html>

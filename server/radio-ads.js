@@ -264,6 +264,11 @@ class RadioAdStore {
       `UPDATE radio_ads SET status = 'refunded', refunded_at = datetime('now'), stripe_refund_id = COALESCE(?, stripe_refund_id), updated_at = datetime('now') WHERE id = ? AND refunded_at IS NULL AND status IN ('paid','rejected','killed')`,
       [refundId, id],
     );
+    if (upd && upd.changes) {
+      // A fully-refunded ad loses the GSA free-month perk. (A PARTIAL kill
+      // refund — markKillRefunded — deliberately keeps it: they aired.)
+      await this._run(`UPDATE radio_ad_gsa_entitlements SET revoked_at = datetime('now') WHERE ad_id = ? AND revoked_at IS NULL`, [id]);
+    }
     return { ok: true, already: !(upd && upd.changes) };
   }
 
@@ -479,6 +484,9 @@ class RadioAdStore {
       `UPDATE radio_ads SET disputed_at = datetime('now'), stripe_dispute_id = COALESCE(?, stripe_dispute_id), updated_at = datetime('now') WHERE id = ? AND disputed_at IS NULL`,
       [disputeId, ad.id],
     );
+    // A charged-back ad loses the GSA free-month perk (GSA auth re-checks
+    // revoked_at live, so an active analytics session ends immediately).
+    await this._run(`UPDATE radio_ad_gsa_entitlements SET revoked_at = datetime('now') WHERE ad_id = ? AND revoked_at IS NULL`, [ad.id]);
     await this.releaseReservation(ad.id, stationDay(now));
     await this.releaseBandHold(ad.id);
     if (this._onKill) { try { this._onKill(ad.id); } catch { /* engine eviction best-effort */ } }

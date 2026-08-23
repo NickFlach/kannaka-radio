@@ -668,6 +668,16 @@ const adPayments = new RadioAdPayments({ store: adStore });
 // (KAX_RAISE_URL / RADIO_KAX_RAISE_SECRET / KAX_RADIO_ENACT_SECRET) is set.
 const { RadioAdBridge } = require("./radio-ad-bridge");
 const adBridge = new RadioAdBridge({ store: adStore, payments: adPayments, voiceDJ });
+// Ghost Signals Analytics (Piece 4). Shares the radio-ads SQLite connection;
+// blobs live on /var/oled (never the root FS); ALL analysis runs in
+// spawn-per-job worker threads so a hostile dataset can never stall the
+// station. gsaReady flips only after a successful migrate — every /api/gsa
+// route 503s until then (best-effort boot, station unaffected on failure).
+const { GsaStore } = require("./gs-analytics");
+const { GsaRunner } = require("./gs-analytics-runner");
+const gsaStore = new GsaStore({ radioStore: adStore, dataDir: process.env.GSA_DATA_DIR || "/var/oled/kannaka/gsa" });
+const gsaRunner = new GsaRunner();
+let gsaReady = false;
 
 // The sponsor-ad poller — the ASYNC half of the airing seam. All sqlite for the
 // airing hook lives here so nothing touches the synchronous advance path: it
@@ -717,6 +727,11 @@ adStore.init()
     // retry-forever). Runs even when delivery env is unset (renders + enqueues,
     // nothing lost); only the outbound POST is env-gated.
     adBridge.startPoller();
+    // GSA boots after the shared store is ready — best-effort like everything
+    // else here; a GSA migrate failure leaves gsaReady=false (routes 503).
+    gsaStore.migrate()
+      .then(() => { gsaReady = true; gsaStore.startSweeper(); console.log('[gsa] analytics store ready'); })
+      .catch((e) => { console.warn('[gsa] migrate failed (analytics disabled):', e.message); });
   })
   .catch(e => { console.warn('[radio-ads] store init failed:', e.message); });
 
@@ -737,6 +752,7 @@ const deps = {
   adStore,
   adPayments,
   adBridge,
+  gsa: { store: gsaStore, runner: gsaRunner, ready: () => gsaReady },
   config: {
     baseDir: BASE_DIR,
     spaPath: SPA_PATH,
