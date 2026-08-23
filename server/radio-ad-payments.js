@@ -70,6 +70,10 @@ class RadioAdPayments {
     this.cancelUrl = opts.cancelUrl || 'https://radio.ninja-portal.com/?ad=cancelled';
     this._api = opts.api || null; // injectable Stripe client (tests / DI)
     this._now = opts.now || (() => Date.now());
+    // Sponsor slots deliverable per band per day. K=1 (safe/low, review M6): one
+    // active ad per band at a time — 4 bands ≈ 4 concurrent slots. Raise only
+    // when more daily commercial slots per band are provably deliverable.
+    this.bandCapacity = opts.bandCapacity ?? 1;
   }
 
   /** True once a secret key is present — the checkout/refund paths are live. */
@@ -92,10 +96,24 @@ class RadioAdPayments {
     const api = this._stripe();
     if (!api) { const e = new Error('payments unavailable'); e.code = 'payments_unconfigured'; throw e; }
     const draft = await this.store.createDraft({ text, band, requestedBy, runDays }); // validates
-    const params = checkoutSessionParams({ adId: draft.id, band: draft.band, successUrl: this.successUrl, cancelUrl: this.cancelUrl, runDays });
-    const session = await api.createCheckoutSession(params, checkoutIdempotencyKey(draft.id));
-    if (session && session.id) await this.store.attachCheckout(draft.id, session.id);
-    return { adId: draft.id, checkoutUrl: session && session.url, sessionId: session && session.id };
+    // Capacity gate (review M6): atomically reserve a band slot or refuse —
+    // never sell a spot the band can't deliver. Released on kill/reject/dispute/
+    // completion, or swept if never paid.
+    const cap = await this.store.reserveBandHold(draft.id, draft.band, this.bandCapacity);
+    if (!cap.reserved) { const e = new Error(`the ${draft.band} slot is full right now — please pick another time slot`); e.code = 'band_full'; throw e; }
+    try {
+      // 60-min session expiry: bounds how long an abandoned checkout holds the
+      // band slot and guarantees no payment lands after the capacity sweep frees
+      // it (the sweep grace is 90 min, review M1).
+      const expiresAt = Math.floor(this._now() / 1000) + 60 * 60;
+      const params = checkoutSessionParams({ adId: draft.id, band: draft.band, successUrl: this.successUrl, cancelUrl: this.cancelUrl, runDays, expiresAt });
+      const session = await api.createCheckoutSession(params, checkoutIdempotencyKey(draft.id));
+      if (session && session.id) await this.store.attachCheckout(draft.id, session.id);
+      return { adId: draft.id, checkoutUrl: session && session.url, sessionId: session && session.id };
+    } catch (e) {
+      await this.store.releaseBandHold(draft.id).catch(() => {}); // Stripe failed → free the slot
+      throw e;
+    }
   }
 
   /**
@@ -134,6 +152,15 @@ class RadioAdPayments {
       // A terminal-state no-op (already refunded/killed/completed) → 200.
       if (!r.ok && r.reason === 'not_found') return { status: 500, body: { error: 'ad not found — will retry' } };
     }
+    if (c.kind === 'disputed' && c.paymentIntent) {
+      // A chargeback: stop airing, mark disputed. Issue NO refund (the dispute
+      // moves the funds; review B2). Idempotent via disputed_at.
+      try {
+        await this.store.markDisputed(c.paymentIntent, c.disputeId);
+      } catch (e) {
+        return { status: 500, body: { error: 'could not record dispute' } };
+      }
+    }
     return { status: 200, body: { received: true } };
   }
 
@@ -147,16 +174,34 @@ class RadioAdPayments {
     const ad = await this.store.getAd(adId);
     if (!ad) return { ok: false, error: 'not_found' };
     if (ad.refunded_at) return { ok: true, alreadyRefunded: true, refundId: ad.stripe_refund_id };
+    // NEVER refund a disputed charge — the dispute process moves the funds, so
+    // refunding on top is a double-pay (review B2). Belt-and-suspenders with the
+    // status guards below.
+    if (ad.disputed_at) return { ok: false, error: 'disputed' };
     if (!ad.stripe_payment_intent) return { ok: false, error: 'no_payment_to_refund' };
-    // Guard the refundable STATE before touching Stripe (review B2): a stray or
-    // replayed reject-enact on a scheduled/airing ad must NOT issue a real
-    // refund while the ad keeps airing. Only paid/rejected/killed refund here;
-    // a mid-run kill of a live ad is a separate (pro-rata) path in a later slice.
+    // Guard the refundable STATE before touching Stripe: a stray/replayed enact
+    // on a live ad must not issue a real refund while it keeps airing.
     if (!['paid', 'rejected', 'killed'].includes(ad.status)) {
       return { ok: false, error: `not_refundable_from:${ad.status}` };
     }
     const api = this._stripe();
     if (!api) return { ok: false, error: 'payments_unconfigured' };
+    if (ad.status === 'killed') {
+      // PARTIAL (pro-rata) refund of the amount FROZEN at kill time (review
+      // B1/B3): same idempotency key + same amount on a re-drive = a true Stripe
+      // idempotent replay. Status stays 'killed' (it aired part of the run).
+      const amount = ad.refund_amount_cents == null ? 0 : ad.refund_amount_cents;
+      if (amount > 0) {
+        const refund = await api.createRefund({ payment_intent: ad.stripe_payment_intent, amount }, refundIdempotencyKey(adId));
+        await this.store.markKillRefunded(adId, refund && refund.id);
+        return { ok: true, refundId: refund && refund.id, amountCents: amount, partial: true };
+      }
+      // Fully aired → nothing to refund (Stripe rejects a 0-cent refund); record
+      // it so the enact doesn't 409-loop.
+      await this.store.markKillRefunded(adId, null);
+      return { ok: true, refundId: null, amountCents: 0, partial: true };
+    }
+    // paid / rejected → FULL refund (the ad never aired).
     const refund = await api.createRefund({ payment_intent: ad.stripe_payment_intent }, refundIdempotencyKey(adId));
     await this.store.markRefunded(adId, refund && refund.id);
     return { ok: true, refundId: refund && refund.id };

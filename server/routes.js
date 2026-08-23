@@ -751,8 +751,9 @@ module.exports = function setupRoutes(deps) {
           res.end(JSON.stringify({ ok: true, adId: out.adId, checkoutUrl: out.checkoutUrl }));
         } catch (e) {
           const bad = e && (e.code === "invalid_ad_text" || /invalid band/.test(String(e.message)));
-          res.writeHead(bad ? 400 : 502, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: false, error: bad ? e.message : "checkout failed" }));
+          const full = e && e.code === "band_full";
+          res.writeHead(bad ? 400 : full ? 409 : 502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: bad || full ? e.message : "checkout failed" }));
         }
       });
       return;

@@ -71,6 +71,8 @@ class RadioAdBridge {
         try { await this.store.renderAd(ad.id, this.voiceDJ); } catch (_) { /* retry next tick */ }
       }
     }
+    // Free band slots held by checkouts that were never paid (abandoned).
+    try { await this.store.releaseStaleUnpaidHolds(); } catch (_) { /* best-effort */ }
     let paid = [];
     try { paid = await this.store.paidWithoutRaise(); } catch { paid = []; }
     for (const ad of paid) {
@@ -156,9 +158,28 @@ class RadioAdBridge {
     if (!e.ok) return { status: 400, body: { error: e.error } };
     if (e.decision === 'approve') {
       const r = await this.store.approveAndSchedule(e.adId, new Date(this._now()));
-      if (r.ok) return { status: 200, body: { ok: true, decision: 'approve', already: !!r.already } };
+      if (r.ok) {
+        // Grant the free-month GSA entitlement on approval (idempotent, review M7).
+        try { await this.store.grantGsaEntitlement(e.adId); } catch (_) { /* best-effort; not money */ }
+        return { status: 200, body: { ok: true, decision: 'approve', already: !!r.already } };
+      }
       // not_rendered → render hasn't landed yet; 409 so KAX retries.
       return { status: 409, body: { ok: false, reason: r.reason } };
+    }
+    if (e.decision === 'kill') {
+      // Mid-run kill: stop airing (freezes the pro-rata refund amount + evicts),
+      // then refund the UNAIRED portion. Idempotent + safe under re-drive.
+      await this.store.killAd(e.adId, new Date(this._now()));
+      if (!this.payments) return { status: 200, body: { ok: true, decision: 'kill', refunded: false, note: 'payments unconfigured' } };
+      const rk = await this.payments.refundAd(e.adId);
+      if (rk.ok) return { status: 200, body: { ok: true, decision: 'kill', refunded: rk.amountCents !== 0, amountCents: rk.amountCents, alreadyRefunded: !!rk.alreadyRefunded } };
+      // Nothing to refund / disputed / inert → done (don't 409-loop). A real
+      // refund error (Stripe down) → 409 so KAX retries; killAd is a no-op on
+      // re-drive and the amount is frozen, so the retry is safe.
+      if (['no_payment_to_refund', 'disputed', 'payments_unconfigured'].includes(rk.error)) {
+        return { status: 200, body: { ok: true, decision: 'kill', refunded: false, note: rk.error } };
+      }
+      return { status: 409, body: { ok: false, reason: rk.error } };
     }
     // reject → move to rejected, then refund (confirmed-before-marked). Both
     // idempotent; refund needs the payments module (Stripe configured).
@@ -167,6 +188,11 @@ class RadioAdBridge {
     if (!this.payments) return { status: 200, body: { ok: true, decision: 'reject', refunded: false, note: 'payments unconfigured' } };
     const rf = await this.payments.refundAd(e.adId);
     if (rf.ok) return { status: 200, body: { ok: true, decision: 'reject', refunded: true, alreadyRefunded: !!rf.alreadyRefunded } };
+    // Nothing to refund / disputed / inert → done, don't 409-loop (a disputed ad
+    // is handled by the chargeback, not a refund).
+    if (['no_payment_to_refund', 'disputed', 'payments_unconfigured'].includes(rf.error)) {
+      return { status: 200, body: { ok: true, decision: 'reject', refunded: false, note: rf.error } };
+    }
     // A refund that could not be issued (e.g. Stripe down) → 409 so KAX retries;
     // the ad is 'rejected', refundAd is idempotent, the retry completes it.
     return { status: 409, body: { ok: false, reason: rf.error } };

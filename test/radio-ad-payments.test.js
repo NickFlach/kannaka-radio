@@ -43,7 +43,9 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
   await store.init();
 
   const api = fakeApi();
-  const pay = new RadioAdPayments({ store, api, webhookSecret: WHSEC, now: () => NOWMS });
+  // High bandCapacity: these tests predate slice-5 capacity and make several
+  // same-band checkouts; capacity is exercised in radio-ad-slice5.test.js.
+  const pay = new RadioAdPayments({ store, api, webhookSecret: WHSEC, now: () => NOWMS, bandCapacity: 1000 });
 
   let adId;
   await run('createCheckout mints a draft + a Stripe session (idempotency key per draft)', async () => {
