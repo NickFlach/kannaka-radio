@@ -332,8 +332,11 @@ class RadioAdStore {
     return { released: !!(del && del.changes) };
   }
 
-  /** Count of CONFIRMED (actually-aired) days for an ad — the basis for a
-   *  partial refund on early kill/dispute (never the reserved/claimed count). */
+  /** Count of days that PHYSICALLY aired (aired_at set) — a diagnostic. NOTE:
+   *  this is NOT the refund basis. Use radio_ads.airings_done for refunds: it
+   *  equals this in the normal case but is deliberately LOWER by any
+   *  kill-in-same-tick "floor" day (aired once but left unbilled, so the
+   *  customer stays refundable for it). refund_days = run_days - airings_done. */
   async confirmedAirings(adId) {
     const row = await this._get(
       `SELECT COUNT(*) AS n FROM radio_ad_airings WHERE ad_id = ? AND aired_at IS NOT NULL`,

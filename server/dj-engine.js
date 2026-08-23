@@ -1598,7 +1598,10 @@ class DJEngine {
     // confirm is a floating call wrapped so it can NEVER throw into this sync
     // path. Confirm-on-finish (not on-start) is customer-favorable: a deploy
     // that cuts a spot mid-air leaves it unconfirmed → it re-airs, not charged.
-    if (prev && prev.sponsor && prev.sponsorAdId && (!justFinishedFile || prev.file === justFinishedFile)) {
+    // Requires the finished FILE to match the overlay: a caller that advances
+    // with no file (a hypothetical future non-icecast caller) must not confirm
+    // a spot it can't prove aired.
+    if (prev && prev.sponsor && prev.sponsorAdId && justFinishedFile && prev.file === justFinishedFile) {
       const adId = prev.sponsorAdId;
       const airDate = prev.sponsorAirDate;
       if (this._confirmSponsor) { try { this._confirmSponsor(adId, airDate); } catch (_) { /* never wedge the stream */ } }

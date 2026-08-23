@@ -138,7 +138,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     // Day 8: nothing (completed, not scheduled).
     const past = await store.pickAiringForNow(new Date(Date.UTC(2026, 7, 29, 9, 0)));
     assert.strictEqual(past, null);
-    assert.strictEqual(await store.confirmedAirings(adId), 7, 'refund basis = 7 confirmed');
+    assert.strictEqual(await store.confirmedAirings(adId), 7, 'all 7 days physically aired');
   });
 
   await run('kill releases an unconfirmed reservation and fires the sync eviction', async () => {
@@ -231,6 +231,43 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(relDone.released, false, 'a confirmed row cannot be released');
     const rows = await store._all(`SELECT * FROM radio_ad_airings WHERE ad_id=? AND aired_at IS NOT NULL`, [d.id]);
     assert.strictEqual(rows.length, 1, 'the confirmed airing survives a release attempt');
+  });
+
+  await run('migration: an OLD-shape airings table upgrades in place, history preserved', async () => {
+    // Seed a pre-reserve/confirm DB: aired_at NOT NULL, no reserved_at, 2 rows.
+    const sqlite3 = require('sqlite3');
+    const oldDir = fs.mkdtempSync(path.join(os.tmpdir(), 'radio-ads-old-'));
+    const oldDbPath = path.join(oldDir, 'radio-ads.db');
+    await new Promise((resolve, reject) => {
+      const db = new sqlite3.Database(oldDbPath, (e) => {
+        if (e) return reject(e);
+        db.serialize(() => {
+          db.run(`CREATE TABLE radio_ad_airings (ad_id TEXT NOT NULL, air_date TEXT NOT NULL, aired_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (ad_id, air_date))`);
+          db.run(`INSERT INTO radio_ad_airings (ad_id, air_date, aired_at) VALUES ('ad_old', '2026-08-01', '2026-08-01 09:00:00')`);
+          db.run(`INSERT INTO radio_ad_airings (ad_id, air_date, aired_at) VALUES ('ad_old', '2026-08-02', '2026-08-02 09:00:00')`, (e2) => (e2 ? reject(e2) : db.close(resolve)));
+        });
+      });
+    });
+    // Open a store → _migrate rebuilds to reserve/confirm shape.
+    const migrated = new RadioAdStore({ dbPath: oldDbPath, assetDir: path.join(oldDir, 'ads') });
+    await migrated.init();
+    const cols = await migrated._all(`PRAGMA table_info(radio_ad_airings)`);
+    assert.ok(cols.some((c) => c.name === 'reserved_at'), 'reserved_at column added');
+    assert.ok(cols.some((c) => c.name === 'aired_at'), 'aired_at retained');
+    // Both historical rows survive as CONFIRMED (aired_at preserved) — boot
+    // reconcile must NOT delete them.
+    const rows = await migrated._all(`SELECT * FROM radio_ad_airings WHERE ad_id='ad_old' ORDER BY air_date`);
+    assert.strictEqual(rows.length, 2, 'both historical airings preserved');
+    assert.strictEqual(rows[0].aired_at, '2026-08-01 09:00:00', 'aired_at value carried over');
+    assert.strictEqual(rows[0].reserved_at, '2026-08-01 09:00:00', 'reserved_at backfilled from aired_at');
+    assert.strictEqual(await migrated.confirmedAirings('ad_old'), 2);
+    migrated.db.close();
+    // A 2nd boot is idempotent (reserved_at present → no rebuild) and preserves history.
+    const reboot = new RadioAdStore({ dbPath: oldDbPath, assetDir: path.join(oldDir, 'ads') });
+    await reboot.init();
+    assert.strictEqual((await reboot._all(`SELECT * FROM radio_ad_airings WHERE ad_id='ad_old'`)).length, 2, 'idempotent — history intact on 2nd boot');
+    reboot.db.close();
+    try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch { /* best effort */ }
   });
 
   await run('previewRender freezes a servable render; identical text is a cache hit', async () => {
