@@ -21,6 +21,13 @@ const http = require("http");
 const path = require("path");
 const WebSocket = require("ws");
 
+// FIRST thing the process does: a stray rejection anywhere (this server mounts
+// an async handler on http.createServer, which Node does not catch) would
+// otherwise be fatal and drop the live stream. Log it and stay on air; exit
+// only if failures storm, so a wedged process still gets a clean restart.
+const { installCrashGuards } = require("./crash-guards");
+installCrashGuards();
+
 const { initSPA } = require("./utils");
 const { ALBUMS, DJEngine } = require("./dj-engine");
 const { PerceptionEngine } = require("./perception");
