@@ -808,7 +808,18 @@ module.exports = function setupRoutes(deps) {
     // (never in a URL — review B3) → upload datasets → worker-thread analysis →
     // signals report. Every route 503s until the GSA store migrated (M8).
     if (parsed.pathname.startsWith("/api/gsa/")) {
-      const gsaJson = (status, body) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
+      // Defensive responder: a client that disconnected mid-request leaves an
+      // ended response, and writeHead on it THROWS — inside this async handler
+      // that would be an unhandled rejection, and the server has no
+      // process-level guard, so it would take the STATION down. Never throw.
+      const gsaJson = (status, body) => {
+        try {
+          if (res.headersSent || res.writableEnded) return;
+          res.writeHead(status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(body));
+        } catch (_) { /* client vanished — nothing to say */ }
+      };
+      try {
       if (!gsa || !gsa.ready()) { gsaJson(503, { ok: false, error: "analytics unavailable" }); return; }
       const bearer = (() => { const m = /^Bearer\s+(.+)$/.exec(req.headers.authorization || ""); return m ? m[1].trim() : null; })();
       const runGsaAnalysis = (account, id, kind, text) => {
@@ -864,6 +875,7 @@ module.exports = function setupRoutes(deps) {
         const kind = parsed.query && parsed.query.kind === "json" ? "json" : "csv";
         const name = parsed.query ? parsed.query.name : "";
         readBodyLimited(req, res, 5 * 1024 * 1024, async (body) => {
+          try {
           const bytes = Buffer.byteLength(body);
           if (bytes < 4) { gsaJson(400, { ok: false, error: "empty upload" }); return; }
           gsa.store.reserveBytes(bytes); // budget reservation (M4)
@@ -881,6 +893,10 @@ module.exports = function setupRoutes(deps) {
           }
           runGsaAnalysis(account, created.id, kind, body);
           gsaJson(202, { ok: true, id: created.id, name: created.name, status: "analyzing" });
+          } catch (e) {
+            try { console.warn("[gsa] upload failed:", e && e.message); } catch (_) {}
+            gsaJson(500, { ok: false, error: "upload failed" });
+          }
         });
         return;
       }
@@ -918,6 +934,14 @@ module.exports = function setupRoutes(deps) {
 
       gsaJson(404, { ok: false, error: "unknown gsa endpoint" });
       return;
+      } catch (e) {
+        // Belt-and-braces: NOTHING in analytics may reach the process as an
+        // unhandled rejection. Any unexpected throw becomes a 500 here and the
+        // station plays on.
+        try { console.warn("[gsa] request failed:", e && e.message); } catch (_) {}
+        gsaJson(500, { ok: false, error: "analytics error" });
+        return;
+      }
     }
 
     // The GSA customer page + its script — served with a strict CSP (no inline
