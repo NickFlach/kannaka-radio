@@ -98,7 +98,7 @@ function publicOrigin(req) {
  * @param {object}                                   deps.config
  */
 module.exports = function setupRoutes(deps) {
-  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub, adStore, adPayments } = deps;
+  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub, adStore, adPayments, adBridge } = deps;
   // Rate/concurrency/daily caps for the unauthenticated ad TTS preview — the
   // one place a stranger can make the station render audio, so it is guarded
   // against the cost + disk-fill DoS the design review flagged.
@@ -773,6 +773,26 @@ module.exports = function setupRoutes(deps) {
         } catch (e) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: "webhook error" }));
+        }
+      });
+      return;
+    }
+
+    // Self-serve radio ad — ENACT (slice 4). KAX POSTs the operator's decision
+    // here (HMAC-signed with the enact-direction secret), verified over the RAW
+    // body. approve → render+schedule, reject → refund. Idempotent + state-
+    // tolerant. 503 until the enact secret is set on O1.
+    if (parsed.pathname === "/api/ads/enact" && req.method === "POST") {
+      const sig = req.headers["x-kax-signature"];
+      readBody(req, res, async (body) => {
+        if (!adBridge) { res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "bridge unavailable" })); return; }
+        try {
+          const out = await adBridge.handleEnact(body, sig);
+          res.writeHead(out.status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(out.body || {}));
+        } catch (e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "enact error" }));
         }
       });
       return;

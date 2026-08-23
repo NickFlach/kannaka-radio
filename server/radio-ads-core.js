@@ -81,7 +81,10 @@ const AD_STATES = ['draft', 'paid', 'pending', 'approved', 'scheduled', 'airing'
 
 const AD_TRANSITIONS = {
   draft: ['paid', 'rejected'],
-  paid: ['pending', 'refunded'],
+  // paid → approved/rejected directly too: the raise's best-effort paid→pending
+  // marker may not have landed when the operator decides, so the enact drives
+  // approveAndSchedule/rejectAd straight from 'paid' (radio-ads slice 4).
+  paid: ['pending', 'approved', 'rejected', 'refunded'],
   pending: ['approved', 'rejected'],
   approved: ['scheduled', 'rejected'],
   scheduled: ['airing', 'completed', 'killed', 'disputed'],

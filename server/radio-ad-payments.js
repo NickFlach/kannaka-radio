@@ -148,6 +148,13 @@ class RadioAdPayments {
     if (!ad) return { ok: false, error: 'not_found' };
     if (ad.refunded_at) return { ok: true, alreadyRefunded: true, refundId: ad.stripe_refund_id };
     if (!ad.stripe_payment_intent) return { ok: false, error: 'no_payment_to_refund' };
+    // Guard the refundable STATE before touching Stripe (review B2): a stray or
+    // replayed reject-enact on a scheduled/airing ad must NOT issue a real
+    // refund while the ad keeps airing. Only paid/rejected/killed refund here;
+    // a mid-run kill of a live ad is a separate (pro-rata) path in a later slice.
+    if (!['paid', 'rejected', 'killed'].includes(ad.status)) {
+      return { ok: false, error: `not_refundable_from:${ad.status}` };
+    }
     const api = this._stripe();
     if (!api) return { ok: false, error: 'payments_unconfigured' };
     const refund = await api.createRefund({ payment_intent: ad.stripe_payment_intent }, refundIdempotencyKey(adId));
