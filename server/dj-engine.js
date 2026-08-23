@@ -8,6 +8,7 @@ const fs = require("fs");
 const https = require("https");
 const { findAudioFile, getFiles } = require("./utils");
 const { interleaveCommercials } = require("./commercials");
+const { currentBand, stationDay } = require("./radio-ads-core"); // pure — for the sponsor-ad drift check
 
 /**
  * Resolve where the ORC stem-server's SQLite catalog and its sqlite3 build
@@ -624,6 +625,23 @@ class DJEngine {
 
     this.userQueue = [];
     this._commercials = []; // populated by setCommercials() after ensureCommercials resolves
+
+    // ── Self-serve sponsor ads (radio-ads slice 2b airing hook) ──
+    // A paid+approved+scheduled sponsor ad SUBSTITUTES into an existing house
+    // commercial slot (never adds a slot). The seam is delicate: advanceTrack /
+    // peekNextTrack are SYNCHRONOUS and drive the live stream, but the ledger
+    // is async sqlite. So ALL sqlite lives in an external poller (index.js):
+    //   - it RESERVES one slot ahead (pickAiringForNow) and stages it here;
+    //   - substitution is a pure, in-memory, single-slot OVERLAY (never mutates
+    //     playlistMeta, so reshuffle/rebuild/no-repeat stay byte-identical);
+    //   - CONFIRM (counter advance) fires only when the spot FINISHES on-air,
+    //     via a floating _confirmSponsor callback wrapped so it can't throw into
+    //     the sync advance path.
+    // Inert until real scheduled ads exist (no _pendingSponsor → pure no-op).
+    this._pendingSponsor = null;   // { adId, file, title, airDate, band, claimedAt } — staged by the poller
+    this._sponsorOverride = null;  // { idx, entry } — the ephemeral overlay honored by getCurrentTrack
+    this._confirmSponsor = null;   // (adId, airDate) => void — injected; confirms an aired spot
+    this._clock = () => new Date(); // injectable for tests (drift check)
 
     // ── 12-hour no-repeat ledger ─────────────────────────────────
     // Map of track-file (relative path) -> timestamp when last played.
@@ -1360,8 +1378,85 @@ class DJEngine {
   // ── Track navigation ──────────────────────────────────────
 
   getCurrentTrack() {
-    if (this.state.currentTrackIdx >= this.state.playlistMeta.length) return null;
-    return this.state.playlistMeta[this.state.currentTrackIdx];
+    const idx = this.state.currentTrackIdx;
+    // The sponsor overlay wins ONLY for the exact slot it was applied to, so a
+    // reshuffle/rebuild/wrap that moves off that index falls straight back to
+    // the real (house-commercial) entry.
+    if (this._sponsorOverride && this._sponsorOverride.idx === idx) return this._sponsorOverride.entry;
+    if (idx >= this.state.playlistMeta.length) return null;
+    return this.state.playlistMeta[idx];
+  }
+
+  // ── Sponsor-ad hooks (radio-ads slice 2b) ──────────────────
+  /** Poller stages a reserved sponsor ad to overlay the next commercial slot. */
+  stageSponsor(res) { this._pendingSponsor = res; }
+  hasPendingSponsor() { return !!this._pendingSponsor; }
+  pendingSponsor() { return this._pendingSponsor; }
+  clearPendingSponsor() { this._pendingSponsor = null; }
+
+  /** Side-effect-free: is the very next slot a (house) commercial? Lets the
+   *  poller reserve exactly one slot ahead and never churn on ad-free windows. */
+  nextIsCommercial() {
+    const meta = this.state.playlistMeta;
+    const nx = this.state.currentTrackIdx + 1;
+    return !!(meta && meta[nx] && meta[nx].commercial);
+  }
+
+  /** Kill eviction (wired to store.killAd): a killed ad can't be re-checked in
+   *  the sync advance path, so drop it from memory here, synchronously. */
+  evictSponsor(adId) {
+    if (this._pendingSponsor && this._pendingSponsor.adId === adId) this._pendingSponsor = null;
+    if (this._sponsorOverride && this._sponsorOverride.entry && this._sponsorOverride.entry.sponsorAdId === adId) {
+      this._sponsorOverride = null;
+    }
+  }
+
+  /**
+   * Overlay a staged sponsor onto `current` iff it is a house-commercial slot,
+   * we're on the dj channel, and it's still within the reserved day+band (drift
+   * check — sync + cheap). Consumes _pendingSponsor into an ephemeral override
+   * (never mutates playlistMeta). Wrapped so an ad-side error can NEVER wedge
+   * the live advance — on any failure the house commercial plays unchanged.
+   * Called at every advanceTrack return, right before _onTrackChange.
+   */
+  _applySponsorIfCommercial(current) {
+    try {
+      const sp = this._pendingSponsor;
+      if (!sp || !current || !current.commercial) return current;
+      if (this.state.channel !== "dj") return current; // sponsor scope = Kannaka Radio programming only
+      let day; let band;
+      try { const now = this._clock(); day = stationDay(now); band = currentBand(now); } catch { return current; }
+      if (sp.airDate !== day || sp.band !== band) return current; // drifted out of the reserved window — poller TTL releases it
+      const entry = {
+        ...current,
+        file: sp.file,
+        title: sp.title,
+        sponsor: true,
+        sponsorAdId: sp.adId,
+        sponsorAirDate: sp.airDate,
+        commercial: true, // keep commercial:true → no-repeat exemption + reshuffle music-preservation intact
+      };
+      this._sponsorOverride = { idx: this.state.currentTrackIdx, entry };
+      this._pendingSponsor = null; // consumed; confirm happens when it finishes on-air
+      return entry;
+    } catch (_) {
+      return current; // never let an ad-side bug touch the sync advance path
+    }
+  }
+
+  /** Peek-time overlay: return a COPY carrying the sponsor's file/title so the
+   *  DJ pre-generates the right intro, WITHOUT consuming (no override, no
+   *  counter). The icecast stale-intro guard drops the intro if advance then
+   *  airs something else, so announce==air holds across divergence. */
+  _sponsorPeek(entry) {
+    try {
+      const sp = this._pendingSponsor;
+      if (!sp || !entry || !entry.commercial || this.state.channel !== "dj") return entry;
+      let day; let band;
+      try { const now = this._clock(); day = stationDay(now); band = currentBand(now); } catch { return entry; }
+      if (sp.airDate !== day || sp.band !== band) return entry;
+      return { ...entry, file: sp.file, title: sp.title, sponsor: true, sponsorAdId: sp.adId, sponsorAirDate: sp.airDate, commercial: true };
+    } catch (_) { return entry; }
   }
 
   /**
@@ -1479,9 +1574,12 @@ class DJEngine {
         this._reshufflePlaylist();
         this.state._reshufflePending = true;
       }
-      return this.state.playlistMeta[0] || null;
+      return this._sponsorPeek(this.state.playlistMeta[0] || null);
     }
-    return this.state.playlistMeta[nextIdx] || null;
+    // If the next slot is a commercial and a sponsor is staged, announce the
+    // sponsor (peek only — a returned COPY, no consume). Only advanceTrack
+    // consumes; the icecast stale-intro guard keeps announce==air if they diverge.
+    return this._sponsorPeek(this.state.playlistMeta[nextIdx] || null);
   }
 
   /**
@@ -1495,6 +1593,21 @@ class DJEngine {
    */
   advanceTrack(justFinishedFile) {
     const prev = this.getCurrentTrack();
+    // CONFIRM-on-finish: if the slot that just ended was a sponsor overlay AND
+    // it actually finished (not interrupted by a swap), count it as aired. The
+    // confirm is a floating call wrapped so it can NEVER throw into this sync
+    // path. Confirm-on-finish (not on-start) is customer-favorable: a deploy
+    // that cuts a spot mid-air leaves it unconfirmed → it re-airs, not charged.
+    if (prev && prev.sponsor && prev.sponsorAdId && (!justFinishedFile || prev.file === justFinishedFile)) {
+      const adId = prev.sponsorAdId;
+      const airDate = prev.sponsorAirDate;
+      if (this._confirmSponsor) { try { this._confirmSponsor(adId, airDate); } catch (_) { /* never wedge the stream */ } }
+    }
+    // The overlay's lifetime is exactly one streamed track; this boundary ends
+    // it. Clear it now so no branch below can surface a stale sponsor from a
+    // swapped/rebuilt/reshuffled array — a fresh commercial slot this pass gets
+    // a fresh overlay via _applySponsorIfCommercial.
+    this._sponsorOverride = null;
     const swappedMidStream = !!(justFinishedFile && prev && prev.file !== justFinishedFile
       && this.state.channel === 'dj');
     if (prev && !swappedMidStream) {
@@ -1578,10 +1691,15 @@ class DJEngine {
     }
 
     this.state.trackStartedAt = Date.now();
-    const current = this.getCurrentTrack();
+    // The normal boundary is the ONLY branch whose current slot can be a house
+    // commercial (branches above all play a music track / track 0). Overlay a
+    // staged sponsor here if so — a pure no-op when nothing is staged, so music
+    // behavior is byte-identical.
+    const current = this._applySponsorIfCommercial(this.getCurrentTrack());
     if (current) {
       // 12-hr no-repeat ledger: stamp the new current. buildPlaylist's
-      // filter on next album-load reads from this map.
+      // filter on next album-load reads from this map. (A sponsor overlay keeps
+      // commercial:true, so _markPlayed skips it — the ledger is untouched.)
       this._markPlayed(current);
       this._onTrackChange(current);
     }
