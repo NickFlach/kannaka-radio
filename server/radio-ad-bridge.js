@@ -55,6 +55,26 @@ class RadioAdBridge {
     this.enactSecret = opts.enactSecret || process.env.KAX_RADIO_ENACT_SECRET || null;
     this._post = opts.post || defaultPost;
     this._now = opts.now || (() => Date.now());
+    // Optional Mailer — tells the buyer the outcome of the review. Absent means
+    // no mail; a decision is never blocked on it.
+    this.mailer = opts.mailer || null;
+  }
+
+  /** Mail the buyer the outcome of a decision. Best-effort and only on the
+   *  FIRST application — `already` marks a re-driven enact, and KAX re-drives
+   *  freely, so mailing on every call would spam a rejected advertiser. */
+  async _notifyDecision(adId, kind, already) {
+    if (!this.mailer || already) return;
+    let ad = null;
+    try { ad = await this.store.getAd(adId); } catch { return; }
+    if (!ad || !ad.customer_email) return;
+    try {
+      if (kind === 'approve') {
+        await this.mailer.adApproved(ad.customer_email, { adId: ad.id, band: ad.band, runDays: ad.run_days, startDate: ad.run_start_date });
+      } else {
+        await this.mailer.adRejected(ad.customer_email, { adId: ad.id });
+      }
+    } catch (_) { /* the decision already stands; mail is a courtesy */ }
   }
 
   deliveryConfigured() { return !!(this.raiseUrl && this.raiseSecret); }
@@ -161,6 +181,7 @@ class RadioAdBridge {
       if (r.ok) {
         // Grant the free-month GSA entitlement on approval (idempotent, review M7).
         try { await this.store.grantGsaEntitlement(e.adId); } catch (_) { /* best-effort; not money */ }
+        await this._notifyDecision(e.adId, 'approve', !!r.already);
         return { status: 200, body: { ok: true, decision: 'approve', already: !!r.already } };
       }
       // not_rendered → render hasn't landed yet; 409 so KAX retries.
@@ -187,7 +208,13 @@ class RadioAdBridge {
     if (!rj.ok) return { status: 409, body: { ok: false, reason: rj.reason } };
     if (!this.payments) return { status: 200, body: { ok: true, decision: 'reject', refunded: false, note: 'payments unconfigured' } };
     const rf = await this.payments.refundAd(e.adId);
-    if (rf.ok) return { status: 200, body: { ok: true, decision: 'reject', refunded: true, alreadyRefunded: !!rf.alreadyRefunded } };
+    if (rf.ok) {
+      // Only AFTER Stripe confirms — the mail says "you've been refunded in
+      // full", so it must never go out ahead of the money. `alreadyRefunded`
+      // marks a re-drive, which was already announced.
+      await this._notifyDecision(e.adId, 'reject', !!rf.alreadyRefunded);
+      return { status: 200, body: { ok: true, decision: 'reject', refunded: true, alreadyRefunded: !!rf.alreadyRefunded } };
+    }
     // Nothing to refund / disputed / inert → done, don't 409-loop (a disputed ad
     // is handled by the chargeback, not a refund).
     if (['no_payment_to_refund', 'disputed', 'payments_unconfigured'].includes(rf.error)) {
