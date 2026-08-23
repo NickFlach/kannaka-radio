@@ -131,8 +131,23 @@ function toDate(s) {
  * | 'text', plus parsed value arrays for the typed ones. A column qualifies for
  * a type when ≥80% of its non-empty values parse as it.
  */
+/** Display label for a column: de-duplicated so two columns sharing a header
+ *  are distinguishable in the report ("Total" / "Total (2)"). Correlation and
+ *  series keying uses the INDEX, never the name — two same-named columns keyed
+ *  by name collided and pearson(a,a) reported a fabricated r=1.00 between two
+ *  genuinely different (even anti-correlated) columns, walking straight through
+ *  every honesty floor. */
+function labelColumns(header) {
+  const seen = new Map();
+  return header.map((h) => {
+    const n = (seen.get(h) || 0) + 1;
+    seen.set(h, n);
+    return n === 1 ? h : `${h} (${n})`;
+  });
+}
+
 function inferColumns(header, rows) {
-  return header.map((name, ci) => {
+  return labelColumns(header).map((name, ci) => {
     let nonEmpty = 0; let nums = 0; let dates = 0;
     const distinct = new Set();
     for (const r of rows) {
@@ -226,7 +241,7 @@ function linearTrend(xs, ys) {
 function timeSeriesAnalysis(rows, timeCol, numericCols) {
   const times = rows.map((r) => toDate(String(r[timeCol.index] ?? ''))).filter((t) => t != null);
   if (times.length < 6) return null;
-  const span = Math.max(...times) - Math.min(...times);
+  const span = times.reduce((a, b) => (b > a ? b : a), times[0]) - times.reduce((a, b) => (b < a ? b : a), times[0]);
   const DAY = 86_400_000;
   const periodMs = span <= 90 * DAY ? DAY : 7 * DAY;
   const periodName = periodMs === DAY ? 'day' : 'week';
@@ -254,7 +269,7 @@ function timeSeriesAnalysis(rows, timeCol, numericCols) {
         if (z > 2.5) anomalies.push({ period: new Date(k * periodMs).toISOString().slice(0, 10), value: ys[idx], z: Math.round(z * 10) / 10 });
       });
     }
-    series[col.name] = { periodName, points: keys.length, trend, anomalies: anomalies.slice(0, 5) };
+    series[col.index] = { name: col.name, periodName, points: keys.length, trend, anomalies: anomalies.slice(0, 5) };
   }
   return { timeColumn: timeCol.name, series };
 }
@@ -280,7 +295,7 @@ function buildReport(header, rows) {
     const raw = rows.map((r) => r[c.index]);
     if (c.type === 'numeric') {
       const vals = raw.map((v) => toNumber(String(v ?? '')));
-      numericValues.set(c.name, vals);
+      numericValues.set(c.index, vals);
       const st = numericStats(vals);
       columns.push({ ...c, stats: st });
       if (st.n >= 8 && st.outliers > 0) {
@@ -305,7 +320,8 @@ function buildReport(header, rows) {
   if (dateCols.length && numericCols.length) {
     timeseries = timeSeriesAnalysis(rows, dateCols[0], numericCols.slice(0, 10));
     if (timeseries) {
-      for (const [name, s] of Object.entries(timeseries.series)) {
+      for (const s of Object.values(timeseries.series)) {
+        const name = s.name;
         // Honesty floors (review M7): a trend claim needs ≥8 periods AND r²≥0.3;
         // a period-anomaly claim needs ≥20 periods (rolling-z on short series is
         // the most garbage-prone finding class).
@@ -327,7 +343,7 @@ function buildReport(header, rows) {
   // Correlations — top-10 numeric columns BY VARIANCE (not file order, review
   // B5/M7: bounds the O(k²·n) pass and picks the columns with signal in them).
   const byVariance = numericCols
-    .map((c) => ({ c, std: (columns.find((x) => x.name === c.name) || {}).stats?.std || 0 }))
+    .map((c) => ({ c, std: (columns.find((x) => x.index === c.index) || {}).stats?.std || 0 }))
     .sort((x, y) => y.std - x.std)
     .slice(0, 10)
     .map((x) => x.c);
@@ -336,12 +352,15 @@ function buildReport(header, rows) {
   for (let i = 0; i < byVariance.length; i++) {
     for (let j = i + 1; j < byVariance.length; j++) {
       pairsTested += 1;
-      const a = numericValues.get(byVariance[i].name);
-      const b = numericValues.get(byVariance[j].name);
+      const a = numericValues.get(byVariance[i].index);
+      const b = numericValues.get(byVariance[j].index);
       const { r, n } = pearson(a, b);
       if (r != null && Math.abs(r) >= 0.6) {
         correlations.push({ a: byVariance[i].name, b: byVariance[j].name, r: Math.round(r * 100) / 100, n });
-        signals.push({ score: 0.4 + Math.abs(r) / 3, kind: 'correlation', text: `"${byVariance[i].name}" and "${byVariance[j].name}" move together (r=${r.toFixed(2)}, n=${n}) — correlation, not causation` });
+        // Direction matters: at r=-1 the columns move OPPOSITELY, and calling
+        // that "move together" would be a plainly false finding.
+        const how = r >= 0 ? 'move together' : 'move in opposite directions';
+        signals.push({ score: 0.4 + Math.abs(r) / 3, kind: 'correlation', text: `"${byVariance[i].name}" and "${byVariance[j].name}" ${how} (r=${r.toFixed(2)}, n=${n}) — correlation, not causation` });
       }
     }
   }

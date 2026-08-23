@@ -149,12 +149,18 @@ class GsaStore {
       const id = 'ds_' + crypto.randomBytes(9).toString('base64url');
       // eslint-disable-next-line no-control-regex
       const cleanName = String(name || 'dataset').replace(CONTROL_CHARS, ' ').slice(0, 80);
+      const abs = this._blobPath(id);
+      const part = `${abs}.part-${process.pid}-${Date.now()}`;
       try {
-        const abs = this._blobPath(id);
-        const part = `${abs}.part-${process.pid}-${Date.now()}`;
-        fs.writeFileSync(part, text);
-        fs.renameSync(part, abs); // atomic within the dir (the _freezeAtomic shape)
+        // ASYNC: up to 5MB, and the live audio pipeline shares this event loop.
+        await fs.promises.writeFile(part, text);
+        await fs.promises.rename(part, abs); // atomic within the dir
       } catch (e) {
+        // A failed write leaves a .part behind. It is invisible to the DB-based
+        // budget and was not matched by the orphan sweep, so every failed upload
+        // permanently ate up to 5MB of the volume — and failures get MORE likely
+        // as it fills. Always clean up.
+        try { await fs.promises.unlink(part); } catch (_) { /* nothing to remove */ }
         return { ok: false, error: e && (e.code === 'ENOSPC' || e.code === 'EACCES') ? 'storage_unavailable' : 'store_failed' };
       }
       await this._run(
@@ -174,7 +180,7 @@ class GsaStore {
     return abs;
   }
 
-  readBlob(id) { return fs.readFileSync(this._blobPath(id), 'utf8'); }
+  readBlob(id) { return fs.promises.readFile(this._blobPath(id), 'utf8'); }
 
   async markAnalyzing(adId, id) {
     const upd = await this._run(`UPDATE gsa_datasets SET status = 'analyzing', updated_at = datetime('now') WHERE id = ? AND ad_id = ? AND status IN ('uploaded','failed','ready')`, [id, adId]);
@@ -188,11 +194,16 @@ class GsaStore {
       json = JSON.stringify({ ...report, timeseries: null, correlations: (report.correlations || []).slice(0, 3), truncated: true });
       if (Buffer.byteLength(json) > REPORT_MAX_BYTES) json = JSON.stringify({ rowCount: report.rowCount, signals: report.signals, caveats: report.caveats, truncated: true });
     }
-    await this._run(`UPDATE gsa_datasets SET status = 'ready', report = ?, error = NULL, updated_at = datetime('now') WHERE id = ? AND ad_id = ?`, [json, id, adId]);
+    // CAS on 'analyzing': the customer can Delete while a job is in flight
+    // (the row is gone and its blob unlinked). Without this guard the worker's
+    // completion resurrected the row as 'ready' with NO blob — it reappeared in
+    // the list, re-consumed a quota slot and budget bytes, and Re-analyze 503'd
+    // forever. A completion for a deleted dataset is simply dropped.
+    await this._run(`UPDATE gsa_datasets SET status = 'ready', report = ?, error = NULL, updated_at = datetime('now') WHERE id = ? AND ad_id = ? AND status = 'analyzing'`, [json, id, adId]);
   }
 
   async markFailed(adId, id, error) {
-    await this._run(`UPDATE gsa_datasets SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ? AND ad_id = ?`, [String(error || 'failed').slice(0, 300), id, adId]);
+    await this._run(`UPDATE gsa_datasets SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ? AND ad_id = ? AND status = 'analyzing'`, [String(error || 'failed').slice(0, 300), id, adId]);
   }
 
   listDatasets(adId) {
@@ -228,6 +239,16 @@ class GsaStore {
     try { names = fs.readdirSync(this.dataDir); } catch { return { expired: rows.length, orphans: 0 }; }
     let orphans = 0;
     for (const f of names) {
+      // Abandoned .part files (an interrupted or failed write) are collected
+      // too: they hold real bytes but no row references them, so the DB-based
+      // budget cannot see them and nothing else would ever reclaim them.
+      if (/^ds_[A-Za-z0-9_-]{4,32}\.blob\.part-/.test(f)) {
+        const pabs = path.join(this.dataDir, f);
+        try {
+          if (now.getTime() - fs.statSync(pabs).mtimeMs > 60 * 60 * 1000) { fs.unlinkSync(pabs); orphans += 1; }
+        } catch { /* best-effort */ }
+        continue;
+      }
       const m = /^(ds_[A-Za-z0-9_-]{4,32})\.blob$/.exec(f);
       if (!m) continue;
       const row = await this._get(`SELECT id FROM gsa_datasets WHERE id = ? AND status != 'deleted'`, [m[1]]);
