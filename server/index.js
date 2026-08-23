@@ -659,6 +659,10 @@ gsHub.init().then(async () => {
 // Best-effort init — a store failure must never stop the station booting.
 const { RadioAdStore } = require("./radio-ads");
 const adStore = new RadioAdStore({ assetDir: path.join(MUSIC_DIR, "radio-ads") });
+// Stripe payments for self-serve ads (slice 3). Inert until STRIPE_SECRET_KEY /
+// STRIPE_WEBHOOK_SECRET are set on O1 (slice 6) — checkout/webhook then 503.
+const { RadioAdPayments } = require("./radio-ad-payments");
+const adPayments = new RadioAdPayments({ store: adStore });
 
 // The sponsor-ad poller — the ASYNC half of the airing seam. All sqlite for the
 // airing hook lives here so nothing touches the synchronous advance path: it
@@ -722,6 +726,7 @@ const deps = {
   floor,
   gsHub,
   adStore,
+  adPayments,
   config: {
     baseDir: BASE_DIR,
     spaPath: SPA_PATH,
