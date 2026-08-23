@@ -102,7 +102,11 @@ class RadioAdPayments {
     const cap = await this.store.reserveBandHold(draft.id, draft.band, this.bandCapacity);
     if (!cap.reserved) { const e = new Error(`the ${draft.band} slot is full right now — please pick another time slot`); e.code = 'band_full'; throw e; }
     try {
-      const params = checkoutSessionParams({ adId: draft.id, band: draft.band, successUrl: this.successUrl, cancelUrl: this.cancelUrl, runDays });
+      // 60-min session expiry: bounds how long an abandoned checkout holds the
+      // band slot and guarantees no payment lands after the capacity sweep frees
+      // it (the sweep grace is 90 min, review M1).
+      const expiresAt = Math.floor(this._now() / 1000) + 60 * 60;
+      const params = checkoutSessionParams({ adId: draft.id, band: draft.band, successUrl: this.successUrl, cancelUrl: this.cancelUrl, runDays, expiresAt });
       const session = await api.createCheckoutSession(params, checkoutIdempotencyKey(draft.id));
       if (session && session.id) await this.store.attachCheckout(draft.id, session.id);
       return { adId: draft.id, checkoutUrl: session && session.url, sessionId: session && session.id };

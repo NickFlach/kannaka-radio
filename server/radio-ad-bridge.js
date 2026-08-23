@@ -188,6 +188,11 @@ class RadioAdBridge {
     if (!this.payments) return { status: 200, body: { ok: true, decision: 'reject', refunded: false, note: 'payments unconfigured' } };
     const rf = await this.payments.refundAd(e.adId);
     if (rf.ok) return { status: 200, body: { ok: true, decision: 'reject', refunded: true, alreadyRefunded: !!rf.alreadyRefunded } };
+    // Nothing to refund / disputed / inert → done, don't 409-loop (a disputed ad
+    // is handled by the chargeback, not a refund).
+    if (['no_payment_to_refund', 'disputed', 'payments_unconfigured'].includes(rf.error)) {
+      return { status: 200, body: { ok: true, decision: 'reject', refunded: false, note: rf.error } };
+    }
     // A refund that could not be issued (e.g. Stripe down) → 409 so KAX retries;
     // the ad is 'rejected', refundAd is idempotent, the retry completes it.
     return { status: 409, body: { ok: false, reason: rf.error } };

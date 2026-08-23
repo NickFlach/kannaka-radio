@@ -172,6 +172,45 @@ async function paidScheduled(store, text, band, airings) {
     assert.strictEqual(ko2.status, 200);
   });
 
+  await run('kill THEN dispute: the partial refund stands, the dispute adds no 2nd refund', async () => {
+    const id = await paidScheduled(store, 'A killed ad whose buyer then also files a dispute', 'morning', 2);
+    await store.killAd(id);
+    const r = await pay.refundAd(id);
+    assert.strictEqual(r.ok, true);
+    const before = api.calls.refund.length;
+    await store.markDisputed('pi_' + id, 'dp_kd');
+    assert.ok((await store.getAd(id)).disputed_at);
+    const r2 = await pay.refundAd(id);
+    assert.strictEqual(r2.alreadyRefunded, true);
+    assert.strictEqual(api.calls.refund.length, before, 'no second refund after the dispute');
+  });
+
+  await run('dispute THEN kill: kill issues NO refund on a disputed ad (no double-pay)', async () => {
+    const bridge = new RadioAdBridge({ store, payments: pay, voiceDJ: fakeVoiceDJ, enactSecret: ENACT, now: () => NOWMS });
+    const id = await paidScheduled(store, 'A disputed ad the operator then tries to kill anyway', 'afternoon', 1);
+    await store.markDisputed('pi_' + id, 'dp_dk');
+    const before = api.calls.refund.length;
+    const kb = JSON.stringify({ adId: id, decision: 'kill' });
+    const ko = await bridge.handleEnact(kb, signBridge(kb, ENACT, NOWSEC));
+    assert.strictEqual(ko.status, 200, 'kill on a disputed ad → done, not a 409 loop');
+    assert.strictEqual(ko.body.refunded, false);
+    assert.strictEqual(api.calls.refund.length, before, 'no refund issued on a disputed ad');
+    assert.ok((await store.getAd(id)).disputed_at);
+  });
+
+  await run('completion releases the band hold', async () => {
+    const d = await store.createDraft({ text: 'A one-day ad that completes and frees its band', band: 'late_night' });
+    await store.markPaid(d.id, { paymentIntent: 'pi_' + d.id, amountCents: 500 });
+    await store.renderAd(d.id, fakeVoiceDJ);
+    assert.strictEqual((await store.reserveBandHold(d.id, 'late_night', 1)).reserved, true);
+    await store._run(`UPDATE radio_ads SET status='scheduled', run_start_date='2026-08-22', run_days=1, airings_done=0 WHERE id=?`, [d.id]);
+    await store._run(`INSERT INTO radio_ad_airings (ad_id, air_date, reserved_at) VALUES (?, '2026-08-22', datetime('now'))`, [d.id]);
+    const c = await store.confirmAiring(d.id, '2026-08-22');
+    assert.strictEqual(c.finished, true);
+    assert.strictEqual((await store.getAd(d.id)).status, 'completed');
+    assert.strictEqual((await store.reserveBandHold('ad_ln2', 'late_night', 1)).reserved, true, 'completion freed the band');
+  });
+
   store.db.close();
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   if (!failed) console.log('\nAll radio-ad-slice5 tests passed');

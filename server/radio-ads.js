@@ -439,19 +439,21 @@ class RadioAdStore {
    *  - release today's UNCONFIRMED reservation so the day is freed (a confirmed
    *    row is left intact — it already aired);
    *  - fire the sync engine eviction so a killed ad can never air from memory. */
-  async killAd(id, now = new Date(), priceCents = 500) {
+  async killAd(id, now = new Date()) {
     // Freeze the pro-rata refund amount at kill time, WRITE-ONCE (COALESCE), so a
     // re-driven refund replays Stripe with the SAME key AND amount (review B1).
+    // Basis is the ad's OWN amount_cents (what the customer actually paid), not a
+    // magic constant, so it stays correct if the price ever changes (review M2).
     // Guard disputed_at: never kill-refund a disputed charge — the dispute moves
     // the funds, refunding on top is a double-pay (review B2). No-op on a
     // non-live ad (the WHERE), which keeps kill idempotent under re-drive.
     await this._run(
       `UPDATE radio_ads SET status = 'killed',
          refund_amount_cents = COALESCE(refund_amount_cents,
-           CASE WHEN run_days > 0 THEN CAST(ROUND(? * (run_days - airings_done) / (run_days * 1.0)) AS INTEGER) ELSE 0 END),
+           CASE WHEN run_days > 0 THEN CAST(ROUND(COALESCE(amount_cents, 0) * (run_days - airings_done) / (run_days * 1.0)) AS INTEGER) ELSE 0 END),
          updated_at = datetime('now')
        WHERE id = ? AND status IN ('scheduled','airing') AND disputed_at IS NULL`,
-      [priceCents, id],
+      [id],
     );
     await this.releaseReservation(id, stationDay(now));
     await this.releaseBandHold(id);
@@ -516,7 +518,7 @@ class RadioAdStore {
 
   /** Release holds for ads that were never paid within the grace window, so an
    *  abandoned checkout doesn't permanently occupy a band slot. */
-  async releaseStaleUnpaidHolds(graceMs = 60 * 60 * 1000, now = new Date()) {
+  async releaseStaleUnpaidHolds(graceMs = 90 * 60 * 1000, now = new Date()) {
     const cutoff = new Date(now.getTime() - graceMs).toISOString();
     await this._run(
       `UPDATE radio_ad_band_holds SET released_at = datetime('now')
