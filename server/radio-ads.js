@@ -124,6 +124,24 @@ class RadioAdStore {
     // so deleting it perfectly restores claimability — no silent lost paid day.
     // Runs before any poller/airing begins.
     await this._run(`DELETE FROM radio_ad_airings WHERE aired_at IS NULL`);
+
+    // Outbox for the radio→KAX approval RAISE (slice 4). UNIQUE(ad_id,kind) is
+    // the exactly-once-enqueue backstop: enqueueRaise is an idempotent
+    // ON CONFLICT DO NOTHING fired on every paid signal, and a reconcile sweep
+    // re-enqueues any paid ad missing its row (review B3). Delivery is
+    // at-least-once; KAX dedupes the raise by ad id across all statuses (B4).
+    await this._run(`CREATE TABLE IF NOT EXISTS radio_ad_outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ad_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      payload TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      delivered_at TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT,
+      last_error TEXT,
+      UNIQUE (ad_id, kind)
+    )`);
   }
 
   _run(sql, params = []) { return new Promise((res, rej) => this.db.run(sql, params, function (e) { e ? rej(e) : res(this); })); }
@@ -264,11 +282,123 @@ class RadioAdStore {
     // Idempotent: already scheduled is a no-op success (the enact callback is
     // at-least-once).
     if (ad.status === 'scheduled') return { id, status: 'scheduled', already: true };
-    await this._run(
-      `UPDATE radio_ads SET status = 'scheduled', run_start_date = ?, updated_at = datetime('now') WHERE id = ? AND status IN ('approved','scheduled')`,
+    // CHECK upd.changes — an ad not in a schedulable state must NOT report a
+    // false success (review B1: the old code returned success unconditionally,
+    // so a 'pending'/refunded ad "scheduled" while nothing changed).
+    const upd = await this._run(
+      `UPDATE radio_ads SET status = 'scheduled', run_start_date = COALESCE(run_start_date, ?), updated_at = datetime('now') WHERE id = ? AND status = 'approved'`,
       [stationDay(now), id],
     );
+    if (!upd || upd.changes === 0) throw new Error(`ad ${id} not schedulable from status '${ad.status}'`);
     return { id, status: 'scheduled', already: false };
+  }
+
+  /**
+   * Enact an operator APPROVAL: drive a paid/pending/approved ad all the way to
+   * 'scheduled', idempotently. This is what the KAX enact call invokes. State-
+   * tolerant (review M2 — the paid→pending marker is best-effort), and refuses
+   * to schedule a terminal (refunded/killed/rejected) ad or an unrendered one.
+   * Render happens at PAID time (the bridge reconcile), so by here tts_file is set.
+   *
+   * Returns { ok, reason?, already? }: ok:false with reason 'terminal'/'not_rendered'
+   * → the enact endpoint 409s so the KAX keystone keeps it as needs-action.
+   */
+  async approveAndSchedule(id, now = new Date()) {
+    const ad = await this.getAd(id);
+    if (!ad) return { ok: false, reason: 'not_found' };
+    if (['scheduled', 'airing', 'completed'].includes(ad.status)) return { ok: true, already: true };
+    if (['refunded', 'killed', 'rejected', 'disputed'].includes(ad.status)) return { ok: false, reason: `terminal:${ad.status}` };
+    if (!ad.tts_file) return { ok: false, reason: 'not_rendered' }; // render-at-paid hasn't landed yet → retry
+    // paid|pending → approved → scheduled (two guarded steps to honor
+    // AD_TRANSITIONS; each is idempotent under re-drive).
+    await this._run(`UPDATE radio_ads SET status = 'approved', updated_at = datetime('now') WHERE id = ? AND status IN ('paid','pending')`, [id]);
+    const upd = await this._run(
+      `UPDATE radio_ads SET status = 'scheduled', run_start_date = COALESCE(run_start_date, ?), updated_at = datetime('now') WHERE id = ? AND status = 'approved'`,
+      [stationDay(now), id],
+    );
+    if (upd && upd.changes) return { ok: true, scheduled: true };
+    const after = await this.getAd(id);
+    if (after && after.status === 'scheduled') return { ok: true, already: true };
+    return { ok: false, reason: `race:${after ? after.status : 'gone'}` };
+  }
+
+  /**
+   * Enact an operator REJECTION: move a paid/pending/approved ad to 'rejected'
+   * (the refund itself is confirmed-before-marked in radio-ad-payments.refundAd,
+   * which the enact endpoint calls next). Refuses a live ad (scheduled/airing) —
+   * that is a mid-run kill, not a rejection. Idempotent.
+   */
+  async rejectAd(id) {
+    const ad = await this.getAd(id);
+    if (!ad) return { ok: false, reason: 'not_found' };
+    if (['rejected', 'refunded'].includes(ad.status)) return { ok: true, already: true };
+    if (['killed'].includes(ad.status)) return { ok: true, already: true };
+    if (['scheduled', 'airing', 'completed', 'disputed'].includes(ad.status)) return { ok: false, reason: `already_live:${ad.status}` };
+    const upd = await this._run(`UPDATE radio_ads SET status = 'rejected', updated_at = datetime('now') WHERE id = ? AND status IN ('paid','pending','approved')`, [id]);
+    if (upd && upd.changes) return { ok: true, rejected: true };
+    const after = await this.getAd(id);
+    if (after && ['rejected', 'refunded'].includes(after.status)) return { ok: true, already: true };
+    return { ok: false, reason: `race:${after ? after.status : 'gone'}` };
+  }
+
+  /** Best-effort marker that a paid ad's raise reached KAX (paid→pending). The
+   *  enact path is state-tolerant and does NOT depend on this (review M2). */
+  async markRaised(id) {
+    await this._run(`UPDATE radio_ads SET status = 'pending', updated_at = datetime('now') WHERE id = ? AND status = 'paid'`, [id]);
+  }
+
+  // ── Raise outbox (slice 4) ─────────────────────────────────
+
+  /** Idempotently enqueue a raise for an ad. ON CONFLICT(ad_id,kind) DO NOTHING
+   *  is the exactly-once backstop — safe to call on every paid signal AND from
+   *  the reconcile sweep (review B3). */
+  async enqueueRaise(id, payload = null) {
+    await this._run(
+      `INSERT INTO radio_ad_outbox (ad_id, kind, payload) VALUES (?, 'raise', ?) ON CONFLICT(ad_id, kind) DO NOTHING`,
+      [id, payload == null ? null : JSON.stringify(payload)],
+    );
+  }
+
+  /** Undelivered raises whose backoff has elapsed, oldest first. */
+  pendingRaises(now = new Date(), limit = 20) {
+    return this._all(
+      `SELECT * FROM radio_ad_outbox WHERE kind = 'raise' AND delivered_at IS NULL AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY id LIMIT ?`,
+      [now.toISOString(), limit],
+    );
+  }
+
+  async markRaiseDelivered(outboxId) {
+    await this._run(`UPDATE radio_ad_outbox SET delivered_at = datetime('now'), last_error = NULL WHERE id = ?`, [outboxId]);
+  }
+
+  /** Record a failed delivery attempt + schedule the next one. Raises retry
+   *  FOREVER (money — never go terminal like a losable chat event, review M5);
+   *  the caller supplies the capped-backoff next_attempt_at. */
+  async bumpRaiseAttempt(outboxId, err, nextAttemptAt) {
+    await this._run(
+      `UPDATE radio_ad_outbox SET attempts = attempts + 1, next_attempt_at = ?, last_error = ? WHERE id = ?`,
+      [nextAttemptAt instanceof Date ? nextAttemptAt.toISOString() : nextAttemptAt, String(err || '').slice(0, 500), outboxId],
+    );
+  }
+
+  /** Paid ads with no raise row yet — the reconcile target that guarantees a
+   *  raise even if a crash landed between the paid commit and the enqueue, or
+   *  Stripe gave up before the webhook enqueued one (review B3). */
+  paidWithoutRaise(limit = 50) {
+    return this._all(
+      `SELECT * FROM radio_ads WHERE status = 'paid' AND NOT EXISTS (SELECT 1 FROM radio_ad_outbox o WHERE o.ad_id = radio_ads.id AND o.kind = 'raise') LIMIT ?`,
+      [limit],
+    );
+  }
+
+  /** Ads that are paid/raised but not yet rendered — render early (review M3) so
+   *  the enact is instant. Covers 'pending' too (a raise may deliver, moving the
+   *  ad paid→pending, before render finishes), so it can never strand unrendered. */
+  adsNeedingRender(limit = 50) {
+    return this._all(
+      `SELECT * FROM radio_ads WHERE status IN ('paid','pending') AND tts_file IS NULL LIMIT ?`,
+      [limit],
+    );
   }
 
   /** Register a synchronous kill listener (the DJ engine's evictSponsor). The

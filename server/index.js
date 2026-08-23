@@ -663,6 +663,11 @@ const adStore = new RadioAdStore({ assetDir: path.join(MUSIC_DIR, "radio-ads") }
 // STRIPE_WEBHOOK_SECRET are set on O1 (slice 6) — checkout/webhook then 503.
 const { RadioAdPayments } = require("./radio-ad-payments");
 const adPayments = new RadioAdPayments({ store: adStore });
+// radio↔KAX approval bridge (slice 4). Renders paid ads early, raises them to
+// Nick's KAX inbox, and enacts his approve/reject. Inert until the bridge env
+// (KAX_RAISE_URL / RADIO_KAX_RAISE_SECRET / KAX_RADIO_ENACT_SECRET) is set.
+const { RadioAdBridge } = require("./radio-ad-bridge");
+const adBridge = new RadioAdBridge({ store: adStore, payments: adPayments, voiceDJ });
 
 // The sponsor-ad poller — the ASYNC half of the airing seam. All sqlite for the
 // airing hook lives here so nothing touches the synchronous advance path: it
@@ -708,6 +713,10 @@ adStore.init()
     djEngine._confirmSponsor = (adId, airDate) => { adStore.confirmAiring(adId, airDate).catch(() => {}); };
     adStore.setKillListener((adId) => { try { djEngine.evictSponsor(adId); } catch (_) { /* best-effort */ } });
     startSponsorPoller(djEngine, adStore);
+    // Bridge poller: render paid ads early + deliver raises to KAX (idempotent,
+    // retry-forever). Runs even when delivery env is unset (renders + enqueues,
+    // nothing lost); only the outbound POST is env-gated.
+    adBridge.startPoller();
   })
   .catch(e => { console.warn('[radio-ads] store init failed:', e.message); });
 
@@ -727,6 +736,7 @@ const deps = {
   gsHub,
   adStore,
   adPayments,
+  adBridge,
   config: {
     baseDir: BASE_DIR,
     spaPath: SPA_PATH,
