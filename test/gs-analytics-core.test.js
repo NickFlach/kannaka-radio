@@ -134,6 +134,18 @@ run('buildReport: degenerate inputs stay graceful', () => {
   // no crash = pass
 });
 
+run('control-char sanitizing covers ESC/DEL/C1 and PRESERVES hyphens', () => {
+  // Regression: the class was twice normalized by an editor into a form that
+  // dropped DEL/C1 and started eating hyphens out of real column names, so it
+  // is now built from an ASCII string. Assert the behaviour, not the source.
+  const { CONTROL_CHARS } = require('../server/gs-analytics-core');
+  const ESC = String.fromCharCode(27), DEL = String.fromCharCode(127), C1 = String.fromCharCode(0x9b);
+  assert.strictEqual(('a' + ESC + 'b' + DEL + 'c' + C1 + 'd').replace(CONTROL_CHARS, ''), 'abcd');
+  assert.strictEqual('order-date'.replace(CONTROL_CHARS, ''), 'order-date', 'hyphens are not control chars');
+  const { header } = parseCsv('order-date,unit-price' + ESC + '\n1,2\n');
+  assert.deepStrictEqual(header, ['order-date', 'unit-price']);
+});
+
 run('esc: neutralizes HTML in customer data', () => {
   assert.strictEqual(esc('<script>alert(1)</script>'), '&lt;script&gt;alert(1)&lt;/script&gt;');
   assert.strictEqual(esc('a"b\'c&d'), 'a&quot;b&#39;c&amp;d');

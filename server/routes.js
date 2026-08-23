@@ -878,13 +878,12 @@ module.exports = function setupRoutes(deps) {
           try {
           const bytes = Buffer.byteLength(body);
           if (bytes < 4) { gsaJson(400, { ok: false, error: "empty upload" }); return; }
-          gsa.store.reserveBytes(bytes); // budget reservation (M4)
+          // The byte reservation lives INSIDE createDataset (it owns the whole
+          // check-reserve-write-commit sequence), so the route just calls it.
           let created;
           try {
             created = await gsa.store.createDataset(account, { name, kind, bytes, text: body });
-          } catch (e) { created = { ok: false, error: "store_failed" }; } finally {
-            gsa.store.releaseBytes(bytes); // the row (with bytes) now carries the accounting
-          }
+          } catch (e) { created = { ok: false, error: "store_failed" }; }
           if (!created.ok) {
             const map = { too_large: 413, quota: 409, capacity: 503, storage_unavailable: 503, bad_kind: 400, store_failed: 500 };
             const msg = { quota: "dataset quota reached — delete one first", capacity: "analytics storage is full right now", storage_unavailable: "storage unavailable — try again later" };

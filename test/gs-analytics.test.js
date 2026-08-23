@@ -131,6 +131,33 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(over.error, 'quota');
   });
 
+  await run('rotation cannot resurrect an EXPIRED account', async () => {
+    await radio.grantGsaEntitlement('ad_expired77');
+    const first = await gsa.redeem('ad_expired77');
+    assert.strictEqual(first.ok, true);
+    // Age the account past its expiry, then try to rotate a fresh token.
+    await radio._run(`UPDATE radio_ad_gsa_entitlements SET account_expires_at=datetime('now','-1 day') WHERE ad_id='ad_expired77'`);
+    const again = await gsa.redeem('ad_expired77');
+    assert.strictEqual(again.ok, false);
+    assert.strictEqual(again.error, 'account_expired', 'an expired month cannot be re-opened by re-presenting the ad id');
+    assert.strictEqual(await gsa.auth(first.token), null, 'the old token is dead too');
+  });
+
+  await run('budget accounting: bytes counted ONCE and the reservation always releases', async () => {
+    const before = gsa._inFlightBytes;
+    const okDs = await gsa.createDataset({ adId: 'ad_chback12' }, { name: 'acct', kind: 'csv', bytes: 12, text: 'a,b\n1,2\n' });
+    assert.strictEqual(okDs.ok, true);
+    assert.strictEqual(gsa._inFlightBytes, before, 'reservation released after success');
+    // A rejected upload (bad kind) must not leak a reservation either.
+    const bad = await gsa.createDataset({ adId: 'ad_chback12' }, { name: 'x', kind: 'exe', bytes: 12, text: 'x' });
+    assert.strictEqual(bad.ok, false);
+    assert.strictEqual(gsa._inFlightBytes, before, 'reservation released after rejection');
+    // Sum reflects live rows only (deleted excluded).
+    const live = await gsa._liveBytes();
+    await gsa.deleteDataset('ad_chback12', okDs.id);
+    assert.ok((await gsa._liveBytes()) < live, 'deleting frees budget');
+  });
+
   await run('boot reconcile: a restart mid-analysis marks the row failed, not stuck', async () => {
     await radio._run(`UPDATE gsa_datasets SET status='analyzing' WHERE id=?`, [dsId]);
     await gsa.migrate(); // simulates the boot pass
