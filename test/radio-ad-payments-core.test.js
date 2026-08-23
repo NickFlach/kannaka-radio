@@ -71,9 +71,9 @@ run('malformed / missing header fails safely', () => {
   assert.strictEqual(verifyStripeSignature(body, sign(body, SECRET, NOW), '', NOW), false, 'no secret');
 });
 
-run('classify: checkout.session.completed paid → paid with metadata', () => {
-  const c = classifyWebhookEvent({ type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 500, metadata: { radio_ad_id: 'ad_1' } } } });
-  assert.deepStrictEqual(c, { kind: 'paid', adId: 'ad_1', sessionId: 'cs_1', paymentIntent: 'pi_1', amountCents: 500 });
+run('classify: checkout.session.completed paid → paid with metadata + currency', () => {
+  const c = classifyWebhookEvent({ type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 500, currency: 'usd', metadata: { radio_ad_id: 'ad_1' } } } });
+  assert.deepStrictEqual(c, { kind: 'paid', adId: 'ad_1', sessionId: 'cs_1', paymentIntent: 'pi_1', amountCents: 500, currency: 'usd' });
 });
 
 run('classify: checkout.session.completed UNPAID → ignore', () => {
@@ -82,8 +82,8 @@ run('classify: checkout.session.completed UNPAID → ignore', () => {
 });
 
 run('classify: payment_intent.succeeded → paid (2nd settlement path)', () => {
-  const c = classifyWebhookEvent({ type: 'payment_intent.succeeded', data: { object: { id: 'pi_9', amount_received: 500, metadata: { radio_ad_id: 'ad_9' } } } });
-  assert.deepStrictEqual(c, { kind: 'paid', adId: 'ad_9', sessionId: null, paymentIntent: 'pi_9', amountCents: 500 });
+  const c = classifyWebhookEvent({ type: 'payment_intent.succeeded', data: { object: { id: 'pi_9', amount_received: 500, currency: 'usd', metadata: { radio_ad_id: 'ad_9' } } } });
+  assert.deepStrictEqual(c, { kind: 'paid', adId: 'ad_9', sessionId: null, paymentIntent: 'pi_9', amountCents: 500, currency: 'usd' });
 });
 
 run('classify: unrelated event → ignore', () => {

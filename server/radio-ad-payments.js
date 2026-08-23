@@ -114,13 +114,25 @@ class RadioAdPayments {
     try { event = JSON.parse(rawBody); } catch { return { status: 400, body: { error: 'bad json' } }; }
     const c = classifyWebhookEvent(event);
     if (c.kind === 'paid' && c.adId) {
+      // Amount + currency MUST match our server-set price before we honor a
+      // paid event — the sole guard against a mispriced/foreign-currency charge.
+      // A mismatch is definitive (retrying won't change it): acknowledge (200)
+      // so Stripe stops redelivering, but do NOT mark paid.
+      if (c.amountCents !== PRICE_CENTS || c.currency !== CURRENCY) {
+        return { status: 200, body: { received: true, ignored: 'amount_or_currency_mismatch' } };
+      }
+      let r;
       try {
-        await this.store.markPaid(c.adId, { sessionId: c.sessionId, paymentIntent: c.paymentIntent, amountCents: c.amountCents });
+        r = await this.store.markPaid(c.adId, { sessionId: c.sessionId, paymentIntent: c.paymentIntent, amountCents: c.amountCents });
       } catch (e) {
-        // Return 500 so Stripe RETRIES — a transient store error must not drop a
-        // paid signal (that would be an unrecorded charge).
+        // Transient store error → 500 so Stripe RETRIES; a dropped paid signal
+        // would be an unrecorded charge.
         return { status: 500, body: { error: 'could not record payment' } };
       }
+      // A paid event for an ad we can't find yet → 500 so Stripe redelivers
+      // (this slice has no reconciliation sweep to recover a dropped signal).
+      // A terminal-state no-op (already refunded/killed/completed) → 200.
+      if (!r.ok && r.reason === 'not_found') return { status: 500, body: { error: 'ad not found — will retry' } };
     }
     return { status: 200, body: { received: true } };
   }

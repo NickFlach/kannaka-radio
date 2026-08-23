@@ -83,10 +83,10 @@ function classifyWebhookEvent(event) {
   const md = obj.metadata || {};
   if (event.type === 'checkout.session.completed') {
     if (obj.payment_status !== 'paid') return { kind: 'ignore' }; // e.g. async payment still pending
-    return { kind: 'paid', adId: md.radio_ad_id || null, sessionId: obj.id || null, paymentIntent: obj.payment_intent || null, amountCents: obj.amount_total ?? null };
+    return { kind: 'paid', adId: md.radio_ad_id || null, sessionId: obj.id || null, paymentIntent: obj.payment_intent || null, amountCents: obj.amount_total ?? null, currency: obj.currency || null };
   }
   if (event.type === 'payment_intent.succeeded') {
-    return { kind: 'paid', adId: md.radio_ad_id || null, sessionId: null, paymentIntent: obj.id || null, amountCents: obj.amount_received ?? null };
+    return { kind: 'paid', adId: md.radio_ad_id || null, sessionId: null, paymentIntent: obj.id || null, amountCents: obj.amount_received ?? null, currency: obj.currency || null };
   }
   return { kind: 'ignore' };
 }

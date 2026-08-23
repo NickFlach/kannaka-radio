@@ -211,8 +211,11 @@ class RadioAdStore {
     const ad = await this.getAd(id);
     if (!ad) return { ok: false, reason: 'not_found' };
     if (ad.refunded_at) return { ok: true, already: true };
+    // Refundable states per AD_TRANSITIONS: paid→refunded, rejected→refunded,
+    // killed→refunded. A 'pending' ad (raised for approval) is refunded by
+    // first being rejected (pending→rejected→refunded), so it's not listed here.
     const upd = await this._run(
-      `UPDATE radio_ads SET status = 'refunded', refunded_at = datetime('now'), stripe_refund_id = COALESCE(?, stripe_refund_id), updated_at = datetime('now') WHERE id = ? AND refunded_at IS NULL AND status IN ('paid','pending','rejected','killed')`,
+      `UPDATE radio_ads SET status = 'refunded', refunded_at = datetime('now'), stripe_refund_id = COALESCE(?, stripe_refund_id), updated_at = datetime('now') WHERE id = ? AND refunded_at IS NULL AND status IN ('paid','rejected','killed')`,
       [refundId, id],
     );
     return { ok: true, already: !(upd && upd.changes) };

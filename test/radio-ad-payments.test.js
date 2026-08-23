@@ -65,7 +65,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
   });
 
   await run('webhook with a valid signature marks the ad PAID', async () => {
-    const { body, header } = signedEvent({ id: 'evt_1', type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 500, metadata: { radio_ad_id: adId } } } });
+    const { body, header } = signedEvent({ id: 'evt_1', type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 500, currency: 'usd', metadata: { radio_ad_id: adId } } } });
     const out = await pay.handleWebhook(body, header);
     assert.strictEqual(out.status, 200);
     const ad = await store.getAd(adId);
@@ -77,7 +77,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
 
   await run('a duplicate paid webhook is idempotent (no double-apply)', async () => {
     const before = await store.getAd(adId);
-    const { body, header } = signedEvent({ id: 'evt_1b', type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 500, metadata: { radio_ad_id: adId } } } });
+    const { body, header } = signedEvent({ id: 'evt_1b', type: 'checkout.session.completed', data: { object: { id: 'cs_1', payment_status: 'paid', payment_intent: 'pi_1', amount_total: 500, currency: 'usd', metadata: { radio_ad_id: adId } } } });
     const out = await pay.handleWebhook(body, header);
     assert.strictEqual(out.status, 200);
     const after = await store.getAd(adId);
@@ -97,7 +97,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
 
   await run('2nd settlement path: payment_intent.succeeded alone also pays (id backfilled)', async () => {
     const draft = await pay.createCheckout({ text: 'A spot paid via the payment intent path only', band: 'afternoon' });
-    const { body, header } = signedEvent({ id: 'evt_pi', type: 'payment_intent.succeeded', data: { object: { id: 'pi_only', amount_received: 500, metadata: { radio_ad_id: draft.adId } } } });
+    const { body, header } = signedEvent({ id: 'evt_pi', type: 'payment_intent.succeeded', data: { object: { id: 'pi_only', amount_received: 500, currency: 'usd', metadata: { radio_ad_id: draft.adId } } } });
     const out = await pay.handleWebhook(body, header);
     assert.strictEqual(out.status, 200);
     const ad = await store.getAd(draft.adId);
@@ -105,7 +105,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(ad.stripe_payment_intent, 'pi_only');
     assert.strictEqual(ad.stripe_session_id, draft.sessionId, 'session id from checkout creation stands');
     // The matching checkout.session.completed then arrives — still one payment.
-    const ev2 = signedEvent({ id: 'evt_cs', type: 'checkout.session.completed', data: { object: { id: draft.sessionId, payment_status: 'paid', payment_intent: 'pi_only', amount_total: 500, metadata: { radio_ad_id: draft.adId } } } });
+    const ev2 = signedEvent({ id: 'evt_cs', type: 'checkout.session.completed', data: { object: { id: draft.sessionId, payment_status: 'paid', payment_intent: 'pi_only', amount_total: 500, currency: 'usd', metadata: { radio_ad_id: draft.adId } } } });
     await pay.handleWebhook(ev2.body, ev2.header);
     const ad2 = await store.getAd(draft.adId);
     assert.strictEqual(ad2.status, 'paid');
@@ -118,6 +118,27 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     const out = await pay.handleWebhook(body, header);
     assert.strictEqual(out.status, 200);
     assert.strictEqual((await store.getAd(draft.adId)).status, 'draft');
+  });
+
+  await run('a wrong amount or currency is NOT honored (mispriced/foreign charge)', async () => {
+    const draft = await pay.createCheckout({ text: 'A spot whose webhook reports a wrong amount', band: 'morning' });
+    // Correct signature, but amount != $5.
+    const bad = signedEvent({ id: 'evt_amt', type: 'checkout.session.completed', data: { object: { id: 'cs_amt', payment_status: 'paid', payment_intent: 'pi_amt', amount_total: 100, currency: 'usd', metadata: { radio_ad_id: draft.adId } } } });
+    const o1 = await pay.handleWebhook(bad.body, bad.header);
+    assert.strictEqual(o1.status, 200, 'acknowledged so Stripe stops retrying');
+    assert.strictEqual(o1.body.ignored, 'amount_or_currency_mismatch');
+    assert.strictEqual((await store.getAd(draft.adId)).status, 'draft', 'not paid on wrong amount');
+    // Wrong currency.
+    const cur = signedEvent({ id: 'evt_cur', type: 'checkout.session.completed', data: { object: { id: 'cs_cur', payment_status: 'paid', payment_intent: 'pi_cur', amount_total: 500, currency: 'eur', metadata: { radio_ad_id: draft.adId } } } });
+    const o2 = await pay.handleWebhook(cur.body, cur.header);
+    assert.strictEqual(o2.status, 200);
+    assert.strictEqual((await store.getAd(draft.adId)).status, 'draft', 'not paid on wrong currency');
+  });
+
+  await run('a paid webhook for an unknown ad returns 500 (Stripe retries)', async () => {
+    const ev = signedEvent({ id: 'evt_missing', type: 'checkout.session.completed', data: { object: { id: 'cs_missing', payment_status: 'paid', payment_intent: 'pi_missing', amount_total: 500, currency: 'usd', metadata: { radio_ad_id: 'ad_does_not_exist' } } } });
+    const out = await pay.handleWebhook(ev.body, ev.header);
+    assert.strictEqual(out.status, 500, 'not_found → retry so a real paid signal is not dropped');
   });
 
   await run('refundAd is confirmed-before-marked and idempotent', async () => {
