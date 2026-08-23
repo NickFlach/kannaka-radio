@@ -50,31 +50,69 @@ class RadioAdStore {
       } catch (e) { return reject(e); }
       this.db = new sqlite3.Database(this.dbPath, (err) => {
         if (err) return reject(err);
-        this.db.serialize(() => {
-          this.db.run(`CREATE TABLE IF NOT EXISTS radio_ads (
-            id TEXT PRIMARY KEY,
-            status TEXT NOT NULL DEFAULT 'draft',
-            text TEXT NOT NULL,
-            content_hash TEXT NOT NULL,
-            tts_file TEXT,
-            band TEXT NOT NULL,
-            run_days INTEGER NOT NULL DEFAULT 7,
-            run_start_date TEXT,
-            airings_done INTEGER NOT NULL DEFAULT 0,
-            last_aired_date TEXT,
-            requested_by TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-          )`, (e) => { if (e) reject(e); }); // callback load-bearing: a callback-less run that errors crashes the shared process
-          this.db.run(`CREATE TABLE IF NOT EXISTS radio_ad_airings (
-            ad_id TEXT NOT NULL,
-            air_date TEXT NOT NULL,
-            aired_at TEXT NOT NULL DEFAULT (datetime('now')),
-            PRIMARY KEY (ad_id, air_date)
-          )`, (e) => (e ? reject(e) : resolve(this)));
-        });
+        // this.db is set — run the schema/migration/reconcile sequence with the
+        // promisified helpers (each await serializes, so no db.serialize needed).
+        this._migrate().then(() => resolve(this)).catch(reject);
       });
     });
+  }
+
+  /**
+   * Create/upgrade the schema, then reconcile the airing ledger.
+   *
+   * radio_ad_airings is a RESERVE/CONFIRM ledger (the airing-hook design's core
+   * money invariant). `aired_at` is NULLABLE:
+   *   - NULL      → RESERVED: holds the UNIQUE(ad_id,air_date) once-per-day lock,
+   *                 but has NOT aired and advances NO run counter.
+   *   - timestamp → CONFIRMED: the spot actually finished on the live stream.
+   * Counting at reserve time would let a restart between reserve and broadcast
+   * silently burn a paid day; splitting reserve from confirm makes an unaired
+   * reservation fully recoverable (boot reconcile below).
+   */
+  async _migrate() {
+    await this._run(`CREATE TABLE IF NOT EXISTS radio_ads (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'draft',
+      text TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      tts_file TEXT,
+      band TEXT NOT NULL,
+      run_days INTEGER NOT NULL DEFAULT 7,
+      run_start_date TEXT,
+      airings_done INTEGER NOT NULL DEFAULT 0,
+      last_aired_date TEXT,
+      requested_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    // Fresh DBs get the reserve/confirm shape directly.
+    await this._run(`CREATE TABLE IF NOT EXISTS radio_ad_airings (
+      ad_id TEXT NOT NULL,
+      air_date TEXT NOT NULL,
+      reserved_at TEXT NOT NULL DEFAULT (datetime('now')),
+      aired_at TEXT,
+      PRIMARY KEY (ad_id, air_date)
+    )`);
+    // Upgrade a pre-reserve/confirm table (aired_at NOT NULL, no reserved_at).
+    // sqlite can't drop NOT NULL via ALTER, so rebuild + backfill existing rows
+    // as CONFIRMED (they aired under the old count-at-claim model, so aired_at
+    // carries their real air time). Idempotent: once reserved_at exists, skip.
+    const cols = await this._all(`PRAGMA table_info(radio_ad_airings)`);
+    if (!cols.some((c) => c.name === 'reserved_at')) {
+      await this._run(`CREATE TABLE radio_ad_airings_new (
+        ad_id TEXT NOT NULL, air_date TEXT NOT NULL,
+        reserved_at TEXT NOT NULL DEFAULT (datetime('now')),
+        aired_at TEXT, PRIMARY KEY (ad_id, air_date))`);
+      await this._run(`INSERT INTO radio_ad_airings_new (ad_id, air_date, reserved_at, aired_at)
+        SELECT ad_id, air_date, aired_at, aired_at FROM radio_ad_airings`);
+      await this._run(`DROP TABLE radio_ad_airings`);
+      await this._run(`ALTER TABLE radio_ad_airings_new RENAME TO radio_ad_airings`);
+    }
+    // Boot reconcile: an unconfirmed reservation is a claim that never became a
+    // broadcast (restart between reserve and air). Reserve advanced no counter,
+    // so deleting it perfectly restores claimability — no silent lost paid day.
+    // Runs before any poller/airing begins.
+    await this._run(`DELETE FROM radio_ad_airings WHERE aired_at IS NULL`);
   }
 
   _run(sql, params = []) { return new Promise((res, rej) => this.db.run(sql, params, function (e) { e ? rej(e) : res(this); })); }
@@ -170,10 +208,20 @@ class RadioAdStore {
     return { id, status: 'scheduled', already: false };
   }
 
-  /** Kill switch: stop future airings immediately. The selector re-checks
-   *  status at air time, so a killed ad stops on the next window. */
-  async killAd(id) {
+  /** Register a synchronous kill listener (the DJ engine's evictSponsor). The
+   *  sync advance path can't re-read DB status, so kill must PUSH into the
+   *  engine's in-memory reservation/override to keep a killed ad off the air. */
+  setKillListener(fn) { this._onKill = fn; }
+
+  /** Kill switch: stop airings immediately.
+   *  - status='killed' (durable);
+   *  - release today's UNCONFIRMED reservation so the day is freed (a confirmed
+   *    row is left intact — it already aired);
+   *  - fire the sync engine eviction so a killed ad can never air from memory. */
+  async killAd(id, now = new Date()) {
     await this._run(`UPDATE radio_ads SET status = 'killed', updated_at = datetime('now') WHERE id = ? AND status IN ('scheduled','airing')`, [id]);
+    await this.releaseReservation(id, stationDay(now));
+    if (this._onKill) { try { this._onKill(id); } catch { /* engine eviction best-effort */ } }
     return { id, status: 'killed' };
   }
 
@@ -189,14 +237,20 @@ class RadioAdStore {
   }
 
   /**
-   * Pick the next ad to air right now, claim its airing atomically, and return
-   * its track (or null if nothing is due). The claim is an INSERT into
-   * radio_ad_airings on the UNIQUE (ad_id, air_date) — a re-air on a
-   * day-already-aired throws SQLITE_CONSTRAINT and we skip to the next
-   * candidate, so a restart mid-window can never double-air a day. Status is
-   * re-checked at claim time (kill switch) via the airEligible predicate.
+   * RESERVE the next due ad for right now (or null if nothing is due). This is
+   * the async half of the sync-advance / async-claim seam: the DJ poller calls
+   * it AHEAD of a commercial slot and holds the result in memory until the slot
+   * actually airs.
    *
-   * Airs one ad per call; the DJ engine calls this once per band window.
+   * Reserve = INSERT the ledger row ONLY. UNIQUE(ad_id, air_date) bounds the ad
+   * to <=once/day and survives a restart. `aired_at` stays NULL (not aired yet)
+   * and NO run counter moves — so a reservation that never becomes a broadcast
+   * (restart, playlist swap, TTL expiry) is fully recoverable (boot reconcile /
+   * releaseReservation) and never a silently-charged day. The counter advances
+   * only in confirmAiring(), when the spot actually finishes on-air.
+   *
+   * Returns { adId, file, title, airDate, band, commercial, sponsor } — enough
+   * for the engine to overlay the spot and later confirm/release it.
    */
   async pickAiringForNow(now = new Date()) {
     const band = currentBand(now);
@@ -204,30 +258,14 @@ class RadioAdStore {
     const candidates = await this.eligibleForBand(band, now);
     for (const ad of candidates) {
       if (!airEligible(ad, now)) continue; // status/band/run re-check
-      // The CAS: claim today for this ad. UNIQUE(ad_id, air_date) makes the
-      // second claimer (or a restart re-run) lose here.
       try {
-        await this._run(`INSERT INTO radio_ad_airings (ad_id, air_date) VALUES (?, ?)`, [ad.id, day]);
+        await this._run(
+          `INSERT INTO radio_ad_airings (ad_id, air_date, reserved_at) VALUES (?, ?, datetime('now'))`,
+          [ad.id, day],
+        );
       } catch (e) {
-        if (String(e && e.code).includes('SQLITE_CONSTRAINT')) continue; // already aired today
+        if (String(e && e.code).includes('SQLITE_CONSTRAINT')) continue; // already reserved/aired today
         throw e;
-      }
-      // Claimed. Advance the run counters — but STATUS-GUARDED on 'scheduled',
-      // so an ad killed between the candidate SELECT and here cannot be
-      // resurrected to 'scheduled' and aired. If the guard matches nothing
-      // (killed mid-flight), undo the day's claim so a killed ad neither airs
-      // nor burns the day, and skip it.
-      const done = ad.airings_done + 1;
-      const finished = done >= ad.run_days;
-      const upd = await this._run(
-        `UPDATE radio_ads SET airings_done = ?, last_aired_date = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'scheduled'`,
-        [done, day, finished ? 'completed' : 'scheduled', ad.id],
-      );
-      if (!upd || upd.changes === 0) {
-        // Killed (or no longer scheduled) after we claimed the day — release
-        // the claim so the ad is truly stopped and the day isn't wasted.
-        await this._run(`DELETE FROM radio_ad_airings WHERE ad_id = ? AND air_date = ?`, [ad.id, day]);
-        continue;
       }
       return {
         adId: ad.id,
@@ -235,11 +273,76 @@ class RadioAdStore {
         title: `[SPONSOR] ${ad.id}`,
         commercial: true,
         sponsor: true,
-        airing: done,
-        of: ad.run_days,
+        airDate: day,
+        band,
       };
     }
     return null;
+  }
+
+  /**
+   * CONFIRM a reservation as aired — the ONLY place the run counter moves.
+   * Called (from the async poller) when the spot has actually finished on the
+   * live stream. Idempotent: a replay (double advance, restart mid-confirm)
+   * finds aired_at already set and is a no-op, so a spot can never be
+   * double-counted.
+   *
+   * airings_done is a DERIVED cache of the confirmed-row count (recomputed here
+   * from the ledger, the source of truth) so it can never drift. The run
+   * completes only at run_days CONFIRMED airings — a lost/released day slows the
+   * run, it does not short-change the customer.
+   */
+  async confirmAiring(adId, airDate) {
+    const upd = await this._run(
+      `UPDATE radio_ad_airings SET aired_at = datetime('now') WHERE ad_id = ? AND air_date = ? AND aired_at IS NULL`,
+      [adId, airDate],
+    );
+    if (!upd || upd.changes === 0) return { counted: false, reason: 'already_confirmed_or_missing' };
+    const ad = await this.getAd(adId);
+    if (!ad || ad.status !== 'scheduled') {
+      // Killed/completed between reserve and confirm. It aired once (the row is
+      // now confirmed, holding the once-per-day lock) — do NOT advance the run,
+      // do NOT delete the row.
+      return { counted: false, reason: 'not_scheduled' };
+    }
+    const row = await this._get(
+      `SELECT COUNT(*) AS n FROM radio_ad_airings WHERE ad_id = ? AND aired_at IS NOT NULL`,
+      [adId],
+    );
+    const confirmed = row ? row.n : 0;
+    const finished = confirmed >= ad.run_days;
+    await this._run(
+      `UPDATE radio_ads SET airings_done = ?, last_aired_date = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'scheduled'`,
+      [confirmed, airDate, finished ? 'completed' : 'scheduled', adId],
+    );
+    return { counted: true, airing: confirmed, of: ad.run_days, finished };
+  }
+
+  /**
+   * Release an UNCONFIRMED reservation (poller TTL, playlist swap, kill). A
+   * confirmed (aired) row is immutable, so the once-per-day guarantee can never
+   * be reopened. Because reserve advanced no counter, a bare DELETE fully
+   * restores state.
+   */
+  async releaseReservation(adId, airDate) {
+    const del = await this._run(
+      `DELETE FROM radio_ad_airings WHERE ad_id = ? AND air_date = ? AND aired_at IS NULL`,
+      [adId, airDate],
+    );
+    return { released: !!(del && del.changes) };
+  }
+
+  /** Count of days that PHYSICALLY aired (aired_at set) — a diagnostic. NOTE:
+   *  this is NOT the refund basis. Use radio_ads.airings_done for refunds: it
+   *  equals this in the normal case but is deliberately LOWER by any
+   *  kill-in-same-tick "floor" day (aired once but left unbilled, so the
+   *  customer stays refundable for it). refund_days = run_days - airings_done. */
+  async confirmedAirings(adId) {
+    const row = await this._get(
+      `SELECT COUNT(*) AS n FROM radio_ad_airings WHERE ad_id = ? AND aired_at IS NOT NULL`,
+      [adId],
+    );
+    return row ? row.n : 0;
   }
 
   /**
@@ -315,12 +418,15 @@ class RadioAdStore {
     return t;
   }
 
-  /** Operator/debug view of an ad's run. */
+  /** Operator/debug view of an ad's run. `confirmed` is the actually-aired day
+   *  count (refund basis); a row with aired_at NULL is a live reservation, not
+   *  an airing. */
   async adStatus(id) {
     const ad = await this.getAd(id);
     if (!ad) return null;
-    const airings = await this._all(`SELECT air_date, aired_at FROM radio_ad_airings WHERE ad_id = ? ORDER BY air_date`, [id]);
-    return { ...ad, airings };
+    const airings = await this._all(`SELECT air_date, reserved_at, aired_at FROM radio_ad_airings WHERE ad_id = ? ORDER BY air_date`, [id]);
+    const confirmed = airings.filter((a) => a.aired_at).length;
+    return { ...ad, airings, confirmed };
   }
 }
 

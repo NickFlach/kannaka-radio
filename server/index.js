@@ -659,8 +659,52 @@ gsHub.init().then(async () => {
 // Best-effort init — a store failure must never stop the station booting.
 const { RadioAdStore } = require("./radio-ads");
 const adStore = new RadioAdStore({ assetDir: path.join(MUSIC_DIR, "radio-ads") });
+
+// The sponsor-ad poller — the ASYNC half of the airing seam. All sqlite for the
+// airing hook lives here so nothing touches the synchronous advance path: it
+// reserves one commercial slot ahead, and releases a reservation that never got
+// a slot. Inert until real scheduled ads exist (pickAiringForNow returns null).
+function startSponsorPoller(dj, store) {
+  const TICK_MS = 25 * 1000;
+  const RESERVATION_TTL_MS = 9 * 60 * 1000; // > one track, so a live reservation never expires under a normal song
+  let inFlight = false; // mutex: overlapping ticks must not double-reserve
+  const tick = async () => {
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      // 1. Release a staged reservation that never found a slot (channel changed,
+      //    no commercial came up). Reserve advanced no counter → frees it cleanly.
+      const pend = dj.pendingSponsor();
+      if (pend && pend.claimedAt && (Date.now() - pend.claimedAt) > RESERVATION_TTL_MS) {
+        dj.clearPendingSponsor();
+        await store.releaseReservation(pend.adId, pend.airDate).catch(() => {});
+      }
+      // 2. Reserve one slot ahead when a commercial is imminent and nothing is
+      //    staged. dj-channel only — sponsor scope is Kannaka Radio programming.
+      if (dj.state.channel === "dj" && !dj.hasPendingSponsor() && dj.nextIsCommercial()) {
+        const res = await store.pickAiringForNow(new Date());
+        if (res) dj.stageSponsor({ ...res, claimedAt: Date.now() });
+      }
+    } catch (_) { /* never let the poller throw */ } finally {
+      inFlight = false;
+    }
+  };
+  const t = setInterval(() => { tick().catch(() => {}); }, TICK_MS);
+  if (t.unref) t.unref();
+  return t;
+}
+
+// Best-effort init — a store failure must never stop the station booting.
 adStore.init()
-  .then(() => { adStore.startPreviewSweeper(); }) // prune abandoned previews so they can't fill the disk
+  .then(() => {
+    adStore.startPreviewSweeper(); // prune abandoned previews so they can't fill the disk
+    // Airing hook wiring: confirm an aired spot (floating call, never throws
+    // into the sync advance), evict a killed ad from the engine synchronously,
+    // and start the reserve-ahead poller.
+    djEngine._confirmSponsor = (adId, airDate) => { adStore.confirmAiring(adId, airDate).catch(() => {}); };
+    adStore.setKillListener((adId) => { try { djEngine.evictSponsor(adId); } catch (_) { /* best-effort */ } });
+    startSponsorPoller(djEngine, adStore);
+  })
   .catch(e => { console.warn('[radio-ads] store init failed:', e.message); });
 
 const deps = {
