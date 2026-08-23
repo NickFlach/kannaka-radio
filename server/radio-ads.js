@@ -96,6 +96,13 @@ class RadioAdStore {
     await addCol('paid_at', 'TEXT');
     await addCol('refunded_at', 'TEXT');
     await addCol('stripe_refund_id', 'TEXT');
+    // Slice 5: the pro-rata kill refund amount, FROZEN at kill time (write-once)
+    // so a re-driven refund is a true Stripe idempotent replay (same key AND
+    // same amount) — never a same-key/different-amount 400 (review B1). And the
+    // dispute is ORTHOGONAL to status (a dispute can hit any state; review M4).
+    await addCol('refund_amount_cents', 'INTEGER');
+    await addCol('disputed_at', 'TEXT');
+    await addCol('stripe_dispute_id', 'TEXT');
     // Fresh DBs get the reserve/confirm shape directly.
     await this._run(`CREATE TABLE IF NOT EXISTS radio_ad_airings (
       ad_id TEXT NOT NULL,
@@ -141,6 +148,27 @@ class RadioAdStore {
       next_attempt_at TEXT,
       last_error TEXT,
       UNIQUE (ad_id, kind)
+    )`);
+
+    // Slice 5 — band capacity holds. A band can air only K sponsor spots/day
+    // (the airing hook airs one ad per commercial slot); selling more than the
+    // band can deliver starves the newer ad (a paid run that never completes =
+    // goods not delivered, review M6). A hold is taken atomically at checkout
+    // (a conditional INSERT SQLite serializes) and released on
+    // kill/reject/dispute/completion, or swept if never paid.
+    await this._run(`CREATE TABLE IF NOT EXISTS radio_ad_band_holds (
+      ad_id TEXT PRIMARY KEY,
+      band TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      released_at TEXT
+    )`);
+    // Slice 5 — GSA free-month entitlement, granted on APPROVAL (not payment;
+    // a rejected/refunded ad gets no perk), idempotent per ad (review M7).
+    await this._run(`CREATE TABLE IF NOT EXISTS radio_ad_gsa_entitlements (
+      ad_id TEXT PRIMARY KEY,
+      granted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      redeem_by TEXT,
+      revoked_at TEXT
     )`);
   }
 
@@ -335,7 +363,7 @@ class RadioAdStore {
     if (['killed'].includes(ad.status)) return { ok: true, already: true };
     if (['scheduled', 'airing', 'completed', 'disputed'].includes(ad.status)) return { ok: false, reason: `already_live:${ad.status}` };
     const upd = await this._run(`UPDATE radio_ads SET status = 'rejected', updated_at = datetime('now') WHERE id = ? AND status IN ('paid','pending','approved')`, [id]);
-    if (upd && upd.changes) return { ok: true, rejected: true };
+    if (upd && upd.changes) { await this.releaseBandHold(id); return { ok: true, rejected: true }; }
     const after = await this.getAd(id);
     if (after && ['rejected', 'refunded'].includes(after.status)) return { ok: true, already: true };
     return { ok: false, reason: `race:${after ? after.status : 'gone'}` };
@@ -411,11 +439,102 @@ class RadioAdStore {
    *  - release today's UNCONFIRMED reservation so the day is freed (a confirmed
    *    row is left intact — it already aired);
    *  - fire the sync engine eviction so a killed ad can never air from memory. */
-  async killAd(id, now = new Date()) {
-    await this._run(`UPDATE radio_ads SET status = 'killed', updated_at = datetime('now') WHERE id = ? AND status IN ('scheduled','airing')`, [id]);
+  async killAd(id, now = new Date(), priceCents = 500) {
+    // Freeze the pro-rata refund amount at kill time, WRITE-ONCE (COALESCE), so a
+    // re-driven refund replays Stripe with the SAME key AND amount (review B1).
+    // Guard disputed_at: never kill-refund a disputed charge — the dispute moves
+    // the funds, refunding on top is a double-pay (review B2). No-op on a
+    // non-live ad (the WHERE), which keeps kill idempotent under re-drive.
+    await this._run(
+      `UPDATE radio_ads SET status = 'killed',
+         refund_amount_cents = COALESCE(refund_amount_cents,
+           CASE WHEN run_days > 0 THEN CAST(ROUND(? * (run_days - airings_done) / (run_days * 1.0)) AS INTEGER) ELSE 0 END),
+         updated_at = datetime('now')
+       WHERE id = ? AND status IN ('scheduled','airing') AND disputed_at IS NULL`,
+      [priceCents, id],
+    );
     await this.releaseReservation(id, stationDay(now));
+    await this.releaseBandHold(id);
     if (this._onKill) { try { this._onKill(id); } catch { /* engine eviction best-effort */ } }
     return { id, status: 'killed' };
+  }
+
+  /** Look an ad up by its Stripe payment_intent — the dispute event carries the
+   *  PI, not our metadata.radio_ad_id (review M4). */
+  getByPaymentIntent(pi) { return this._get(`SELECT * FROM radio_ads WHERE stripe_payment_intent = ?`, [pi]); }
+
+  /**
+   * Mark an ad DISPUTED (chargeback) — orthogonal to status (a dispute can hit
+   * any state; review M4). Stops airing: releases today's reservation + band
+   * hold and synchronously evicts from the engine (review M5). Issues NO refund
+   * (the dispute process moves the funds). Idempotent via disputed_at IS NULL.
+   */
+  async markDisputed(paymentIntent, disputeId = null, now = new Date()) {
+    const ad = await this.getByPaymentIntent(paymentIntent);
+    if (!ad) return { ok: false, reason: 'not_found' };
+    if (ad.disputed_at) return { ok: true, already: true, adId: ad.id };
+    await this._run(
+      `UPDATE radio_ads SET disputed_at = datetime('now'), stripe_dispute_id = COALESCE(?, stripe_dispute_id), updated_at = datetime('now') WHERE id = ? AND disputed_at IS NULL`,
+      [disputeId, ad.id],
+    );
+    await this.releaseReservation(ad.id, stationDay(now));
+    await this.releaseBandHold(ad.id);
+    if (this._onKill) { try { this._onKill(ad.id); } catch { /* engine eviction best-effort */ } }
+    return { ok: true, adId: ad.id };
+  }
+
+  /**
+   * Record a kill refund WITHOUT flipping status away from 'killed' (a partial
+   * kill refund is not a full refund; review B3). refunded_at is the
+   * at-most-once guard, shared with markRefunded.
+   */
+  async markKillRefunded(id, refundId = null) {
+    const upd = await this._run(
+      `UPDATE radio_ads SET refunded_at = datetime('now'), stripe_refund_id = COALESCE(?, stripe_refund_id), updated_at = datetime('now') WHERE id = ? AND refunded_at IS NULL AND status = 'killed'`,
+      [refundId, id],
+    );
+    return { ok: true, already: !(upd && upd.changes) };
+  }
+
+  // ── Band capacity (slice 5) ────────────────────────────────
+
+  /** Atomically reserve one of a band's K daily sponsor slots. The conditional
+   *  INSERT sees prior holds because SQLite serializes writers, so two
+   *  concurrent checkouts can't both pass (review M6). Returns { reserved }. */
+  async reserveBandHold(adId, band, capacity = 1) {
+    const upd = await this._run(
+      `INSERT INTO radio_ad_band_holds (ad_id, band)
+         SELECT ?, ? WHERE (SELECT COUNT(*) FROM radio_ad_band_holds WHERE band = ? AND released_at IS NULL) < ?`,
+      [adId, band, band, capacity],
+    );
+    return { reserved: !!(upd && upd.changes) };
+  }
+
+  async releaseBandHold(adId) {
+    await this._run(`UPDATE radio_ad_band_holds SET released_at = datetime('now') WHERE ad_id = ? AND released_at IS NULL`, [adId]);
+  }
+
+  /** Release holds for ads that were never paid within the grace window, so an
+   *  abandoned checkout doesn't permanently occupy a band slot. */
+  async releaseStaleUnpaidHolds(graceMs = 60 * 60 * 1000, now = new Date()) {
+    const cutoff = new Date(now.getTime() - graceMs).toISOString();
+    await this._run(
+      `UPDATE radio_ad_band_holds SET released_at = datetime('now')
+         WHERE released_at IS NULL AND created_at < ?
+           AND ad_id IN (SELECT id FROM radio_ads WHERE paid_at IS NULL)`,
+      [cutoff],
+    );
+  }
+
+  // ── GSA entitlement (slice 5) ──────────────────────────────
+
+  /** Grant the free-month GSA entitlement — on APPROVAL, idempotent per ad
+   *  (review M7). Piece 4 (Ghost Signals Analytics) redeems it later. */
+  async grantGsaEntitlement(adId) {
+    await this._run(
+      `INSERT INTO radio_ad_gsa_entitlements (ad_id, redeem_by) VALUES (?, datetime('now','+30 days')) ON CONFLICT(ad_id) DO NOTHING`,
+      [adId],
+    );
   }
 
   // ── The airing ledger ──────────────────────────────────────
@@ -424,7 +543,7 @@ class RadioAdStore {
    *  before the per-day CAS. */
   eligibleForBand(band, now = new Date()) {
     return this._all(
-      `SELECT * FROM radio_ads WHERE status = 'scheduled' AND band = ? AND tts_file IS NOT NULL AND airings_done < run_days AND (last_aired_date IS NULL OR last_aired_date != ?) ORDER BY run_start_date, id`,
+      `SELECT * FROM radio_ads WHERE status = 'scheduled' AND disputed_at IS NULL AND band = ? AND tts_file IS NOT NULL AND airings_done < run_days AND (last_aired_date IS NULL OR last_aired_date != ?) ORDER BY run_start_date, id`,
       [band, stationDay(now)],
     );
   }
@@ -508,6 +627,7 @@ class RadioAdStore {
       `UPDATE radio_ads SET airings_done = ?, last_aired_date = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'scheduled'`,
       [confirmed, airDate, finished ? 'completed' : 'scheduled', adId],
     );
+    if (finished) await this.releaseBandHold(adId); // free the band slot when the run completes
     return { counted: true, airing: confirmed, of: ad.run_days, finished };
   }
 

@@ -62,7 +62,7 @@ function parseEnact(body) {
   const adId = typeof body.adId === 'string' ? body.adId.trim() : '';
   const decision = body.decision;
   if (!adId) return { ok: false, error: 'missing_adId' };
-  if (decision !== 'approve' && decision !== 'reject') return { ok: false, error: 'bad_decision' };
+  if (decision !== 'approve' && decision !== 'reject' && decision !== 'kill') return { ok: false, error: 'bad_decision' };
   return { ok: true, adId, decision };
 }
 

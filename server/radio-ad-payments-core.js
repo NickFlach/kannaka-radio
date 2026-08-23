@@ -88,6 +88,11 @@ function classifyWebhookEvent(event) {
   if (event.type === 'payment_intent.succeeded') {
     return { kind: 'paid', adId: md.radio_ad_id || null, sessionId: null, paymentIntent: obj.id || null, amountCents: obj.amount_received ?? null, currency: obj.currency || null };
   }
+  if (event.type === 'charge.dispute.created') {
+    // A dispute's object is a Dispute — it carries the payment_intent, NOT our
+    // metadata.radio_ad_id — so the store matches the ad by payment_intent.
+    return { kind: 'disputed', paymentIntent: obj.payment_intent || null, disputeId: obj.id || null };
+  }
   return { kind: 'ignore' };
 }
 

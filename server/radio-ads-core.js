@@ -104,6 +104,7 @@ function canTransition(from, to) {
  *  db layer adds the "not already aired today" check via the ledger CAS. */
 function airEligible(ad, now = new Date()) {
   if (!ad || ad.status !== 'scheduled') return false;
+  if (ad.disputed_at) return false; // a disputed charge must stop airing (slice 5, orthogonal to status)
   if (!ad.tts_file) return false; // never air an unrendered ad
   if (ad.band !== currentBand(now)) return false;
   if (ad.airings_done >= ad.run_days) return false;
