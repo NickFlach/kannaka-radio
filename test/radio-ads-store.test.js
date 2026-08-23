@@ -142,6 +142,43 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(ad.airings_done, 0, 'a blocked claim does not advance the counter');
   });
 
+  await run('previewRender freezes a servable render; identical text is a cache hit', async () => {
+    const p1 = await store.previewRender('  Try our brand-new preview spot today  ', fakeVoiceDJ);
+    assert.strictEqual(p1.cached, false);
+    assert.ok(/^radio-ads\/ad_[0-9a-f]{16}\.mp3$/.test(p1.file) || p1.file.includes('ad_'), 'url-shaped rel path');
+    assert.ok(fs.existsSync(path.join(assetDir, `ad_${p1.contentHash}.mp3`)));
+    const p2 = await store.previewRender('Try our brand-new preview spot today', fakeVoiceDJ);
+    assert.strictEqual(p2.cached, true, 'same normalized text reuses the frozen render');
+    assert.strictEqual(p1.contentHash, p2.contentHash);
+  });
+
+  await run('pruneUnreferencedPreviews deletes only abandoned+old renders, keeps paid + fresh', async () => {
+    // Abandoned old preview: a render file with no db row, aged past the grace.
+    const abandoned = path.join(assetDir, 'ad_' + 'a'.repeat(16) + '.mp3');
+    fs.writeFileSync(abandoned, 'old-preview-audio');
+    const old = Date.now() - 5 * 24 * 60 * 60 * 1000; // 5 days ago
+    fs.utimesSync(abandoned, old / 1000, old / 1000);
+    // Fresh preview: aged inside the grace window — must survive.
+    const fresh = path.join(assetDir, 'ad_' + 'b'.repeat(16) + '.mp3');
+    fs.writeFileSync(fresh, 'fresh-preview-audio');
+    // A paid ad's render (referenced by tts_file) — must survive even if old.
+    const paid = await store.createDraft({ text: 'A paid ad whose render must never be pruned away', band: 'morning' });
+    await store.renderAd(paid.id, fakeVoiceDJ);
+    const paidFile = path.join(assetDir, `ad_${paid.contentHash}.mp3`);
+    fs.utimesSync(paidFile, old / 1000, old / 1000); // make it old too
+    // A non-matching file must be ignored entirely.
+    const foreign = path.join(assetDir, 'not-an-ad.mp3');
+    fs.writeFileSync(foreign, 'unrelated');
+    fs.utimesSync(foreign, old / 1000, old / 1000);
+
+    const res = await store.pruneUnreferencedPreviews();
+    assert.ok(res.deleted >= 1, 'at least the abandoned old preview is deleted');
+    assert.strictEqual(fs.existsSync(abandoned), false, 'abandoned old preview deleted');
+    assert.strictEqual(fs.existsSync(fresh), true, 'fresh preview kept (inside grace)');
+    assert.strictEqual(fs.existsSync(paidFile), true, 'paid/referenced render kept even when old');
+    assert.strictEqual(fs.existsSync(foreign), true, 'non ad_<hash> file untouched');
+  });
+
   store.db.close();
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   if (!failed) console.log('\nAll radio-ads-store tests passed');
