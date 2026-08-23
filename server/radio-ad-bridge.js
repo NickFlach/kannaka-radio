@@ -114,10 +114,19 @@ class RadioAdBridge {
     return { delivered, failed };
   }
 
-  /** One outbound cycle: reconcile (render + enqueue), then deliver. */
+  /** One outbound cycle: reconcile (render + enqueue), then deliver. Guarded
+   *  against re-entrancy — a reconcile whose TTS render outlasts the poll
+   *  interval must not let a second tick double-render (wasted TTS spend) or
+   *  double-POST a raise (review F3). */
   async tick() {
-    try { await this.reconcile(); } catch (_) { /* never let the tick throw */ }
-    try { return await this.deliverPendingRaises(); } catch (_) { return { delivered: 0, failed: 0 }; }
+    if (this._ticking) return { delivered: 0, failed: 0, skipped: 'busy' };
+    this._ticking = true;
+    try {
+      try { await this.reconcile(); } catch (_) { /* never let the tick throw */ }
+      try { return await this.deliverPendingRaises(); } catch (_) { return { delivered: 0, failed: 0 }; }
+    } finally {
+      this._ticking = false;
+    }
   }
 
   /** Start the outbound poller (unref'd interval). */
