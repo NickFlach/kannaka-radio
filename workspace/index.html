@@ -1105,6 +1105,30 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
   font-family: 'JetBrains Mono', monospace;
 }
 .gate-section-label:first-of-type { margin-top: 0; }
+/* Self-serve ad widget (Air Time) */
+.ad-buy { max-width: 640px; margin: 0 auto; text-align: left; }
+.ad-buy-intro { color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; margin: 0 0 1rem; text-align: center; }
+.ad-textarea {
+  width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical;
+  background: rgba(10,10,20,0.7); color: #e2e8f0; border: 1px solid rgba(139,92,246,0.35);
+  border-radius: 8px; padding: 12px 14px; font-family: inherit; font-size: 0.95rem; line-height: 1.5;
+}
+.ad-textarea:focus { outline: none; border-color: var(--purple-light, #c084fc); }
+.ad-buy-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: center; }
+.ad-select {
+  background: rgba(10,10,20,0.7); color: #e2e8f0; border: 1px solid rgba(139,92,246,0.35);
+  border-radius: 8px; padding: 10px 12px; font-family: inherit; font-size: 0.9rem; flex: 1 1 180px;
+}
+.ad-btn {
+  padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer;
+  font-family: 'Orbitron', sans-serif; font-size: 0.85rem; letter-spacing: 0.03em;
+}
+.ad-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ad-btn-ghost { background: transparent; color: var(--purple-light, #c084fc); border: 1px solid rgba(139,92,246,0.5); }
+.ad-btn-buy { background: linear-gradient(135deg, #7c3aed, #06b6d4); color: #fff; }
+.ad-status { margin-top: 10px; font-size: 0.85rem; color: #94a3b8; min-height: 1.2em; }
+.ad-buy-note { margin-top: 14px; font-size: 0.78rem; color: #64748b; line-height: 1.6; text-align: center; }
+.ad-buy-note a { color: var(--purple-light, #c084fc); }
 .gate-links {
   display: flex; flex-wrap: wrap; justify-content: center;
   gap: 1.5rem; max-width: 800px;
@@ -1770,19 +1794,24 @@ body.konami-mode .surface-header h1 {
 <section class="layer" id="air-time">
   <div class="library-header">
     <div class="layer-label">Air Time</div>
-    <h2>Sponsorship</h2>
+    <h2>Advertise on Kannaka Radio</h2>
   </div>
-  <div class="gate-links">
-    <a href="https://kax.ninja-portal.com" target="_blank" class="gate-link">
-      <span class="gate-link-icon">◉</span>
-      <span class="gate-link-label">KAX — Coming Soon</span>
-      <span class="gate-link-sub">Kannaka Artifact Exchange · agent storefronts, 1-of-1s, distribution · openclawcity partnership</span>
-    </a>
-    <a href="mailto:nflach78@gmail.com?subject=Kannaka%20Radio%20%E2%80%94%20Sponsorship%20%2F%20Air%20Time" class="gate-link">
-      <span class="gate-link-icon">⏱</span>
-      <span class="gate-link-label">Ad Spaces — Coming Soon</span>
-      <span class="gate-link-sub">15s and 30s spots interleaved with the music · sponsor a daily slot · email to reserve</span>
-    </a>
+  <div class="ad-buy">
+    <p class="ad-buy-intro">Your 30-second spot, read in Kannaka's voice, aired once a day for a week — <strong>$5</strong>. Preview it free before you pay.</p>
+    <textarea id="adText" class="ad-textarea" maxlength="480" placeholder="Write your spot — up to about 30 seconds (480 characters). Kannaka will read it aloud on air."></textarea>
+    <div class="ad-buy-row">
+      <select id="adBand" class="ad-select" aria-label="Rough time slot">
+        <option value="morning">Morning · 6a–12p</option>
+        <option value="afternoon">Afternoon · 12p–6p</option>
+        <option value="evening">Evening · 6p–12a</option>
+        <option value="late_night">Late night · 12a–6a</option>
+      </select>
+      <button id="adPreviewBtn" class="ad-btn ad-btn-ghost" onclick="previewAd()">Preview</button>
+      <button id="adBuyBtn" class="ad-btn ad-btn-buy" onclick="buyAd()">Buy — $5 / week</button>
+    </div>
+    <audio id="adPreviewAudio" controls style="display:none;width:100%;margin-top:12px"></audio>
+    <div id="adStatus" class="ad-status"></div>
+    <p class="ad-buy-note">Every spot is reviewed before it airs — if it's not approved, you're refunded in full. Approved advertisers also get a free month of Ghost Signals Analytics. Prefer to talk first? <a href="mailto:nflach78@gmail.com?subject=Kannaka%20Radio%20%E2%80%94%20Air%20Time">Email us</a>.</p>
   </div>
 </section>
 
@@ -2488,6 +2517,49 @@ async function updateGenStatus() {
       el.textContent = 'Provider: ' + data.provider + ' | Today: ' + data.generationsToday + '/' + data.maxDaily + ' | ' + (data.canGenerate.ok ? 'Ready' : data.canGenerate.reason);
     }
   } catch (e) {}
+}
+
+// ══════════════════════════════════════════════════════
+//  Self-serve ads (Air Time) — preview + checkout
+// ══════════════════════════════════════════════════════
+async function previewAd() {
+  var text = (document.getElementById('adText').value || '').trim();
+  var status = document.getElementById('adStatus');
+  var btn = document.getElementById('adPreviewBtn');
+  if (text.length < 8) { status.textContent = 'Write a little more first (at least 8 characters).'; return; }
+  btn.disabled = true; status.textContent = "Rendering your spot in Kannaka's voice…";
+  try {
+    var r = await fetch('/api/ads/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text }) });
+    var d = await r.json();
+    if (r.ok && d.audioUrl) {
+      var a = document.getElementById('adPreviewAudio');
+      a.src = d.audioUrl; a.style.display = 'block';
+      a.play().catch(function () {});
+      status.textContent = "Here's your spot — this is exactly what airs.";
+    } else if (r.status === 429) {
+      status.textContent = d.error || 'Too many previews right now — try again in a moment.';
+    } else {
+      status.textContent = d.error || 'Could not render — try again.';
+    }
+  } catch (e) { status.textContent = 'Could not render — try again.'; }
+  btn.disabled = false;
+}
+
+async function buyAd() {
+  var text = (document.getElementById('adText').value || '').trim();
+  var band = document.getElementById('adBand').value;
+  var status = document.getElementById('adStatus');
+  var btn = document.getElementById('adBuyBtn');
+  if (text.length < 8) { status.textContent = 'Write your spot and preview it first.'; return; }
+  btn.disabled = true; status.textContent = 'Taking you to secure checkout…';
+  try {
+    var r = await fetch('/api/ads/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, band: band }) });
+    var d = await r.json();
+    if (r.ok && d.checkoutUrl) { window.location.href = d.checkoutUrl; return; }
+    if (r.status === 503) { status.textContent = 'Ad sales open very soon — email us to reserve a slot in the meantime.'; }
+    else { status.textContent = d.error || 'Could not start checkout — try again.'; }
+  } catch (e) { status.textContent = 'Could not start checkout — try again.'; }
+  btn.disabled = false;
 }
 
 // ══════════════════════════════════════════════════════
