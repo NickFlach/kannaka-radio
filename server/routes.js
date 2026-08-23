@@ -98,12 +98,15 @@ function publicOrigin(req) {
  * @param {object}                                   deps.config
  */
 module.exports = function setupRoutes(deps) {
-  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub, adStore } = deps;
+  const { djEngine, perception, nats, flux, live, voiceDJ, syncManager, voteManager, webrtcSignaling, musicGen, broadcast, floor, config, gsHub, adStore, adPayments } = deps;
   // Rate/concurrency/daily caps for the unauthenticated ad TTS preview — the
   // one place a stranger can make the station render audio, so it is guarded
   // against the cost + disk-fill DoS the design review flagged.
   const { PreviewLimiter } = require("./radio-ad-preview-limiter");
   const adPreviewLimiter = new PreviewLimiter();
+  // A separate, cheaper per-IP cap for checkout creation (each call mints a
+  // draft + a Stripe session). No render slot needed — admit() only.
+  const adCheckoutLimiter = new PreviewLimiter({ perIpMax: 10, perIpWindowMs: 10 * 60_000, maxConcurrent: 1_000_000, dailyMax: 500 });
 
   // Hand the NATS client to agent-endpoint so /agent/skills can read
   // the live skill-registry snapshot captured from KANNAKA.skills.*.
@@ -721,6 +724,55 @@ module.exports = function setupRoutes(deps) {
           res.end(JSON.stringify({ ok: false, error: bad ? e.message : "preview failed" }));
         } finally {
           adPreviewLimiter.releaseSlot();
+        }
+      });
+      return;
+    }
+
+    // Self-serve radio ad — CHECKOUT (slice 3, Stripe). Mints a draft ad and a
+    // Stripe Checkout Session for it ($5 / 7-day run, card-only), returns the
+    // hosted checkout URL. The customer pays there; the webhook below marks it
+    // paid. 503 until Stripe keys are set on O1.
+    if (parsed.pathname === "/api/ads/checkout" && req.method === "POST") {
+      const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || (req.socket && req.socket.remoteAddress) || "unknown";
+      const gate = adCheckoutLimiter.admit(ip);
+      if (!gate.ok) {
+        res.writeHead(429, { "Content-Type": "application/json", "Retry-After": String(gate.retryAfterSec || 5) });
+        res.end(JSON.stringify({ ok: false, error: "too many checkout attempts — slow down", retryAfterSec: gate.retryAfterSec }));
+        return;
+      }
+      readBody(req, res, async (body) => {
+        if (!adPayments || !adPayments.configured()) { res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "ad checkout unavailable" })); return; }
+        let text; let band;
+        try { const j = JSON.parse(body); text = j.text; band = j.band; } catch { res.writeHead(400, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "invalid json" })); return; }
+        try {
+          const out = await adPayments.createCheckout({ text, band });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, adId: out.adId, checkoutUrl: out.checkoutUrl }));
+        } catch (e) {
+          const bad = e && (e.code === "invalid_ad_text" || /invalid band/.test(String(e.message)));
+          res.writeHead(bad ? 400 : 502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: bad ? e.message : "checkout failed" }));
+        }
+      });
+      return;
+    }
+
+    // Self-serve radio ad — Stripe WEBHOOK (slice 3). Verifies the signature
+    // over the RAW body (never the parsed JSON) and marks the ad paid,
+    // idempotently. 503 until STRIPE_WEBHOOK_SECRET is set. Always reads the
+    // body so a verification failure still returns a clean 400, not a hang.
+    if (parsed.pathname === "/api/ads/stripe-webhook" && req.method === "POST") {
+      const sig = req.headers["stripe-signature"];
+      readBody(req, res, async (body) => {
+        if (!adPayments || !adPayments.webhookConfigured()) { res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "webhook unavailable" })); return; }
+        try {
+          const out = await adPayments.handleWebhook(body, sig);
+          res.writeHead(out.status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(out.body || {}));
+        } catch (e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "webhook error" }));
         }
       });
       return;

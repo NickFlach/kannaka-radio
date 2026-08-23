@@ -66,7 +66,12 @@ function getSPA(spaPath) {
 // ── Body parser ────────────────────────────────────────────
 
 function readBody(req, res, callback) {
-  let body = "";
+  // Collect raw Buffer chunks and decode ONCE at the end. Per-chunk `body += d`
+  // decodes each chunk to UTF-8 independently, which corrupts a multibyte char
+  // split across a chunk boundary (deterministic at Node's 16KB highWaterMark)
+  // — fatal for the Stripe webhook, whose HMAC is over the exact bytes: a
+  // corrupted re-encode fails verification and silently drops the paid signal.
+  const chunks = [];
   let size = 0;
   let rejected = false;
   req.on("data", d => {
@@ -79,9 +84,9 @@ function readBody(req, res, callback) {
       res.end("Payload too large");
       return;
     }
-    body += d;
+    chunks.push(d);
   });
-  req.on("end", () => { if (!rejected) callback(body); });
+  req.on("end", () => { if (!rejected) callback(Buffer.concat(chunks).toString("utf8")); });
 }
 
 // ── Fuzzy audio file matching ──────────────────────────────

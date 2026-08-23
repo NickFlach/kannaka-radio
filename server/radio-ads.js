@@ -24,7 +24,7 @@ const path = require('path');
 const crypto = require('crypto');
 const sqlite3 = require('sqlite3');
 const {
-  isValidBand, currentBand, stationDay, normalizeAdText, contentHash, airEligible,
+  isValidBand, currentBand, stationDay, normalizeAdText, contentHash, airEligible, canTransition,
 } = require('./radio-ads-core');
 
 class RadioAdStore {
@@ -85,6 +85,17 @@ class RadioAdStore {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`);
+    // Payment columns (slice 3, Stripe) — added incrementally so an existing DB
+    // upgrades in place. ALTER ADD COLUMN is idempotent behind the presence check.
+    const adCols = await this._all(`PRAGMA table_info(radio_ads)`);
+    const haveCol = new Set(adCols.map((c) => c.name));
+    const addCol = async (name, decl) => { if (!haveCol.has(name)) await this._run(`ALTER TABLE radio_ads ADD COLUMN ${name} ${decl}`); };
+    await addCol('stripe_session_id', 'TEXT');
+    await addCol('stripe_payment_intent', 'TEXT');
+    await addCol('amount_cents', 'INTEGER');
+    await addCol('paid_at', 'TEXT');
+    await addCol('refunded_at', 'TEXT');
+    await addCol('stripe_refund_id', 'TEXT');
     // Fresh DBs get the reserve/confirm shape directly.
     await this._run(`CREATE TABLE IF NOT EXISTS radio_ad_airings (
       ad_id TEXT NOT NULL,
@@ -157,6 +168,58 @@ class RadioAdStore {
   }
 
   getAd(id) { return this._get(`SELECT * FROM radio_ads WHERE id = ?`, [id]); }
+
+  // ── Payments (slice 3) ─────────────────────────────────────
+
+  /** Record the Stripe Checkout Session id on a draft (idempotent). */
+  async attachCheckout(id, sessionId) {
+    await this._run(
+      `UPDATE radio_ads SET stripe_session_id = COALESCE(stripe_session_id, ?), updated_at = datetime('now') WHERE id = ?`,
+      [sessionId, id],
+    );
+  }
+
+  /**
+   * Mark an ad PAID from a verified Stripe webhook. Idempotent + race-safe: the
+   * draft→paid transition is a CAS (`WHERE status='draft' AND paid_at IS NULL`),
+   * so a duplicate delivery or the 2nd settlement path (both event types) can
+   * only apply once. Identifiers are backfilled regardless of arrival order
+   * (payment_intent.succeeded may land before checkout.session.completed).
+   */
+  async markPaid(id, { sessionId = null, paymentIntent = null, amountCents = null } = {}) {
+    const ad = await this.getAd(id);
+    if (!ad) return { ok: false, reason: 'not_found' };
+    // Backfill whatever identifiers this event carries (either may arrive first).
+    if (sessionId && !ad.stripe_session_id) await this._run(`UPDATE radio_ads SET stripe_session_id = ? WHERE id = ? AND stripe_session_id IS NULL`, [sessionId, id]);
+    if (paymentIntent && !ad.stripe_payment_intent) await this._run(`UPDATE radio_ads SET stripe_payment_intent = ? WHERE id = ? AND stripe_payment_intent IS NULL`, [paymentIntent, id]);
+    if (amountCents != null && ad.amount_cents == null) await this._run(`UPDATE radio_ads SET amount_cents = ? WHERE id = ? AND amount_cents IS NULL`, [amountCents, id]);
+    if (ad.paid_at) return { ok: true, already: true };
+    if (!canTransition(ad.status, 'paid')) return { ok: false, reason: `cannot pay from ${ad.status}` };
+    const upd = await this._run(
+      `UPDATE radio_ads SET status = 'paid', paid_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = 'draft' AND paid_at IS NULL`,
+      [id],
+    );
+    return { ok: true, already: !(upd && upd.changes) };
+  }
+
+  /**
+   * Mark an ad REFUNDED — called only AFTER Stripe confirms the refund
+   * (confirmed-before-marked, in radio-ad-payments.js). Idempotent via the
+   * refunded_at guard; only a paid/pending/rejected/killed ad is refundable.
+   */
+  async markRefunded(id, refundId = null) {
+    const ad = await this.getAd(id);
+    if (!ad) return { ok: false, reason: 'not_found' };
+    if (ad.refunded_at) return { ok: true, already: true };
+    // Refundable states per AD_TRANSITIONS: paid→refunded, rejected→refunded,
+    // killed→refunded. A 'pending' ad (raised for approval) is refunded by
+    // first being rejected (pending→rejected→refunded), so it's not listed here.
+    const upd = await this._run(
+      `UPDATE radio_ads SET status = 'refunded', refunded_at = datetime('now'), stripe_refund_id = COALESCE(?, stripe_refund_id), updated_at = datetime('now') WHERE id = ? AND refunded_at IS NULL AND status IN ('paid','rejected','killed')`,
+      [refundId, id],
+    );
+    return { ok: true, already: !(upd && upd.changes) };
+  }
 
   /**
    * Freeze the ad's TTS render and reuse it as BOTH the preview and the
