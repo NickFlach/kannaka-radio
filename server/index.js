@@ -1041,6 +1041,10 @@ const tsofScheduler = new PodcastScheduler({
   },
 });
 tsofScheduler.start();
+// Expose to routes so /api/schedule can name today's episode using the
+// same picker the airing uses — the Door never advertises an episode
+// other than the one that plays.
+deps.tsofScheduler = tsofScheduler;
 
 // ── Programming schedule — time-of-day album rotation ────
 const { ProgrammingSchedule } = require("./programming");

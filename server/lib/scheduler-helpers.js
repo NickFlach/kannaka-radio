@@ -29,6 +29,28 @@ function chicagoNow() {
 }
 
 /**
+ * Day-of-year for a Chicago-time Date — 1 on January 1st.
+ */
+function dayOfYear(chi) {
+  const start = new Date(chi.getFullYear(), 0, 0);
+  return Math.floor((chi - start) / 86400000);
+}
+
+/**
+ * Index into a `count`-long rotation for the given day: one entry per
+ * day, stepping by one, wrapping at the end.
+ *
+ * The shared basis for every "a different one each day" rotation on the
+ * station — podcast episodes, the album showcase — so two schedulers
+ * can't drift into different definitions of a day and then disagree
+ * about what today is.
+ */
+function dailyRotationIndex(chi, count) {
+  if (!count || count <= 0) return 0;
+  return ((dayOfYear(chi) % count) + count) % count;
+}
+
+/**
  * Date-key: `YYYY-MM-DDTHH` for the given Chicago Date + hour. Used by
  * every segment scheduler as a once-per-day-per-slot dedup token.
  */
@@ -583,6 +605,8 @@ async function composeResilient(kannakabin, prompt, opts = {}) {
 module.exports = {
   pick,
   chicagoNow,
+  dayOfYear,
+  dailyRotationIndex,
   keyForChicago,
   loadState,
   saveState,

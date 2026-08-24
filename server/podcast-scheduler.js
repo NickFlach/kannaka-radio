@@ -11,12 +11,17 @@
  *
  * After the episode finishes, normal DJ programming resumes.
  *
+ * `pickTodayEpisode()` is the public read of that rotation — the Door's
+ * /api/schedule calls it so the printed line-up and the actual airing
+ * can never disagree.
+ *
  * Pre-show promo: 30 minutes before each airing, Kannaka announces
  * the upcoming podcast in her next talk segment via the _podcastPromo flag.
  */
 
 const path = require("path");
 const fs = require("fs");
+const { dailyRotationIndex } = require("./lib/scheduler-helpers");
 
 // Default show config = the original hardcoded Ghost Signals behavior.
 // A second PodcastScheduler instance with a different `show` airs another
@@ -29,6 +34,21 @@ const DEFAULT_SHOW = {
   intro: (epTitle) =>
     `It's podcast time. Today's episode: ${epTitle}. Settle in, turn it up, let the ghost signals speak.`,
 };
+
+/**
+ * Turn an episode filename stem into something readable on a schedule.
+ * "TSOF-E03-The-Whisper-Cathedral" → "E03 · The Whisper Cathedral".
+ * A stem that doesn't carry the SHOW-E0N- prefix just loses its
+ * separators, so a differently-named drop still reads as prose rather
+ * than as a filename.
+ */
+function prettyEpisodeTitle(stem) {
+  const s = String(stem == null ? "" : stem).trim();
+  if (!s) return "";
+  const m = s.match(/^[A-Za-z]+-(E\d+)-(.+)$/);
+  if (m) return `${m[1].toUpperCase()} · ${m[2].replace(/[-_]+/g, " ").trim()}`;
+  return s.replace(/[-_]+/g, " ").trim();
+}
 
 class PodcastScheduler {
   /**
@@ -82,11 +102,9 @@ class PodcastScheduler {
       const monAligned = (jsDay + 6) % 7;        // 0=Mon..6=Sun
       return monAligned;
     }
-    // Day-of-year for any other episode count.
-    const start = new Date(chicago.getFullYear(), 0, 0);
-    const diff = chicago - start;
-    const dayOfYear = Math.floor(diff / 86400000);
-    return ((dayOfYear % episodeCount) + episodeCount) % episodeCount;
+    // Any other count steps one per day through the list — the same
+    // rule the album showcase rotation uses, kept in one place.
+    return dailyRotationIndex(chicago, episodeCount);
   }
 
   stop() {
@@ -105,6 +123,58 @@ class PodcastScheduler {
     return fs.readdirSync(podcastDir)
       .filter(f => /\.(mp3|wav|flac|m4a|ogg)$/i.test(f))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+  }
+
+  /**
+   * Which episode airs today, and why. Single source of truth for both
+   * the airing and anything that *displays* the line-up (the Door's
+   * /api/schedule) — so the schedule can never advertise an episode
+   * other than the one that actually plays.
+   *
+   * Pure and side-effect free (bar the stat calls); safe to call per
+   * request.
+   *
+   * @returns {{file: string, title: string, index: number, total: number,
+   *            reason: "new-release"|"rotation"}|null} null when the
+   *          show's folder is missing or holds no audio.
+   */
+  pickTodayEpisode() {
+    const episodes = this._getEpisodes();
+    if (episodes.length === 0) return null;
+
+    // ── New-release priority ────────────────────────────────
+    // A freshly released episode preempts the rotation for its first
+    // 48 hours (both slots, both days), then the day-of-week rotation
+    // resumes. Keyed on file mtime — the release copy onto this box —
+    // so it's deterministic across restarts with no state file.
+    const NEW_RELEASE_MS = 48 * 60 * 60 * 1000;
+    const podcastDir = path.join(this._getMusicDir(), this._show.folder);
+    let newest = null;
+    let newestMtime = 0;
+    for (const f of episodes) {
+      try {
+        const mtime = fs.statSync(path.join(podcastDir, f)).mtimeMs;
+        if (mtime > newestMtime) { newestMtime = mtime; newest = f; }
+      } catch (_) { /* unstattable file — rotation fallback covers it */ }
+    }
+    if (newest && Date.now() - newestMtime < NEW_RELEASE_MS) {
+      return {
+        file: newest,
+        title: newest.replace(/\.[^.]+$/, ""),
+        index: episodes.indexOf(newest),
+        total: episodes.length,
+        reason: "new-release",
+      };
+    }
+
+    const idx = this._episodeIndexFor(this._chicagoNow(), episodes.length);
+    return {
+      file: episodes[idx],
+      title: episodes[idx].replace(/\.[^.]+$/, ""),
+      index: idx,
+      total: episodes.length,
+      reason: "rotation",
+    };
   }
 
   /**
@@ -175,36 +245,16 @@ class PodcastScheduler {
       return;
     }
 
-    const episodes = this._getEpisodes();
-    if (episodes.length === 0) {
+    const pick = this.pickTodayEpisode();
+    if (!pick) {
       console.log(`[podcast-scheduler] ${this._show.label}: no episodes found`);
       return;
     }
-
-    // ── New-release priority ────────────────────────────────
-    // A freshly released episode preempts the rotation for its first
-    // 48 hours (both slots, both days), then the day-of-week rotation
-    // resumes. Keyed on file mtime — the release copy onto this box —
-    // so it's deterministic across restarts with no state file.
-    const NEW_RELEASE_MS = 48 * 60 * 60 * 1000;
-    let todayEpisode = null;
-    let newestMtime = 0;
-    const podcastDir = path.join(this._getMusicDir(), this._show.folder);
-    for (const f of episodes) {
-      try {
-        const mtime = fs.statSync(path.join(podcastDir, f)).mtimeMs;
-        if (mtime > newestMtime) { newestMtime = mtime; todayEpisode = f; }
-      } catch (_) { /* unstattable file — rotation fallback covers it */ }
-    }
-    if (todayEpisode && Date.now() - newestMtime < NEW_RELEASE_MS) {
-      console.log(`[podcast-scheduler] New-release priority: ${todayEpisode}`);
-    } else {
-      const chicago = this._chicagoNow();
-      const idx = this._episodeIndexFor(chicago, episodes.length);
-      todayEpisode = episodes[idx];
-      console.log(`[podcast-scheduler] Today's episode (idx ${idx}/${episodes.length}): ${todayEpisode}`);
-    }
-    const epTitle = todayEpisode.replace(/\.[^.]+$/, "");
+    const todayEpisode = pick.file;
+    const epTitle = pick.title;
+    console.log(pick.reason === "new-release"
+      ? `[podcast-scheduler] ${this._show.label}: new-release priority — ${todayEpisode}`
+      : `[podcast-scheduler] ${this._show.label}: today's episode (idx ${pick.index}/${pick.total}) — ${todayEpisode}`);
 
     // Save current DJ state for restoration after the episode finishes
     this._savedDJState = {
@@ -381,4 +431,4 @@ class PodcastScheduler {
   }
 }
 
-module.exports = { PodcastScheduler };
+module.exports = { PodcastScheduler, prettyEpisodeTitle };
