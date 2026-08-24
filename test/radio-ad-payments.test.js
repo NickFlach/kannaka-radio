@@ -66,6 +66,22 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(api.calls.checkout[0].params.line_items[0].price_data.unit_amount, 500);
   });
 
+  // A return URL is only worth anything if it lands on a page that reacts to
+  // it. The default pointed at "/", which serves door.html — so the paid
+  // banner, the reference and the analytics unlock (all on the PLAYER page)
+  // were never once shown to a real buyer. Checking the URL alone would not
+  // have caught that, so this checks the destination too.
+  await run('the return URL lands on the page that actually renders the notice', async () => {
+    const bare = new RadioAdPayments({ store, api, webhookSecret: WHSEC, now: () => NOWMS });
+    const dest = new URL(bare.successUrl);
+    assert.strictEqual(dest.pathname, '/player', 'the widget and the banner live on /player, not /');
+    assert.strictEqual(new URL(bare.cancelUrl).pathname, '/player');
+
+    const player = fs.readFileSync(path.join(__dirname, '..', 'workspace', 'index.html'), 'utf8');
+    assert.ok(player.includes('showAdReturnNotice'), 'and that page is the one handling the return');
+    assert.ok(player.includes("params.get('ad')"), 'by reading the parameter the URL carries');
+  });
+
   await run('the success URL carries the ad id back to the buyer', async () => {
     // Until this, the ad id existed only in our database — so the analytics
     // page asked returning customers for a reference they had never been shown.
