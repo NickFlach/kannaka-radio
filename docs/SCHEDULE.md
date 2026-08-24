@@ -33,13 +33,29 @@ short DJ patter stays on edge-tts to control cost.
 | 00:00        | Peace oration      | Rachel — `21m00Tcm4TlvDq8ikWAM` | `kannaka ask` over the HRM           | `server/peace-oration.js`        |
 | 04:20        | Gossip column      | Domi — `AZnzlk1XvdvUeBnXmlld`   | Flux `knowledge-gene/state` + framing | `server/gossip-broadcast.js`     |
 | 07:00        | News bulletin      | Adam — `pNInz6obpgDQGcFmaJgB`   | Flux `knowledge-gene/state.interpretation` | `server/news-broadcast.js`       |
+| 09:00        | The Story of Flaukowski | (pre-recorded, multi-voice) | `music/The Story of Flaukowski/TSOF-E0N-*.mp3` | `server/podcast-scheduler.js` |
 | 10:00        | Ghost Signals podcast | (pre-recorded ElevenLabs)    | `music/Ghost Signals Podcast/GSP-NNN-*.mp3` | `server/podcast-scheduler.js`    |
 | 11:00        | Album showcase     | edge-tts narration            | `programming.js` `DAILY_SHOWCASES`      | `server/programming.js`          |
 | 12:00        | Peace oration      | Rachel                        | HRM recall                               | `server/peace-oration.js`        |
 | 16:20        | Gossip column      | Domi                          | Flux                                     | `server/gossip-broadcast.js`     |
 | 17:00        | News bulletin      | Adam                          | Flux                                     | `server/news-broadcast.js`       |
-| 21:00        | Album showcase     | edge-tts narration            | `programming.js`                         | `server/programming.js`          |
+| 21:00        | The Story of Flaukowski | (pre-recorded)            | same episode as the 09:00 airing         | `server/podcast-scheduler.js`    |
+| 21:00        | Album showcase     | edge-tts narration            | `programming.js` — yields when a show is on air | `server/programming.js`   |
 | 22:00        | Ghost Signals podcast | (pre-recorded)              | day-of-week rotation, 7 episodes         | `server/podcast-scheduler.js`    |
+
+Two `PodcastScheduler` instances run over the one DJ engine: Ghost Signals
+at 10 + 22, The Story of Flaukowski at 9 + 21. Each show plays **one**
+episode per day — the same one at both of its slots (second-chance replay)
+— and steps to the next episode the following day, cycling the whole
+season indefinitely. `pickTodayEpisode()` is the single source of truth for
+that choice; `/api/schedule` calls it so the Door prints the episode that
+actually airs. A freshly-dropped file (mtime < 48h) preempts the rotation
+for its first two days.
+
+The 21:00 album showcase shares a minute with the TSOF airing. Whichever
+wins, the drama takes precedence: the showcase re-checks `podcastPlaying`
+after composing its narration and yields the slot rather than cutting an
+episode off mid-scene.
 
 Voice IDs are overridable per-segment via env:
 
@@ -84,9 +100,11 @@ the script text so re-encoding only happens when copy changes.
 All schedulers tick every 30s with a ±7-15 min slot window:
 
 ```
- 00:00  04:20  07:00  10:00 11:00  12:00  16:20  17:00  21:00  22:00
-   |     |     |     |     |     |     |     |     |     |
-peace gossip news podcast show peace gossip news show podcast
+ 00:00 04:20 07:00 09:00 10:00 11:00 12:00 16:20 17:00 21:00 22:00
+   |     |     |     |     |     |     |     |     |     |     |
+peace gossip news  TSOF podcast show peace gossip news  TSOF podcast
+                                                       (+show,
+                                                        yields)
 ```
 
 State persistence:

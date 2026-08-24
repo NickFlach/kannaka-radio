@@ -13,6 +13,7 @@ const { MIME, readBody, readBodyLimited, getSPA, findAudioFile } = require("./ut
 const { handleAgentRequest, attachNatsClient } = require("./agent-endpoint");
 const { verifyKaxToken, traderIdFromClaims } = require("./kax-identity");
 const { handlePodcastRequest } = require("./podcast-feed");
+const { prettyEpisodeTitle } = require("./podcast-scheduler");
 
 // Delete-token check (#69, hardened ADR-0013). If RADIO_DELETE_TOKEN is
 // set, compare the supplied password against it (constant-time when
@@ -609,11 +610,25 @@ module.exports = function setupRoutes(deps) {
         const hour = nowChi.getHours();
         const currentIndex = SCHEDULE.findIndex((b) => hour >= b.start && hour < b.end);
 
+        // The Story of Flaukowski airs at 9 + 21 (see index.js's second
+        // PodcastScheduler). Ask that scheduler which episode today's two
+        // airings will play rather than re-deriving the rotation here —
+        // a second copy of the rule would eventually print a different
+        // episode than the one on air. If the show's folder is missing on
+        // this box the picker returns null and we say what we actually
+        // know ("season one, one episode a day") instead of guessing.
+        const tsofPick = deps.tsofScheduler ? deps.tsofScheduler.pickTodayEpisode() : null;
+        const tsofNote = tsofPick
+          ? `today: ${prettyEpisodeTitle(tsofPick.title)}`
+          : "season one · a different episode each day";
+
         // Daily events — recurrence keyed in Chicago time.
         const events = [
           { hour: 0,  label: "🕊 Peace Oration", kind: "oration", note: "midnight" },
+          { hour: 9,  label: "📻 The Story of Flaukowski", kind: "drama", note: tsofNote },
           { hour: 10, label: "🎙 Ghost Signals Podcast", kind: "podcast", note: "morning airing" },
           { hour: 12, label: "🕊 Peace Oration", kind: "oration", note: "noon" },
+          { hour: 21, label: "📻 The Story of Flaukowski", kind: "drama", note: tsofNote },
           { hour: 22, label: "🎙 Ghost Signals Podcast", kind: "podcast", note: "evening airing" },
         ];
 

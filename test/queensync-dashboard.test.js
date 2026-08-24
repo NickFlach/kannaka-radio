@@ -109,14 +109,15 @@ run('#135 the dashboard handles every QueenSync websocket type', () => {
   }
 });
 
-run('#135 lifecycle events are routed into the existing feed and timeline', () => {
+run('#135 lifecycle events are routed into the existing feed', () => {
   assert.ok(/queen_join[\s\S]{0,400}addAgentActivity/.test(CODE),
     'join/leave/memory-share should feed the activity list');
-  // Window is generous because the dream branch builds a full timeline entry
-  // before rendering; the point is that the two are in the same handler, not
-  // how many lines it takes.
-  assert.ok(/queen_dream_start[\s\S]{0,1500}renderDreamTimeline/.test(CODE),
-    'dream start/end should render into the dream timeline');
+  // Dream start/end used to render into the Depths dream timeline. That
+  // section was removed from the player, so they land in the same activity
+  // feed as the rest of the lifecycle — the invariant is that they reach
+  // *some* live surface, not which one.
+  assert.ok(/queen_dream_start[\s\S]{0,1500}addAgentActivity/.test(CODE),
+    'dream start/end should reach the activity feed');
 });
 
 run('#135 the server still broadcasts every type the dashboard now expects', () => {

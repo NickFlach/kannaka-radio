@@ -634,6 +634,18 @@ class ProgrammingSchedule {
       console.log(`\u{1F39E} [programming] scheduled showcase: ${showcase.album} (${showcase.durationMin}min) — composing narration...`);
       this._peaceOration.composeAlbumNarration(showcase.album, album.theme, album.tracks, showcase.struggles)
         .then((r) => {
+          // Re-check before locking. The compose above is a network round
+          // trip, so a scheduled show can have gone to air in the meantime
+          // — the 21:00 showcase slot and The Story of Flaukowski's 21:00
+          // airing land in the same minute. setOverride calls loadAlbum
+          // directly, so without this the showcase would cut the drama off
+          // mid-episode, and the Door would have advertised an airing that
+          // never happened.
+          const nowPodcast = this._getPodcastStatus();
+          if (nowPodcast && nowPodcast.podcastPlaying) {
+            console.log(`[programming] showcase ${showcase.album}: a scheduled show went to air while composing — yielding this slot`);
+            return;
+          }
           if (r.ok) {
             console.log(`\u{1F39E} [programming] narration ready (${r.pieces.length} pieces) — locking ${showcase.album}`);
           } else {

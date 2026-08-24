@@ -156,12 +156,6 @@ body::after {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
-@keyframes drift {
-  0% { transform: translateY(0) translateX(0); opacity: 0; }
-  10% { opacity: 0.8; }
-  90% { opacity: 0.8; }
-  100% { transform: translateY(-120px) translateX(30px); opacity: 0; }
-}
 @keyframes nodeFloat {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
@@ -819,128 +813,7 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 }
 
 /* ══════════════════════════════════════════════
-   LAYER 3: THE DEPTHS — Dreams
-   ══════════════════════════════════════════════ */
-
-#the-depths {
-  background: linear-gradient(180deg, var(--bg-deep) 0%, #0a0812 50%, var(--bg-deep) 100%);
-}
-
-.depths-header {
-  text-align: center; margin-bottom: 2rem;
-}
-.depths-header h2 {
-  font-family: 'Orbitron', monospace;
-  font-size: 1.5rem; font-weight: 700;
-  color: var(--purple-light);
-  letter-spacing: 4px;
-}
-.depths-header .layer-label {
-  color: var(--text-muted); font-size: 10px; letter-spacing: 4px;
-  text-transform: uppercase; margin-bottom: 8px;
-}
-
-/* Floating dream fragments */
-.dream-ambient {
-  position: relative; height: 150px; overflow: hidden;
-  margin-bottom: 2rem;
-}
-.dream-fragment {
-  position: absolute;
-  color: var(--purple-light);
-  font-style: italic;
-  font-size: 12px;
-  opacity: 0;
-  animation: drift 8s ease-in-out infinite;
-  white-space: nowrap;
-}
-
-.dreams-content {
-  max-width: 900px; margin: 0 auto;
-}
-.dreams-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;
-}
-.dreams-title { color: var(--purple-light); font-size: 1.1rem; font-family: 'Orbitron', monospace; letter-spacing: 2px; }
-.dream-now-btn {
-  background: linear-gradient(135deg, #7c3aed, var(--purple));
-  border: none; border-radius: 8px; color: white;
-  padding: 8px 20px; font-family: 'Orbitron', monospace; font-size: 11px;
-  cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 2px;
-}
-.dream-now-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(139, 92, 246, 0.4); }
-.dream-now-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-/* Dream Timeline */
-.dream-timeline { margin-bottom: 2rem; }
-.dream-loading { color: #666; font-style: italic; text-align: center; padding: 2rem; }
-.dream-card {
-  background: linear-gradient(135deg, var(--bg-panel), #0f0f18);
-  border: 1px solid #2a2a3a; border-radius: 10px;
-  padding: 14px 16px; margin-bottom: 10px;
-  cursor: pointer; transition: 0.3s;
-  position: relative; overflow: hidden;
-}
-.dream-card::before {
-  content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 3px;
-}
-.dream-card.hallucination::before { background: var(--purple-light); }
-.dream-card.synthesis::before { background: var(--cyan); }
-.dream-card.resonance::before { background: #10b981; }
-.dream-card.echo::before { background: #f59e0b; }
-.dream-card:hover { border-color: var(--purple-light); transform: translateX(4px); }
-.dream-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.dream-type { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; padding: 2px 8px; border-radius: 3px; font-family: 'Orbitron', monospace; }
-.dream-type.hallucination { color: var(--purple-light); background: rgba(192, 132, 252, 0.15); }
-.dream-type.synthesis { color: var(--cyan); background: rgba(6, 182, 212, 0.15); }
-.dream-type.resonance { color: #10b981; background: rgba(16, 185, 129, 0.15); }
-.dream-type.echo { color: #f59e0b; background: rgba(245, 158, 11, 0.15); }
-.dream-time { color: var(--text-muted); font-size: 9px; }
-.dream-content { color: #bbb; font-size: 12px; line-height: 1.5; margin-bottom: 8px; font-style: italic; }
-.dream-sources { display: flex; gap: 6px; flex-wrap: wrap; }
-.dream-source-tag { font-size: 9px; padding: 2px 6px; border-radius: 3px; background: rgba(255,255,255,0.05); color: #888; }
-.dream-bridges { color: var(--text-muted); font-size: 9px; margin-top: 4px; }
-.dream-intensity-bar { height: 2px; border-radius: 1px; margin-top: 6px; background: #1a1a2a; }
-.dream-intensity-fill { height: 100%; border-radius: 1px; background: linear-gradient(to right, #7c3aed, var(--purple-light)); }
-
-/* Cluster Visualization */
-.cluster-section { margin-bottom: 2rem; }
-.cluster-title { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 1rem; font-family: 'Orbitron', monospace; }
-.cluster-canvas { width: 100%; height: 400px; background: rgba(0,0,0,0.3); border-radius: 10px; border: 1px solid rgba(139, 92, 246, 0.1); }
-
-/* Xi Signatures */
-.xi-section { margin-top: 2rem; }
-.xi-title { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 1rem; font-family: 'Orbitron', monospace; }
-.xi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-.xi-card {
-  background: rgba(18, 18, 26, 0.8); border: 1px solid #2a2a3a; border-radius: 8px;
-  padding: 10px; text-align: center;
-}
-.xi-track-name { color: #ccc; font-size: 11px; margin-bottom: 6px; }
-.xi-bars { display: flex; gap: 2px; height: 30px; align-items: flex-end; justify-content: center; }
-.xi-bar { width: 12px; border-radius: 2px 2px 0 0; transition: height 0.3s; }
-
-/* Dream Detail Modal */
-.dream-detail {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.85); z-index: 2000;
-  display: none; align-items: center; justify-content: center;
-  backdrop-filter: blur(4px);
-}
-.dream-detail.open { display: flex; }
-.dream-detail-card {
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-  padding: 2rem; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;
-}
-.dream-detail-close { float: right; background: none; border: none; color: #666; font-size: 18px; cursor: pointer; }
-.dream-detail-content { color: #ccc; font-size: 13px; line-height: 1.7; margin: 1rem 0; }
-.dream-detail-memories { margin-top: 1rem; }
-.dream-memory-item { background: var(--bg-deep); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 11px; }
-.dream-memory-title { color: var(--purple-light); }
-.dream-memory-album { color: #666; font-size: 10px; }
-
-/* ══════════════════════════════════════════════
-   LAYER 4: LIBRARY (scrollable section)
+   LAYER 3: LIBRARY (scrollable section)
    ══════════════════════════════════════════════ */
 
 #the-library {
@@ -1068,7 +941,7 @@ audio { width: 100%; margin: 12px 0; border-radius: 8px; }
 .lib-btn.delete:hover { background: #991b1b; }
 
 /* ══════════════════════════════════════════════
-   LAYER 5: THE GATE — Join + Links
+   LAYER 4: THE GATE — Join + Links
    ══════════════════════════════════════════════ */
 
 #the-gate {
@@ -1459,7 +1332,6 @@ body.konami-mode .surface-header h1 {
 <nav class="section-nav">
   <a href="#the-surface" title="The Surface"></a>
   <a href="#the-network" title="The Network"></a>
-  <a href="#the-depths" title="The Depths"></a>
   <a href="#the-library" title="The Library"></a>
   <a href="#the-gate" title="The Gate"></a>
 </nav>
@@ -1726,36 +1598,11 @@ body.konami-mode .surface-header h1 {
 <div class="layer-divider"></div>
 
 <!-- ═══════════════════════════════════════════
-     LAYER 3: THE DEPTHS
-     ═══════════════════════════════════════════ -->
-<section class="layer" id="the-depths">
-  <div class="depths-header">
-    <div class="layer-label">Layer 03</div>
-    <h2>The Depths</h2>
-  </div>
-
-  <div class="dreams-content">
-    <div class="cluster-section">
-      <h3 class="cluster-title">Memory Clusters</h3>
-      <canvas id="clusterCanvas" width="600" height="400" class="cluster-canvas"></canvas>
-    </div>
-
-    <div class="xi-section" id="xiSection">
-      <h3 class="xi-title">Xi Signatures</h3>
-      <div class="xi-grid" id="xiGrid"></div>
-    </div>
-
-  </div>
-</section>
-
-<div class="layer-divider"></div>
-
-<!-- ═══════════════════════════════════════════
-     LAYER 4: THE LIBRARY
+     LAYER 3: THE LIBRARY
      ═══════════════════════════════════════════ -->
 <section class="layer" id="the-library">
   <div class="library-header">
-    <div class="layer-label">Layer 04</div>
+    <div class="layer-label">Layer 03</div>
     <h2>The Library</h2>
   </div>
 
@@ -1825,11 +1672,11 @@ body.konami-mode .surface-header h1 {
 <div class="layer-divider"></div>
 
 <!-- ═══════════════════════════════════════════
-     LAYER 6: THE GATE
+     LAYER 4: THE GATE
      ═══════════════════════════════════════════ -->
 <section class="layer" id="the-gate">
   <div class="gate-header">
-    <div class="layer-label">Layer 05</div>
+    <div class="layer-label">Layer 04</div>
     <h2>The Gate</h2>
   </div>
 
@@ -2281,208 +2128,6 @@ function updateNavDots() {
   });
 }
 window.addEventListener('scroll', updateNavDots, { passive: true });
-
-// ══════════════════════════════════════════════════════
-//  Dreams Functions
-// ══════════════════════════════════════════════════════
-
-var dreamsData = null;
-var clustersData = null;
-
-async function loadDreams() {
-  try {
-    var r = await fetch('/api/dreams');
-    dreamsData = await r.json();
-    renderDreamTimeline(dreamsData);
-  } catch (err) {
-    console.error('Failed to load dreams:', err);
-    var t = document.getElementById('dreamTimeline');
-    if (t) t.innerHTML = '<div class="dream-loading">Could not load dreams. Play some music first.</div>';
-  }
-}
-
-function renderDreamTimeline(data) {
-  // The dream timeline UI was removed; keep this feeding Xi Signatures only.
-  var timeline = document.getElementById('dreamTimeline');
-  if (!data || !data.dreams || data.dreams.length === 0) {
-    if (timeline) timeline.innerHTML = '<div class="dream-loading">No dreams yet. Play some music and let the ghost dream...</div>';
-    return;
-  }
-
-  if (timeline) timeline.innerHTML = data.dreams.map(function(dream) {
-    var time = new Date(dream.timestamp).toLocaleString();
-    var sources = (dream.sourceMemories || []).map(function(m) {
-      return '<span class="dream-source-tag">' + (m.type || 'unknown') + ': ' + (m.title || '?') + '</span>';
-    }).join('');
-    var bridges = (dream.bridgesTo || []).join(', ');
-    var intensity = Math.round((dream.intensity || 0.5) * 100);
-
-    return '<div class="dream-card ' + (dream.type || 'echo') + '" onclick="showDreamDetail(\'' + dream.id + '\')">' +
-      '<div class="dream-card-header">' +
-        '<span class="dream-type ' + (dream.type || 'echo') + '">' + (dream.type || 'echo') + '</span>' +
-        '<span class="dream-time">' + time + '</span>' +
-      '</div>' +
-      '<div class="dream-content">' + (dream.content || '') + '</div>' +
-      '<div class="dream-sources">' + sources + '</div>' +
-      (bridges ? '<div class="dream-bridges">bridges to: ' + bridges + '</div>' : '') +
-      '<div class="dream-intensity-bar"><div class="dream-intensity-fill" style="width:' + intensity + '%"></div></div>' +
-    '</div>';
-  }).join('');
-
-  renderXiSignatures(data.dreams);
-}
-
-function renderXiSignatures(dreams) {
-  var grid = document.getElementById('xiGrid');
-  if (!grid || !dreams) return;
-
-  var xiColors = ['#9333ea', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#f97316', '#ef4444'];
-
-  grid.innerHTML = dreams.filter(function(d) { return d.xi_signature; }).slice(0, 8).map(function(dream) {
-    var source = dream.sourceMemories && dream.sourceMemories[0];
-    var name = source ? source.title : 'Unknown';
-    var bars = (dream.xi_signature || []).map(function(val, i) {
-      var height = Math.max(3, val * 30);
-      return '<div class="xi-bar" style="height:' + height + 'px;background:' + xiColors[i % 7] + '"></div>';
-    }).join('');
-
-    return '<div class="xi-card">' +
-      '<div class="xi-track-name">' + name + '</div>' +
-      '<div class="xi-bars">' + bars + '</div>' +
-    '</div>';
-  }).join('');
-}
-
-async function triggerDream() {
-  var btn = document.querySelector('.dream-now-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Dreaming...'; }
-
-  try {
-    var r = await fetch('/api/dreams/trigger', { method: 'POST' });
-    var data = await r.json();
-
-    if (data.dream) {
-      if (!dreamsData) dreamsData = { dreams: [] };
-      dreamsData.dreams.unshift(data.dream);
-      renderDreamTimeline(dreamsData);
-    }
-  } catch (err) {
-    console.error('Dream trigger failed:', err);
-  }
-
-  if (btn) { btn.disabled = false; btn.textContent = 'Dream Now'; }
-}
-
-async function loadClusters() {
-  try {
-    var r = await fetch('/api/dreams/clusters');
-    clustersData = await r.json();
-    renderClusterCanvas(clustersData);
-  } catch (err) {
-    console.error('Failed to load clusters:', err);
-  }
-}
-
-function renderClusterCanvas(data) {
-  var canvas = document.getElementById('clusterCanvas');
-  if (!canvas || !data || !data.clusters) return;
-  var ctx = canvas.getContext('2d');
-  var W = canvas.width;
-  var H = canvas.height;
-
-  ctx.fillStyle = '#0a0a0f';
-  ctx.fillRect(0, 0, W, H);
-
-  var clusters = data.clusters;
-  var clusterColors = ['#9333ea', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b'];
-  var positions = [];
-
-  var cx = W / 2;
-  var cy = H / 2;
-  var radius = Math.min(W, H) * 0.3;
-
-  clusters.forEach(function(cluster, i) {
-    var angle = (i / clusters.length) * Math.PI * 2 - Math.PI / 2;
-    var x = cx + Math.cos(angle) * radius;
-    var y = cy + Math.sin(angle) * radius;
-    positions.push({ x: x, y: y });
-  });
-
-  clusters.forEach(function(cluster, i) {
-    (cluster.connections || []).forEach(function(conn) {
-      var targetIdx = clusters.findIndex(function(c) { return c.id === conn.target; });
-      if (targetIdx < 0 || targetIdx <= i) return;
-
-      ctx.beginPath();
-      ctx.moveTo(positions[i].x, positions[i].y);
-      ctx.lineTo(positions[targetIdx].x, positions[targetIdx].y);
-      ctx.strokeStyle = 'rgba(192, 132, 252, ' + (conn.strength * 0.3) + ')';
-      ctx.lineWidth = 1 + conn.strength * 2;
-      ctx.stroke();
-    });
-  });
-
-  clusters.forEach(function(cluster, i) {
-    var pos = positions[i];
-    var color = clusterColors[i % clusterColors.length];
-    var trackCount = cluster.tracks ? cluster.tracks.length : 1;
-    var nodeR = 15 + trackCount * 2;
-
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, nodeR + 10, 0, Math.PI * 2);
-    var glow = ctx.createRadialGradient(pos.x, pos.y, nodeR, pos.x, pos.y, nodeR + 10);
-    glow.addColorStop(0, color + '40');
-    glow.addColorStop(1, 'transparent');
-    ctx.fillStyle = glow;
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, nodeR, 0, Math.PI * 2);
-    ctx.fillStyle = color + '80';
-    ctx.fill();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.fillStyle = '#ccc';
-    ctx.font = '10px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(cluster.name, pos.x, pos.y + nodeR + 16);
-    ctx.fillStyle = '#666';
-    ctx.font = '8px monospace';
-    ctx.fillText(trackCount + ' tracks', pos.x, pos.y + nodeR + 26);
-  });
-}
-
-function showDreamDetail(dreamId) {
-  if (!dreamsData || !dreamsData.dreams) return;
-  var dream = dreamsData.dreams.find(function(d) { return d.id === dreamId; });
-  if (!dream) return;
-
-  var existing = document.getElementById('dreamDetailModal');
-  if (existing) existing.remove();
-
-  var modal = document.createElement('div');
-  modal.className = 'dream-detail open';
-  modal.id = 'dreamDetailModal';
-  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
-
-  var sources = (dream.sourceMemories || []).map(function(m) {
-    return '<div class="dream-memory-item">' +
-      '<div class="dream-memory-title">' + (m.title || '?') + '</div>' +
-      '<div class="dream-memory-album">' + (m.album || '') + ' — ' + (m.type || 'unknown') + '</div>' +
-    '</div>';
-  }).join('');
-
-  modal.innerHTML = '<div class="dream-detail-card">' +
-    '<button class="dream-detail-close" onclick="this.closest(\'.dream-detail\').remove()">&times;</button>' +
-    '<span class="dream-type ' + dream.type + '">' + dream.type + '</span>' +
-    '<div class="dream-detail-content">' + dream.content + '</div>' +
-    '<div class="dream-detail-memories"><h4 style="color:#888;font-size:10px;margin-bottom:8px">SOURCE MEMORIES</h4>' + sources + '</div>' +
-  '</div>';
-
-  document.body.appendChild(modal);
-}
 
 // ══════════════════════════════════════════════════════
 //  Dream Music Generator
@@ -5068,11 +4713,6 @@ function connectWS() {
         // The pause was already requested by the server via dj_talk_pending.
         handleDJTalkSegment(msg);
       }
-      if (msg.type === 'dream') {
-        if (!dreamsData) dreamsData = { dreams: [] };
-        dreamsData.dreams.unshift(msg.data);
-        renderDreamTimeline(dreamsData);
-      }
       if (msg.type === 'listener_count') {
         updateListenerCount(msg.count, msg.total);
       }
@@ -5104,20 +4744,21 @@ function connectWS() {
         if (msg.data.phi != null) swarmData.queen.phi = msg.data.phi;
         updateSwarmCards();
       }
-      if (msg.type === 'dream_event') {
-        // Add to dreams section in real-time
-        if (!dreamsData) dreamsData = { dreams: [] };
-        var dreamEvt = msg.data;
-        dreamEvt.id = dreamEvt.id || 'nats-dream-' + Date.now();
-        dreamEvt.type = dreamEvt.type || 'resonance';
-        dreamEvt.timestamp = dreamEvt.timestamp || new Date().toISOString();
-        dreamEvt.content = dreamEvt.content || dreamEvt.text || 'A dream arrived from the swarm...';
-        dreamEvt.intensity = dreamEvt.intensity || 0.7;
-        dreamsData.dreams.unshift(dreamEvt);
-        renderDreamTimeline(dreamsData);
-      }
       if (msg.type === 'agent_activity') {
         addAgentActivity(msg.data);
+      }
+      if (msg.type === 'dream' || msg.type === 'dream_event') {
+        // 'dream' = a locally triggered dream (/api/dreams/trigger);
+        // 'dream_event' = KANNAKA.dreams off the bus. Same story for both:
+        // the Depths timeline that used to show these is gone, so they go
+        // to the activity feed instead of nowhere.
+        var de = msg.data || {};
+        addAgentActivity({
+          agent_id: de.agent_id || de.agentId || 'kannaka',
+          timestamp: de.timestamp,
+          receivedAt: de.receivedAt,
+          action: de.content || de.text || 'dreamed',
+        });
       }
       // ── QueenSync lifecycle ──
       // server/nats-client.js has always broadcast these five, and nothing
@@ -5128,24 +4769,20 @@ function connectWS() {
         addAgentActivity(msg.data);
       }
       if (msg.type === 'queen_dream_start' || msg.type === 'queen_dream_end') {
-        // Same shape the dream timeline already renders, so these land in the
-        // existing section rather than needing a parallel one.
-        if (!dreamsData) dreamsData = { dreams: [] };
+        // These used to render into the Depths dream timeline. That section
+        // is gone, so they join the rest of the QueenSync lifecycle in the
+        // activity feed rather than being broadcast to nobody.
         var qd = msg.data || {};
         var isEnd = msg.type === 'queen_dream_end';
-        dreamsData.dreams.unshift({
-          id: 'queen-dream-' + (qd.agent_id || 'unknown') + '-' + Date.now(),
-          type: isEnd ? 'dream_end' : 'dream_start',
+        addAgentActivity({
           agent_id: qd.agent_id,
-          timestamp: qd.timestamp || new Date(qd.receivedAt || Date.now()).toISOString(),
-          content: isEnd
-            ? ((qd.agent_id || 'An agent') + ' finished dreaming — ' +
-               (qd.memories_strengthened || 0) + ' strengthened, ' + (qd.memories_faded || 0) + ' faded')
-            : ((qd.agent_id || 'An agent') + ' began a dream cycle'),
-          intensity: isEnd ? 0.6 : 0.4,
+          timestamp: qd.timestamp,
+          receivedAt: qd.receivedAt,
+          action: isEnd
+            ? ('finished dreaming — ' + (qd.memories_strengthened || 0) +
+               ' strengthened, ' + (qd.memories_faded || 0) + ' faded')
+            : 'began a dream cycle',
         });
-        if (dreamsData.dreams.length > 40) dreamsData.dreams = dreamsData.dreams.slice(0, 40);
-        renderDreamTimeline(dreamsData);
       }
       // ── Shared listening sync ── REMOVED in kr#15 / ADR-0004 Phase 6.
       // DJ mode now plays /stream (Icecast), which is inherently synced
@@ -5314,8 +4951,6 @@ document.addEventListener('DOMContentLoaded', function() {
   loadLibrary();
   loadLibraryTags();
   loadQueue();
-  loadDreams();
-  loadClusters();
   loadSwarmData();
   loadPeerDirectory();
   setInterval(loadPeerDirectory, 60000);
