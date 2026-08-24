@@ -113,6 +113,73 @@ function fakeStripe() { const calls = { refund: [] }; return { calls, async crea
     assert.ok(m.outbox[0].text.includes('/analytics?ad=ad_a%20b%26c'), 'never pasted raw into a URL');
   });
 
+  // ── Transports ──
+  // The Zoho relay answered `250 Message received` for every message on
+  // 2026-08-23/24 and delivered none of them. One transport that lies is
+  // enough reason to have two.
+  function fakeFetch(script) {
+    const calls = [];
+    const fn = async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body), auth: init.headers.authorization });
+      const r = script.shift();
+      if (r instanceof Error) throw r;
+      return { ok: r.ok, status: r.status, async text() { return r.body || ''; }, async json() { return { id: 're_1' }; } };
+    };
+    fn.calls = calls;
+    return fn;
+  }
+
+  await run('Resend is preferred over SMTP when both are configured', async () => {
+    const smtpHit = [];
+    const f = fakeFetch([{ ok: true, status: 200 }]);
+    const m = new Mailer({
+      env: { RESEND_API_KEY: 're_key', SMTP_HOST: 'smtp.example', MAIL_FROM: 'R <r@example.com>' },
+      fetch: f, logger: () => {},
+      // Poisoned: reaching SMTP at all would be a failure of preference.
+      smtp: async () => { smtpHit.push(1); },
+    });
+    assert.strictEqual(await m.send({ to: 'a@b.c', subject: 's', text: 't' }), true);
+    assert.strictEqual(f.calls.length, 1, 'went out over Resend');
+    assert.strictEqual(f.calls[0].url, 'https://api.resend.com/emails');
+    assert.strictEqual(f.calls[0].auth, 'Bearer re_key');
+    assert.strictEqual(f.calls[0].body.to, 'a@b.c');
+    assert.strictEqual(smtpHit.length, 0, 'SMTP was not needed');
+    assert.strictEqual(m.sent[0].via, 'resend', 'and the record says which carried it');
+  });
+
+  await run('a failing Resend FALLS BACK to SMTP rather than losing the mail', async () => {
+    const smtpHit = [];
+    const f = fakeFetch([{ ok: false, status: 500, body: 'boom' }]);
+    const m = new Mailer({
+      env: { RESEND_API_KEY: 're_key', SMTP_HOST: 'smtp.example', MAIL_FROM: 'R <r@example.com>' },
+      fetch: f, logger: () => {},
+      smtp: async () => { smtpHit.push(1); },
+    });
+    assert.strictEqual(await m.send({ to: 'a@b.c', subject: 's', text: 't' }), true, 'the message still went');
+    assert.strictEqual(f.calls.length, 1, 'Resend was tried');
+    assert.strictEqual(smtpHit.length, 1, 'and SMTP carried it');
+    assert.strictEqual(m.sent[0].via, 'smtp');
+  });
+
+  await run('failure is reported only when EVERY transport has been tried', async () => {
+    const f = fakeFetch([new Error('network down')]);
+    const m = new Mailer({
+      env: { RESEND_API_KEY: 're_key', SMTP_HOST: 'smtp.example', MAIL_FROM: 'R <r@example.com>' },
+      fetch: f, logger: () => {},
+      smtp: async () => { throw new Error('relay refused'); },
+    });
+    assert.strictEqual(await m.send({ to: 'a@b.c', subject: 's', text: 't' }), false);
+    assert.strictEqual(m.sent.length, 0, 'nothing is recorded as sent');
+  });
+
+  await run('Resend alone is enough — no SMTP_HOST required', async () => {
+    const f = fakeFetch([{ ok: true, status: 200 }]);
+    const m = new Mailer({ env: { RESEND_API_KEY: 're_key', MAIL_FROM: 'R <r@example.com>' }, fetch: f, logger: () => {} });
+    assert.strictEqual(m.configured(), true, 'configured on the API key alone');
+    assert.strictEqual(await m.send({ to: 'a@b.c', subject: 's', text: 't' }), true);
+    assert.strictEqual(f.calls[0].body.from, 'R <r@example.com>');
+  });
+
   await run('band labels are human, and an unknown band degrades to itself', () => {
     assert.strictEqual(bandLabel('late_night'), 'Late night · 12a–6a');
     assert.strictEqual(bandLabel('brand_new_band'), 'brand_new_band');
