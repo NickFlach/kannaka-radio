@@ -168,8 +168,7 @@
   }
 
   // ── redeem ──
-  $('redeemBtn').addEventListener('click', function () {
-    var adId = $('adId').value.trim();
+  function doRedeem(adId) {
     var st = $('redeemStatus');
     if (!adId) { st.textContent = 'Enter your ad id first.'; return; }
     st.textContent = 'Checking…';
@@ -184,7 +183,26 @@
           st.textContent = msgs[j.error] || 'Could not redeem — try again.';
         }
       }).catch(function () { st.textContent = 'Could not reach the server — try again.'; });
-  });
+  }
+
+  $('redeemBtn').addEventListener('click', function () { doRedeem($('adId').value.trim()); });
+
+  // Arriving from the approval email — /analytics?ad=<adId> — unlocks the page
+  // by itself. The entitlement was always granted server-side on approval, but
+  // reaching it meant typing an "ad id" that nothing had ever shown the
+  // customer: not the confirmation, not the receipt, not any email. So the
+  // offer sat granted-and-unreachable and the page looked empty to the very
+  // people who had paid for it.
+  (function fromLink() {
+    var q = new URLSearchParams(window.location.search);
+    var ad = (q.get('ad') || '').trim();
+    if (!ad) return;
+    $('adId').value = ad;
+    // Drop the id from the address bar — it is the key to this account, and it
+    // has no business sitting in history, bookmarks or a shared screenshot.
+    try { window.history.replaceState({}, '', window.location.pathname); } catch (e) { /* non-fatal */ }
+    doRedeem(ad);
+  })();
 
   $('signOutBtn').addEventListener('click', function () { setToken(null); showSignedIn(false); $('redeemStatus').textContent = 'Key forgotten. Re-enter your ad id to get a fresh one.'; });
 

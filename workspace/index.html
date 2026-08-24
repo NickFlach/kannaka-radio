@@ -2593,6 +2593,30 @@ function showAdReturnNotice() {
       + "refunded in full — you keep the free month of Ghost Signals Analytics either way.";
     status.appendChild(head);
     status.appendChild(body);
+
+    // Show the reference. It is what support asks for AND the key that unlocks
+    // the free month of analytics — and it used to live nowhere the buyer could
+    // see, which left the analytics page demanding an "ad id" nobody had.
+    var ref = params.get('ref');
+    if (ref) {
+      var refLine = document.createElement('div');
+      refLine.style.marginTop = '8px';
+      var label = document.createElement('span');
+      label.textContent = 'Your reference: ';
+      var code = document.createElement('code');
+      code.textContent = ref;           // textContent, never innerHTML — this came off the URL
+      refLine.appendChild(label);
+      refLine.appendChild(code);
+      status.appendChild(refLine);
+
+      var unlock = document.createElement('div');
+      unlock.style.marginTop = '8px';
+      var a = document.createElement('a');
+      a.href = '/analytics?ad=' + encodeURIComponent(ref);
+      a.textContent = 'Open your free month of Ghost Signals Analytics →';
+      unlock.appendChild(a);
+      status.appendChild(unlock);
+    }
     status.className = 'ad-status ad-status-ok';
   } else {
     status.textContent = 'Checkout cancelled — nothing was charged. Your spot is still here when you want it.';
