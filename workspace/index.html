@@ -1328,11 +1328,15 @@ body.konami-mode .surface-header h1 {
   </script>
 </div>
 
-<!-- Section Nav Dots -->
+<!-- Section Nav Dots — one per `.layer` section, in page order.
+     updateNavDots() pairs each dot with the section its href names, so a
+     section that ships without a dot costs it its own highlight and
+     nothing else. -->
 <nav class="section-nav">
   <a href="#the-surface" title="The Surface"></a>
   <a href="#the-network" title="The Network"></a>
   <a href="#the-library" title="The Library"></a>
+  <a href="#air-time" title="Air Time"></a>
   <a href="#the-gate" title="The Gate"></a>
 </nav>
 
@@ -2116,15 +2120,21 @@ function spawnDreamFragment() {
 // ══════════════════════════════════════════════════════
 
 function updateNavDots() {
-  var sections = document.querySelectorAll('.layer');
+  // Pair each dot with the section its own href names — NOT with whichever
+  // section happens to share its index. The two lists drifted apart the
+  // moment a section shipped without a dot: Air Time sat at index 3 and lit
+  // the Gate's dot, and the Gate at index 4 had no dot to light at all.
+  // Matching on href means adding or removing either one can't silently
+  // shift every highlight below it.
   var dots = document.querySelectorAll('.section-nav a');
   var scrollY = window.scrollY + window.innerHeight / 3;
-  sections.forEach(function(sec, i) {
-    if (dots[i] && scrollY >= sec.offsetTop && scrollY < sec.offsetTop + sec.offsetHeight) {
-      dots[i].classList.add('active');
-    } else if (dots[i]) {
-      dots[i].classList.remove('active');
-    }
+  dots.forEach(function(dot) {
+    var id = (dot.getAttribute('href') || '').replace(/^#/, '');
+    var sec = id ? document.getElementById(id) : null;
+    var active = !!sec &&
+      scrollY >= sec.offsetTop &&
+      scrollY < sec.offsetTop + sec.offsetHeight;
+    dot.classList.toggle('active', active);
   });
 }
 window.addEventListener('scroll', updateNavDots, { passive: true });
