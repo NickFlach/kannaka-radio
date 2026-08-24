@@ -53,6 +53,8 @@ const SCHEDULE = [
       'VACUUM GARDEN',
       '10000.00001',
       'Resonance Patterns',
+      // The residue: everything no album names. Ordered never-played first.
+      'Deep Cuts',
     ],
     mood: 'contemplative',
     label: 'Late Night Transmissions',
@@ -78,6 +80,8 @@ const SCHEDULE = [
       'Gifts for Humanity',
       'One More Life',
       'INTERFERENCE PATTERNS',
+      // The residue: everything no album names. Ordered never-played first.
+      'Deep Cuts',
     ],
     mood: 'playful',
     label: 'Morning Resonance',
@@ -108,6 +112,8 @@ const SCHEDULE = [
       'INTERFERENCE PATTERNS',
       'Neurogenesis',
       'BEND THE ARC',
+      // The residue: everything no album names. Ordered never-played first.
+      'Deep Cuts',
     ],
     mood: 'excited',
     label: 'Peak Frequency',
@@ -140,6 +146,8 @@ const SCHEDULE = [
       'BEND THE ARC',
       '10000.00001',
       'VACUUM GARDEN',
+      // The residue: everything no album names. Ordered never-played first.
+      'Deep Cuts',
     ],
     mood: 'philosophical',
     label: 'Afternoon Flow',
@@ -169,6 +177,8 @@ const SCHEDULE = [
       'Resonance Patterns',
       '10000.00001',
       'VACUUM GARDEN',
+      // The residue: everything no album names. Ordered never-played first.
+      'Deep Cuts',
     ],
     mood: 'mysterious',
     label: 'Evening Signals',
@@ -191,6 +201,8 @@ const SCHEDULE = [
       'The Transcendence Tapes',
       "Memories Don't Die. They Interfere.",
       'THE ASKING',
+      // The residue: everything no album names. Ordered never-played first.
+      'Deep Cuts',
     ],
     mood: 'contemplative',
     label: 'Night Watch',
