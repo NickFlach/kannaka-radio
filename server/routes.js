@@ -669,6 +669,32 @@ module.exports = function setupRoutes(deps) {
     }
 
     // API: get library status (with optional ?tag=X filter)
+    // What is on the station that nothing will play. Two conditions, reported
+    // separately: files no album NAMES (Deep Cuts airs these), and folders the
+    // resolver never LISTS (the condition that silenced a whole season for
+    // four days in August). Served rather than only logged — a silence visible
+    // only from inside the station is the same silence.
+    if (parsed.pathname === "/api/audio/unreached") {
+      try {
+        const { auditReachability } = require("./audio-reachability");
+        const { referencedFiles } = require("./deep-cuts");
+        const { findAudioFile } = require("./dj-engine");
+        const { getFiles } = require("./utils");
+        const report = auditReachability({
+          musicDir: MUSIC_DIR,
+          resolverFiles: getFiles(MUSIC_DIR),
+          referenced: referencedFiles(ALBUMS, MUSIC_DIR, findAudioFile),
+          ledger: djEngine && djEngine._playLedger,
+        });
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify(report));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "audit failed", detail: String(e && e.message) }));
+      }
+      return;
+    }
+
     if (parsed.pathname === "/api/library" && !parsed.pathname.startsWith("/api/library/")) {
       const tagFilter = parsed.searchParams.get("tag") || null;
       const opts = tagFilter ? { tag: tagFilter } : undefined;

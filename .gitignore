@@ -54,6 +54,10 @@ workspace/news-broadcast-state.json
 workspace/gossip-broadcast-state.json
 workspace/showcase-state.json
 workspace/recently-played.json
+# Durable play history (Deep Cuts). Same reason: runtime state, and it is
+# per-station — a committed copy would tell another box that tracks it has
+# never aired were already played.
+workspace/play-history.json
 workspace/news-teaser-state.json
 workspace/news-teaser-fingerprint.json
 workspace/override-state.json

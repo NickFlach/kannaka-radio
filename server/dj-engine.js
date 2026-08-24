@@ -9,6 +9,8 @@ const https = require("https");
 const { findAudioFile, getFiles } = require("./utils");
 const { interleaveCommercials } = require("./commercials");
 const { currentBand, stationDay } = require("./radio-ads-core"); // pure — for the sponsor-ad drift check
+const { PlayLedger } = require("./play-ledger");
+const { buildDeepCuts, referencedFiles, titleFor } = require("./deep-cuts");
 
 /**
  * Resolve where the ORC stem-server's SQLite catalog and its sqlite3 build
@@ -682,6 +684,11 @@ class DJEngine {
       "recently-played.json"
     );
     this._loadRecents();
+    // Durable play history — never trimmed by age, so "has not played in a
+    // long time" is answerable. Feeds the Deep Cuts album.
+    this._playLedger = new PlayLedger({
+      filePath: path.join(path.resolve(__dirname, ".."), "workspace", "play-history.json"),
+    });
   }
 
   /** Wire the FloorManager after both are constructed (Phase 3 loop). */
@@ -719,6 +726,12 @@ class DJEngine {
   /** Stamp a track as just-played for the 12-hr ledger. */
   _markPlayed(trackMeta) {
     if (!trackMeta || !trackMeta.file || trackMeta.commercial) return;
+    // Also stamp the DURABLE ledger. The map below is trimmed to 24h because
+    // its job is the no-repeat rule, which means it cannot tell a track played
+    // in May from one that has never played at all. Deep Cuts needs that
+    // distinction, so it gets its own store rather than widening this one and
+    // silently giving the no-repeat rule a months-long window.
+    try { this._playLedger.markPlayed(trackMeta.file); } catch { /* never block a track change */ }
     this._recentlyPlayed.set(trackMeta.file, Date.now());
     // Trim entries older than 24h to keep the ledger bounded. Anything
     // older than 24h is well past the no-repeat window.
@@ -1111,7 +1124,55 @@ class DJEngine {
     }
   }
 
+  /**
+   * Deep Cuts — a set assembled from what nothing else names.
+   *
+   * Built fresh on every load rather than curated, because a hand-kept list of
+   * the uncurated needs updating every time a file lands, which is the exact
+   * failure it exists to correct. Ordered most-neglected first: never-played
+   * before long-unplayed.
+   */
+  _buildDeepCutsPlaylist() {
+    const musicDir = this._getMusicDir();
+    // Shuffle BEFORE ranking. rankByNeglect keeps never-played files in input
+    // order on purpose, so without this the set is readdir order — which on
+    // this library means "01 - …, 01 …, 02 - …, 02 …", an alphabetical crawl
+    // through numbered tracks, several from the same source in a row. The
+    // ledger decides the tiers; the caller decides among equals.
+    const all = getFiles(musicDir).slice();
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [all[i], all[j]] = [all[j], all[i]];
+    }
+    const referenced = referencedFiles(ALBUMS, musicDir, findAudioFile);
+    const { tracks, total, neverPlayed } = buildDeepCuts({
+      allFiles: all,
+      referenced,
+      ledger: this._playLedger,
+      limit: 12,
+    });
+    if (tracks.length === 0) {
+      console.log('   ⚠ "Deep Cuts" — nothing unreached left to play (album abort, state preserved)');
+      return false;
+    }
+    const meta = tracks.map((f, i) => ({
+      title: titleFor(f),
+      album: "Deep Cuts",
+      trackNum: i + 1,
+      totalTracks: tracks.length,
+      file: f,
+      theme: "Tracks the rotation has never named — never-played first, then longest unheard",
+    }));
+    this.state.playlist = meta.map((m) => m.file);
+    this.state.playlistMeta = meta;
+    this.state.currentAlbum = "Deep Cuts";
+    this.state.currentTrackIdx = 0;
+    console.log(`\n🕳  Loaded "Deep Cuts" — ${tracks.length} of ${total} unreached (${neverPlayed} never played)`);
+    return true;
+  }
+
   buildPlaylist(albumName) {
+    if (albumName === "Deep Cuts") return this._buildDeepCutsPlaylist();
     const album = ALBUMS[albumName];
     if (!album) return false;
 
@@ -1751,7 +1812,7 @@ class DJEngine {
       totalTracks: this.state.playlist.length,
       current: this.getCurrentTrack(),
       playlist: this.state.playlistMeta,
-      albums: [...Object.keys(ALBUMS), "Dream Tracks"],
+      albums: [...Object.keys(ALBUMS), "Dream Tracks", "Deep Cuts"],
       channel: this.state.channel || 'dj',
       channelMeta: this.state.channelMeta || null,
     };
