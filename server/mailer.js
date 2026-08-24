@@ -8,23 +8,35 @@
  * either, so a paid spot sat in the approval inbox unnoticed. This module is
  * the missing half of that loop.
  *
- * The SMTP conversation is ported from ninja-portal's portal.js, which has been
- * delivering Constellation Pass mail through the same Zoho relay — same style
- * (against the wire, no dependency), same account, so nothing new has to be
- * proven about the transport. The parts that are easy to get subtly wrong are
- * kept explicit: replies can be MULTI-LINE and only the line whose code is
- * followed by a SPACE is the last one; every line ends CRLF, not LF; and a body
- * line beginning with `.` must be doubled or it ends the message early.
+ * The SMTP conversation is ported from ninja-portal's portal.js — same style
+ * (against the wire, no dependency). The parts that are easy to get subtly
+ * wrong are kept explicit: replies can be MULTI-LINE and only the line whose
+ * code is followed by a SPACE is the last one; every line ends CRLF, not LF;
+ * and a body line beginning with `.` must be doubled or it ends the message
+ * early.
+ *
+ * ⚠ The SMTP client is correct; the RELAY behind it was not. This was written
+ * believing the shared Zoho account "had been delivering Constellation Pass
+ * mail for weeks" — inferred from a comment, never checked against a real
+ * inbox. On 2026-08-24 a search of the recipient's mailbox found NOTHING from
+ * that relay had ever arrived: it answered `250 Message received` every time,
+ * filed each message in its own Sent folder, and delivered none of them. Hence
+ * a second transport, and hence the logging below. An accepted message is not
+ * a delivered one, and only the recipient's mailbox settles it.
  *
  * Configuration (all optional):
- *   SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS   the relay
+ *   RESEND_API_KEY                                   preferred transport
+ *   SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS   the relay (fallback)
  *   MAIL_FROM                                        e.g. 'Kannaka <nick@…>'
  *   RADIO_OPERATOR_EMAIL                             who reviews spots
  *
- * With no SMTP_HOST this module is a silent no-op. That is deliberate: mail is
- * a courtesy layer over a money path that must not depend on it. Nothing here
- * throws into a webhook or an airing decision — every send is best-effort and
- * failures are logged, never propagated.
+ * Transports are tried in order until one succeeds, and the one that carried
+ * the message is logged. With neither configured the whole module is a silent
+ * no-op.
+ *
+ * Mail is a courtesy layer over a money path that must not depend on it.
+ * Nothing here throws into a webhook or an airing decision — every send is
+ * best-effort and failures are logged, never propagated.
  */
 
 const net = require('node:net');
@@ -203,30 +215,80 @@ class Mailer {
     this.operator = env.RADIO_OPERATOR_EMAIL || null;
     this.siteOrigin = env.RADIO_SITE_ORIGIN || 'https://radio.ninja-portal.com';
     this.kaxOrigin = env.KAX_LEDGER_BASE || 'https://kax.ninja-portal.com';
+    this.resendKey = env.RESEND_API_KEY || null;
     this._sendOverride = opts.send || null;
     this._log = opts.logger || ((msg) => console.log(msg));
+    this._fetch = opts.fetch || ((...a) => fetch(...a));
+    this._smtp = opts.smtp || smtpSend; // injectable so tests need no socket
     this.sent = []; // last-N record, for /api/ads/health style introspection
   }
 
-  configured() { return !!(this._sendOverride || this.host); }
+  configured() { return !!(this._sendOverride || this.resendKey || this.host); }
 
   /**
-   * Deliver one message. NEVER throws — returns true/false. Mail is a courtesy
-   * layer over a money path; a dead relay must not roll back a recorded
-   * payment or block an airing.
+   * The transports to try, in order, each as { name, send }.
+   *
+   * Resend goes FIRST when it is configured. That is not a preference, it is
+   * evidence: on 2026-08-23/24 the Zoho relay answered `250 Message received`
+   * for every message and delivered none of them — they landed in its Sent
+   * folder and never reached the recipient. A transport that reports success
+   * and drops the mail is worse than one that fails loudly, so the API path
+   * (which returns an id we could chase) leads, and SMTP stands behind it.
+   */
+  _transports() {
+    const t = [];
+    if (this._sendOverride) t.push({ name: 'override', send: (m) => this._sendOverride(m) });
+    if (this.resendKey) t.push({ name: 'resend', send: (m) => this._resendSend(m) });
+    if (this.host) {
+      t.push({
+        name: 'smtp',
+        send: (m) => this._smtp({ host: this.host, port: this.port, user: this.user, pass: this.pass, ...m }),
+      });
+    }
+    return t;
+  }
+
+  /** Resend's HTTPS API. No SDK, same as the Stripe client in this codebase. */
+  async _resendSend({ from, to, subject, text }) {
+    const r = await this._fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${this.resendKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ from, to, subject, text }),
+    });
+    if (!r || !r.ok) {
+      const body = r && r.text ? await r.text().catch(() => '') : '';
+      throw new Error(`resend ${r && r.status}${body ? ': ' + String(body).slice(0, 200) : ''}`);
+    }
+    return r.json ? r.json().catch(() => ({})) : {};
+  }
+
+  /**
+   * Deliver one message, trying each configured transport until one works.
+   * NEVER throws — returns true/false. Mail is a courtesy layer over a money
+   * path; a dead relay must not roll back a recorded payment or block an
+   * airing. Which transport actually carried it is LOGGED, because "did it
+   * send?" turned out to be unanswerable after the fact and that is how a
+   * silent relay went unnoticed for weeks.
    */
   async send({ to, subject, text }) {
     if (!to || !this.configured()) return false;
-    try {
-      if (this._sendOverride) await this._sendOverride({ from: this.from, to, subject, text });
-      else await smtpSend({ host: this.host, port: this.port, user: this.user, pass: this.pass, from: this.from, to, subject, text });
-      this.sent.push({ to, subject, at: new Date().toISOString() });
-      if (this.sent.length > 50) this.sent.shift();
-      return true;
-    } catch (e) {
-      this._log(`[mail] could not send "${subject}" to ${to}: ${e && e.message}`);
-      return false;
+    const msg = { from: this.from, to, subject, text };
+    const errors = [];
+    for (const t of this._transports()) {
+      try {
+        await t.send(msg);
+        this.sent.push({ to, subject, via: t.name, at: new Date().toISOString() });
+        if (this.sent.length > 50) this.sent.shift();
+        this._log(`[mail] sent "${subject}" to ${to} via ${t.name}`);
+        return true;
+      } catch (e) {
+        errors.push(`${t.name}: ${e && e.message}`);
+        // Keep going — the next transport may be healthy. Only report failure
+        // once every one of them has been tried.
+      }
     }
+    this._log(`[mail] could not send "${subject}" to ${to} — ${errors.join('; ') || 'no transport configured'}`);
+    return false;
   }
 
   // ── The four moments a radio advertiser should hear from us ──
