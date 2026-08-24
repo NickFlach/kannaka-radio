@@ -734,10 +734,14 @@ module.exports = function setupRoutes(deps) {
         const { referencedFiles } = require("./deep-cuts");
         const { findAudioFile } = require("./dj-engine");
         const { getFiles } = require("./utils");
+        // config.getMusicDir() — NOT a MUSIC_DIR constant; there isn't one in
+        // this scope, and referencing it 500s the endpoint at request time
+        // rather than at boot, so nothing catches it until somebody calls.
+        const musicDir = config.getMusicDir();
         const report = auditReachability({
-          musicDir: MUSIC_DIR,
-          resolverFiles: getFiles(MUSIC_DIR),
-          referenced: referencedFiles(ALBUMS, MUSIC_DIR, findAudioFile),
+          musicDir,
+          resolverFiles: getFiles(musicDir),
+          referenced: referencedFiles(ALBUMS, musicDir, findAudioFile),
           ledger: djEngine && djEngine._playLedger,
         });
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
