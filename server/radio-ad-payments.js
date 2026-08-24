@@ -70,8 +70,13 @@ class RadioAdPayments {
     this.store = opts.store;
     this._secretKey = opts.secretKey || process.env.STRIPE_SECRET_KEY || null;
     this._webhookSecret = opts.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET || null;
-    this.successUrl = opts.successUrl || 'https://radio.ninja-portal.com/?ad=paid';
-    this.cancelUrl = opts.cancelUrl || 'https://radio.ninja-portal.com/?ad=cancelled';
+    // Return the buyer to /player, NOT to /. The Air Time widget, the paid/
+    // cancelled banner and the analytics unlock all live on the player page;
+    // `/` serves door.html, which has none of them. Sending buyers to `/`
+    // meant the confirmation was never once shown to a real customer — the
+    // page they landed on looked exactly as it had before they paid.
+    this.successUrl = opts.successUrl || 'https://radio.ninja-portal.com/player?ad=paid';
+    this.cancelUrl = opts.cancelUrl || 'https://radio.ninja-portal.com/player?ad=cancelled';
     this._api = opts.api || null; // injectable Stripe client (tests / DI)
     this._now = opts.now || (() => Date.now());
     // Sponsor slots deliverable per band per day. K=1 (safe/low, review M6): one
