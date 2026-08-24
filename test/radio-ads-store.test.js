@@ -11,6 +11,21 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { RadioAdStore } = require('../server/radio-ads');
+const core = require('../server/radio-ads-core');
+
+/**
+ * An instant that reads as `hour` on the STATION's clock, on station-date
+ * y-m-d. Bands and the airing ledger run on station-local time, so a fixture
+ * that hardcodes a UTC hour is really asserting "…assuming the station is on
+ * UTC" — which stopped being true when the bands moved to local time. Every
+ * clock below is expressed in the station's own terms instead.
+ */
+function atStation(y, m, d, hour) {
+  const guess = new Date(Date.UTC(y, m, d, hour, 0));
+  const offset = Number(core.stationParts(guess).hour) - guess.getUTCHours();
+  const norm = ((offset + 12 + 24) % 24) - 12; // signed hours, wrap-safe
+  return new Date(guess.getTime() - norm * 3600 * 1000);
+}
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'radio-ads-'));
 const dbPath = path.join(tmp, 'radio-ads.db');
@@ -55,7 +70,12 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
   });
 
   // Force the ad into the morning band + scheduled for a deterministic clock.
-  const morning = new Date(Date.UTC(2026, 7, 22, 9, 0)); // 09:00 UTC = morning
+  // 14:00 UTC = 09:00 at a Central station. Bands and the airing ledger run on
+  // STATION-local time, not UTC, so the fixture instant has to be morning on
+  // the station's clock and the expected day key derived from it rather than
+  // read off the UTC date. (At 09:00 UTC a Central station is in late_night.)
+  const morning = atStation(2026, 7, 22, 9);
+  const MORNING_DAY = core.stationDay(morning);
   await run('scheduleAd requires approved; idempotent', async () => {
     await store._run(`UPDATE radio_ads SET status='approved', band='morning' WHERE id=?`, [adId]);
     const s1 = await store.scheduleAd(adId, morning);
@@ -68,13 +88,13 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     const first = await store.pickAiringForNow(morning);
     assert.ok(first, 'first reserve succeeds');
     assert.strictEqual(first.adId, adId);
-    assert.strictEqual(first.airDate, '2026-08-22');
+    assert.strictEqual(first.airDate, MORNING_DAY);
     // Reserve alone must NOT advance the run counter (the money invariant).
     let ad = await store.getAd(adId);
     assert.strictEqual(ad.airings_done, 0, 'reserve advances no counter');
     assert.strictEqual(ad.last_aired_date, null, 'reserve does not stamp last_aired_date');
     // A 2nd reserve the same day is blocked by the UNIQUE(ad_id,air_date) lock.
-    const second = await store.pickAiringForNow(new Date(Date.UTC(2026, 7, 22, 10, 30)));
+    const second = await store.pickAiringForNow(atStation(2026, 7, 22, 10)); // 10:30 station
     assert.strictEqual(second, null, 'same-day re-reserve yields nothing');
     // Confirm the airing → NOW the counter advances (derived from the ledger).
     const c = await store.confirmAiring(first.adId, first.airDate);
@@ -82,11 +102,11 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(c.airing, 1);
     ad = await store.getAd(adId);
     assert.strictEqual(ad.airings_done, 1, 'confirm advances the counter');
-    assert.strictEqual(ad.last_aired_date, '2026-08-22');
+    assert.strictEqual(ad.last_aired_date, MORNING_DAY);
   });
 
   await run('confirm is idempotent — a replay does not double-count', async () => {
-    const again = await store.confirmAiring(adId, '2026-08-22');
+    const again = await store.confirmAiring(adId, MORNING_DAY);
     assert.strictEqual(again.counted, false, 'a second confirm is a no-op');
     const ad = await store.getAd(adId);
     assert.strictEqual(ad.airings_done, 1, 'counter unchanged on replay');
@@ -96,7 +116,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     // Reserve a fresh day but do NOT confirm — simulate a restart between
     // reserve and broadcast. Boot reconcile must delete the unconfirmed row so
     // the day is re-claimable and nothing was counted.
-    const when = new Date(Date.UTC(2026, 7, 23, 9, 0)); // day 2, morning
+    const when = atStation(2026, 7, 23, 9); // day 2, morning
     const r = await store.pickAiringForNow(when);
     assert.ok(r, 'reserved day 2');
     let rows = await store._all(`SELECT * FROM radio_ad_airings WHERE ad_id=? AND air_date='2026-08-23'`, [adId]);
@@ -119,14 +139,14 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     // day 2 was just confirmed above; a fresh store must not re-air it.
     const store2 = new RadioAdStore({ dbPath, assetDir });
     await store2.init();
-    const again = await store2.pickAiringForNow(new Date(Date.UTC(2026, 7, 23, 11, 0)));
+    const again = await store2.pickAiringForNow(atStation(2026, 7, 23, 11));
     assert.strictEqual(again, null, 'a confirmed day cannot be re-aired after restart');
   });
 
   await run('run terminates at run_days CONFIRMED airings, then completes', async () => {
     // days 1,2 confirmed; walk days 3..7, reserve+confirm each.
     for (let day = 3; day <= 7; day++) {
-      const when = new Date(Date.UTC(2026, 7, 21 + day, 9, 0));
+      const when = atStation(2026, 7, 21 + day, 9);
       const r = await store.pickAiringForNow(when);
       assert.ok(r, `day ${day} reserves`);
       const c = await store.confirmAiring(r.adId, r.airDate);
@@ -136,7 +156,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(ad.status, 'completed', 'after 7 CONFIRMED airings the run completes');
     assert.strictEqual(ad.airings_done, 7);
     // Day 8: nothing (completed, not scheduled).
-    const past = await store.pickAiringForNow(new Date(Date.UTC(2026, 7, 29, 9, 0)));
+    const past = await store.pickAiringForNow(atStation(2026, 7, 29, 9));
     assert.strictEqual(past, null);
     assert.strictEqual(await store.confirmedAirings(adId), 7, 'all 7 days physically aired');
   });
@@ -145,7 +165,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     const d = await store.createDraft({ text: 'This spot will be killed before it ever airs', band: 'morning' });
     await store.renderAd(d.id, fakeVoiceDJ);
     await store._run(`UPDATE radio_ads SET status='approved' WHERE id=?`, [d.id]);
-    const killWhen = new Date(Date.UTC(2026, 8, 1, 9, 0));
+    const killWhen = atStation(2026, 8, 1, 9);
     await store.scheduleAd(d.id, killWhen);
     // Reserve today, then kill before it airs.
     const r = await store.pickAiringForNow(killWhen);
@@ -170,7 +190,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     const d = await store.createDraft({ text: 'A spot that airs the same instant it is killed off', band: 'morning' });
     await store.renderAd(d.id, fakeVoiceDJ);
     await store._run(`UPDATE radio_ads SET status='approved' WHERE id=?`, [d.id]);
-    const when = new Date(Date.UTC(2026, 8, 3, 9, 0));
+    const when = atStation(2026, 8, 3, 9);
     await store.scheduleAd(d.id, when);
     const r = await store.pickAiringForNow(when);
     // Race: status flips to killed after the spot physically aired but before
@@ -187,10 +207,10 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     const d = await store.createDraft({ text: 'An evening-only advertisement for night owls', band: 'evening' });
     await store.renderAd(d.id, fakeVoiceDJ);
     await store._run(`UPDATE radio_ads SET status='approved' WHERE id=?`, [d.id]);
-    await store.scheduleAd(d.id, new Date(Date.UTC(2026, 8, 2, 20, 0)));
-    const morningPick = await store.pickAiringForNow(new Date(Date.UTC(2026, 8, 2, 9, 0))); // morning
+    await store.scheduleAd(d.id, atStation(2026, 8, 2, 20));
+    const morningPick = await store.pickAiringForNow(atStation(2026, 8, 2, 9)); // morning
     assert.strictEqual(morningPick, null, 'evening ad not reserved in the morning');
-    const eveningPick = await store.pickAiringForNow(new Date(Date.UTC(2026, 8, 2, 20, 0)));
+    const eveningPick = await store.pickAiringForNow(atStation(2026, 8, 2, 20));
     assert.ok(eveningPick && eveningPick.adId === d.id, 'evening ad reserves in the evening');
   });
 
@@ -198,7 +218,7 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     // Reach the INSERT with the eligibleForBand filter NOT excluding the ad
     // (last_aired_date null) but a reservation row already present for today —
     // only the UNIQUE constraint can stop the re-reserve.
-    const when = new Date(Date.UTC(2026, 9, 5, 9, 0)); // morning, a fresh day
+    const when = atStation(2026, 9, 5, 9); // morning, a fresh day
     const day = when.toISOString().slice(0, 10);
     const d = await store.createDraft({ text: 'A spot to prove the ledger CAS blocks a re-air', band: 'morning' });
     await store.renderAd(d.id, fakeVoiceDJ);

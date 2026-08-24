@@ -692,6 +692,24 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // The band picker's options, stamped with the station's CURRENT zone
+    // abbreviation. Served rather than hardcoded in the page because the
+    // labels are a promise about when a spot airs: the page is static, the
+    // zone is server config, and DST moves CDT↔CST twice a year. A buyer
+    // choosing "Afternoon" has to be choosing the station's afternoon.
+    if (parsed.pathname === "/api/ads/bands" && req.method === "GET") {
+      const core = require("./radio-ads-core");
+      const now = new Date();
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({
+        ok: true,
+        zone: core.stationZoneLabel(now),
+        currentBand: core.currentBand(now),
+        bands: core.bandOptions(now),
+      }));
+      return;
+    }
+
     // Self-serve radio ad — TTS PREVIEW (KAX-ADR-0005 radio-ads). A customer
     // hears their spot in Kannaka's voice before paying. Rate-limited (the
     // only unauth render path), keyed by content hash so what is previewed is
