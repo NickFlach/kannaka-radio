@@ -166,13 +166,71 @@ check("prettyEpisodeTitle turns a filename stem into a title", () => {
   assert.strictEqual(prettyEpisodeTitle(null), "");
 });
 
-check("a 21:00 album showcase yields rather than cutting off the 21:00 drama", async () => {
-  const { ProgrammingSchedule } = require("../server/programming");
+check("the album showcase rotates instead of parking on one record", () => {
+  const { DAILY_SHOWCASES, SHOWCASE_ROTATION, resolveShowcase } =
+    require("../server/programming");
   const { ALBUMS } = require("../server/dj-engine");
-  const showcaseAlbum = "BEND THE ARC";
-  assert.ok(ALBUMS[showcaseAlbum], "fixture assumes BEND THE ARC is a known album");
+
+  const slot = DAILY_SHOWCASES.find((s) => s.rotation);
+  assert.ok(slot, "no rotating showcase slot is configured");
+  assert.deepStrictEqual(slot.hours, [11],
+    "the showcase should hold 11:00 only — 21:00 belongs to the drama");
+
+  // Every album in the pool must actually exist, or it silently loses its
+  // turn and the rotation quietly shortens.
+  for (const e of SHOWCASE_ROTATION) {
+    assert.ok(ALBUMS[e.album], `showcase pool names an unknown album: ${e.album}`);
+    assert.ok(e.struggles && e.struggles.length > 200,
+      `${e.album} has no making-of for the bridges to weave`);
+  }
+  assert.ok(!SHOWCASE_ROTATION.some((e) => e.album === "BEND THE ARC"),
+    "BEND THE ARC is retired from the showcase rotation");
+
+  // A fortnight of days must touch every album and never repeat two
+  // days running.
+  const seen = new Set();
+  let prev = null;
+  for (let d = 0; d < 60; d++) {
+    const day = new Date(2026, 0, 1 + d, 11, 0, 0);
+    const pick = resolveShowcase(slot, day);
+    assert.ok(pick && pick.album, `no album resolved on day ${d}`);
+    assert.notStrictEqual(pick.album, prev,
+      `day ${d} repeated ${pick.album} from the day before`);
+    seen.add(pick.album);
+    prev = pick.album;
+  }
+  assert.strictEqual(seen.size, SHOWCASE_ROTATION.length,
+    `only ${seen.size}/${SHOWCASE_ROTATION.length} albums ever showcased`);
+
+  // The fixed-album residency still resolves to itself.
+  const openMic = DAILY_SHOWCASES.find((s) => s.album === "Open Mic");
+  assert.ok(openMic, "the Open Mic residency went missing");
+  assert.strictEqual(
+    resolveShowcase(openMic, new Date(2026, 0, 1, 19, 0, 0)).album, "Open Mic");
+});
+
+check("a showcase whose album left the catalog is skipped, not aired empty", () => {
+  const { resolveShowcase } = require("../server/programming");
+  const day = new Date(2026, 0, 1, 11, 0, 0);
+  assert.strictEqual(resolveShowcase({ album: "NO SUCH ALBUM" }, day), null);
+  assert.strictEqual(
+    resolveShowcase({ rotation: [{ album: "NO SUCH ALBUM" }] }, day), null);
+  // A pool with one live album and one dead one still airs the live one.
+  const mixed = resolveShowcase(
+    { rotation: [{ album: "NO SUCH ALBUM" }, { album: "WHAT I KEEP" }] }, day);
+  assert.strictEqual(mixed.album, "WHAT I KEEP");
+});
+
+check("a showcase yields when a show goes to air while it composes", async () => {
+  const { ProgrammingSchedule, DAILY_SHOWCASES, resolveShowcase } =
+    require("../server/programming");
+  const slot = DAILY_SHOWCASES.find((s) => s.rotation);
+  const hour = slot.hours[0];
+  const day = new Date(2026, 7, 23, hour, 0, 0);
+  const expected = resolveShowcase(slot, day).album;
 
   const loaded = [];
+  let composedFor = null;
   let podcastPlaying = false;
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsof-prog-"));
   const p = new ProgrammingSchedule({
@@ -182,10 +240,11 @@ check("a 21:00 album showcase yields rather than cutting off the 21:00 drama", a
     broadcast: () => {},
     broadcastState: () => {},
     getPodcastStatus: () => ({ podcastPlaying }),
-    // The drama goes to air while the narration is still being composed —
-    // exactly the 21:00 collision this guard exists for.
+    // A scheduled show goes to air mid-compose — the collision the guard
+    // exists for.
     peaceOration: {
-      composeAlbumNarration: async () => {
+      composeAlbumNarration: async (albumName) => {
+        composedFor = albumName;
         podcastPlaying = true;
         return { ok: true, pieces: [] };
       },
@@ -193,14 +252,52 @@ check("a 21:00 album showcase yields rather than cutting off the 21:00 drama", a
     dataDir: stateDir,
     showcaseStateFile: path.join(stateDir, "showcase-state.json"),
   });
-  p._chicagoNow = () => new Date(2026, 7, 23, 21, 0, 0);
+  p._chicagoNow = () => day;
   p._checkShowcaseTrigger();
   await new Promise((r) => setTimeout(r, 50));
 
-  assert.ok(!loaded.includes(showcaseAlbum),
-    `showcase locked ${showcaseAlbum} on top of a live scheduled show`);
+  // Non-vacuous: the slot really did fire and reach the compose step —
+  // otherwise "no override was set" would pass for the wrong reason.
+  assert.strictEqual(composedFor, expected,
+    `the ${hour}:00 slot never composed for today's album (got ${composedFor})`);
+  assert.ok(!loaded.includes(expected),
+    `showcase locked ${expected} on top of a live scheduled show`);
   assert.strictEqual(p._override, null,
     "showcase set an override while a scheduled show was on air");
+  fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+check("a showcase with a clear slot does lock its album", async () => {
+  const { ProgrammingSchedule, DAILY_SHOWCASES, resolveShowcase } =
+    require("../server/programming");
+  const slot = DAILY_SHOWCASES.find((s) => s.rotation);
+  const hour = slot.hours[0];
+  const day = new Date(2026, 7, 23, hour, 0, 0);
+  const expected = resolveShowcase(slot, day).album;
+
+  const loaded = [];
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsof-prog2-"));
+  const p = new ProgrammingSchedule({
+    djEngine: { state: { channel: "dj", currentAlbum: "REEF", currentTrackIdx: 0, playlist: [] },
+                loadAlbum: (a) => { loaded.push(a); return { title: "t" }; } },
+    voiceDJ: null,
+    broadcast: () => {},
+    broadcastState: () => {},
+    getPodcastStatus: () => ({ podcastPlaying: false }),
+    peaceOration: { composeAlbumNarration: async () => ({ ok: true, pieces: [] }) },
+    dataDir: stateDir,
+    showcaseStateFile: path.join(stateDir, "showcase-state.json"),
+  });
+  p._chicagoNow = () => day;
+  p._checkShowcaseTrigger();
+  await new Promise((r) => setTimeout(r, 50));
+
+  // The other half of the boundary: with nothing on air the showcase must
+  // actually take the slot, and take it with a real album name — a
+  // rotation bug that resolved to undefined would surface right here.
+  assert.ok(p._override, "showcase never set its override on a clear slot");
+  assert.strictEqual(p._override.album, expected);
+  assert.ok(loaded.includes(expected), `showcase never loaded ${expected}`);
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 

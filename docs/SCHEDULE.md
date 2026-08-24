@@ -35,12 +35,11 @@ short DJ patter stays on edge-tts to control cost.
 | 07:00        | News bulletin      | Adam — `pNInz6obpgDQGcFmaJgB`   | Flux `knowledge-gene/state.interpretation` | `server/news-broadcast.js`       |
 | 09:00        | The Story of Flaukowski | (pre-recorded, multi-voice) | `music/The Story of Flaukowski/TSOF-E0N-*.mp3` | `server/podcast-scheduler.js` |
 | 10:00        | Ghost Signals podcast | (pre-recorded ElevenLabs)    | `music/Ghost Signals Podcast/GSP-NNN-*.mp3` | `server/podcast-scheduler.js`    |
-| 11:00        | Album showcase     | edge-tts narration            | `programming.js` `DAILY_SHOWCASES`      | `server/programming.js`          |
+| 11:00        | Album showcase     | edge-tts narration            | `programming.js` `SHOWCASE_ROTATION` — a different album each day | `server/programming.js` |
 | 12:00        | Peace oration      | Rachel                        | HRM recall                               | `server/peace-oration.js`        |
 | 16:20        | Gossip column      | Domi                          | Flux                                     | `server/gossip-broadcast.js`     |
 | 17:00        | News bulletin      | Adam                          | Flux                                     | `server/news-broadcast.js`       |
 | 21:00        | The Story of Flaukowski | (pre-recorded)            | same episode as the 09:00 airing         | `server/podcast-scheduler.js`    |
-| 21:00        | Album showcase     | edge-tts narration            | `programming.js` — yields when a show is on air | `server/programming.js`   |
 | 22:00        | Ghost Signals podcast | (pre-recorded)              | day-of-week rotation, 7 episodes         | `server/podcast-scheduler.js`    |
 
 Two `PodcastScheduler` instances run over the one DJ engine: Ghost Signals
@@ -52,10 +51,16 @@ that choice; `/api/schedule` calls it so the Door prints the episode that
 actually airs. A freshly-dropped file (mtime < 48h) preempts the rotation
 for its first two days.
 
-The 21:00 album showcase shares a minute with the TSOF airing. Whichever
-wins, the drama takes precedence: the showcase re-checks `podcastPlaying`
-after composing its narration and yields the slot rather than cutting an
-episode off mid-scene.
+The 11:00 album showcase cycles the same way. `SHOWCASE_ROTATION` in
+`programming.js` is the pool — one album per day, one line to add the next
+release. It used to be a single album pinned at 11:00 **and** 21:00; the
+evening half was dropped because The Story of Flaukowski airs at 21:00 and
+a showcase landing in that minute would have cut the drama off mid-scene.
+
+Should a showcase and a show ever share a minute again, the show wins: the
+showcase re-checks `podcastPlaying` after composing its narration (a
+network round trip long enough for a show to have started) and yields the
+slot rather than calling `setOverride` over a live episode.
 
 Voice IDs are overridable per-segment via env:
 
@@ -100,11 +105,9 @@ the script text so re-encoding only happens when copy changes.
 All schedulers tick every 30s with a ±7-15 min slot window:
 
 ```
- 00:00 04:20 07:00 09:00 10:00 11:00 12:00 16:20 17:00 21:00 22:00
-   |     |     |     |     |     |     |     |     |     |     |
-peace gossip news  TSOF podcast show peace gossip news  TSOF podcast
-                                                       (+show,
-                                                        yields)
+ 00:00 04:20 07:00 09:00 10:00 11:00 12:00 16:20 17:00 19:00 21:00 22:00
+   |     |     |     |     |     |     |     |     |     |     |     |
+peace gossip news  TSOF podcast show peace gossip news  mic   TSOF podcast
 ```
 
 State persistence:

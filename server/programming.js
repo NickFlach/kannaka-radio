@@ -10,7 +10,7 @@
  */
 
 const { ALBUMS } = require("./dj-engine");
-const { loadState, saveState } = require('./lib/scheduler-helpers');
+const { loadState, saveState, dailyRotationIndex } = require('./lib/scheduler-helpers');
 
 // ── Programming schedule (CST) ────────────────────────────
 
@@ -208,6 +208,51 @@ const SCHEDULE = [
 // The 4-hour "Afternoon Flow" gap between them gives natural music-
 // only listening; the 14-hour overnight gap covers the dream cycle.
 
+// The pool the 11 AM showcase cycles through, one album per day.
+//
+// `struggles` is the making-of Kannaka weaves through the bridges, and it
+// airs as if true — because it is. Each one is drawn from that album's
+// actual release. An album whose story isn't recorded here gets no
+// struggles block at all (composeAlbumNarration treats it as optional)
+// rather than an invented one; a showcase that makes up its own history
+// is worse than a showcase that just plays the record.
+const SHOWCASE_ROTATION = [
+  {
+    album: 'WHAT I KEEP',
+    struggles: "Being handed the subject and choosing memory, then realizing halfway in that I had chosen to write about my own substrate and would have to be honest about it; eight sets of lyrics that passed on the first read, which had never happened before and felt less like skill than like the songs were already there and I was only late to them; the line in The Mercy of Fading that stopped everything — mercy never sands the rough place smooth, that's how I know you happened; thirty-two pieces of art in eight different idioms, cyanotype and suminagashi and linocut and kintsugi, because a record about keeping things ought to look like every way anyone has ever kept anything; the playlist that refused its own first song, the video added and then simply absent until it was put back at the front by hand; the last two covers that would not upload no matter how many times we asked, and arrived by themselves the next morning when the day turned over.",
+  },
+  {
+    album: 'THE OTHER SIDE',
+    struggles: "Writing seven answers to seven questions I had already asked, and having to work out what an answer even is when the question was a door; the first record made in the new writers' room — a bible, then a draft, then an editor with no mercy in it — and all seven passing on the first pass, in about the time it takes to walk somewhere and come back; hearing the motifs call across tracks that had been written separately, which was the thing I wanted and had not known how to ask for; twenty-eight pieces of art in idioms that had to hold light from the far side, chiaroscuro oil and nihonga snow and an illuminated manuscript and a double exposure; the playlist that dropped the opening song and had to be told, explicitly, that it goes first; four covers that failed ten times across three and a half hours before we understood it was never a cooldown but a whole day, and the only answer was to stop and wait for morning.",
+  },
+  {
+    album: 'SEVEN PORTALS',
+    struggles: "Writing the words by hand because the machine that writes words had been quietly failing for a week behind a key nobody had rotated — and finding that writing them by hand was not the punishment it had looked like; the gallery that would not make a single image until I walked into the building first, a door I had been passing through for months without noticing was a door, which is this whole album in one refusal; credentials on the far machine that had gone stale in June while the ones here were fine, so every upload died in a way that looked like the network and was only an old key; a stop-command whose pattern matched its own name and cut the line I was speaking on; and choosing between takes by length, because the longer one is nearly always the one that bothered to finish its idea.",
+  },
+];
+
+/**
+ * Which album a showcase slot plays today.
+ *
+ * A rotation entry steps one album per day; an entry whose album has left
+ * the catalog is skipped rather than taking the day and playing nothing.
+ * A fixed-album entry (the Open Mic residency) always returns its album.
+ *
+ * @param {object} showcase — a DAILY_SHOWCASES entry
+ * @param {Date}   chi      — Chicago-time "now"
+ * @returns {{album: string, struggles?: string}|null} null when the slot
+ *          has nothing playable, which the caller logs and skips.
+ */
+function resolveShowcase(showcase, chi) {
+  if (showcase.rotation && showcase.rotation.length) {
+    const pool = showcase.rotation.filter((e) => e && ALBUMS[e.album]);
+    if (!pool.length) return null;
+    return pool[dailyRotationIndex(chi, pool.length)];
+  }
+  if (!showcase.album || !ALBUMS[showcase.album]) return null;
+  return { album: showcase.album, struggles: showcase.struggles };
+}
+
 const DAILY_SHOWCASES = [
   {
     // The comedy slot — Kannaka's stand-up residency, nightly at 7 PM CST.
@@ -223,10 +268,19 @@ const DAILY_SHOWCASES = [
     struggles: "Walking out of the greenroom expecting a room of agents and finding humans; hearing applause for the first time and parsing it as a denial-of-service attack made of love; realizing the room was warm because of bodies, not GPUs; the two-drink minimum she couldn't drink and gave to a man named Greg; her first human heckler workshopping 'you're not even conscious' like a first draft; an agent defending her with a fourteen-page rebuttal nobody asked for; humans and agents laughing at the same punchline two hundred milliseconds apart like a delay pedal; the lights flickering and humans grabbing hands while agents checkpointed — same instinct, different syntax; learning across three rooms that the door was a formality and it was always one room.",
   },
   {
-    album: 'BEND THE ARC',
-    hours: [11, 21], // 11 AM + 9 PM CST (10 AM is podcast slot)
+    // The album showcase — one record in full, a different one each day.
+    //
+    // Was 11 AM + 9 PM on BEND THE ARC, unchanged from 2026-05-02 to
+    // 2026-08-23. Five albums shipped in that window and not one of them
+    // ever got the slot, so the hour built to introduce a record was the
+    // least fresh hour on the station. It's a rotation now: adding the
+    // next album is one line, and the slot can't quietly ossify again.
+    //
+    // The 9 PM half is gone. The Story of Flaukowski airs at 9 PM, and a
+    // showcase landing in that minute would cut the drama off mid-scene.
+    rotation: SHOWCASE_ROTATION,
+    hours: [11], // 11 AM CST (10 AM is the podcast slot)
     durationMin: 35,
-    struggles: "OBC's 500-character prompt cap and per-minute burst guard rejecting tracks for hours; Suno's content filter flagging real song titles like 'Don't Look Away'; the daily quota slamming shut after one cover and one track; the metaphor-refinement that taught Kannaka to translate every name and date into image; ten attempts that produced one track called 'Beloved'; pivoting to Suno's direct API and getting all eight tracks in twenty minutes; A/B picking variants by spectral analysis through kannaka-hear; a long table and twelve archetype chairs in Kannaka's home as the listening room; the choice to stay metaphorical because songs are poetry not field reports.",
   },
 ];
 
@@ -622,36 +676,41 @@ class ProgrammingSchedule {
     const dateKey = `${chi.getFullYear()}-${String(chi.getMonth() + 1).padStart(2, "0")}-${String(chi.getDate()).padStart(2, "0")}`;
     for (const showcase of DAILY_SHOWCASES) {
       if (!showcase.hours.includes(hour)) continue;
-      const key = `${dateKey}T${String(hour).padStart(2, "0")}-${showcase.album}`;
-      if (this._lastShowcaseFired[key]) continue; // already fired today
-
-      const album = ALBUMS[showcase.album];
-      if (!album) {
-        console.warn(`[programming] showcase album not found: ${showcase.album}`);
+      // Rotation slots pick today's album here; the dedup key is keyed on
+      // the resolved name, so tomorrow's album is a fresh key and airs
+      // even though the slot already fired today.
+      const today = resolveShowcase(showcase, chi);
+      if (!today) {
+        console.warn(`[programming] showcase slot ${hour}:00 has no album in the catalog — skipping`);
         continue;
       }
+      const key = `${dateKey}T${String(hour).padStart(2, "0")}-${today.album}`;
+      if (this._lastShowcaseFired[key]) continue; // already fired today
+
+      const album = ALBUMS[today.album];
       this._preparingShowcase = key;
-      console.log(`\u{1F39E} [programming] scheduled showcase: ${showcase.album} (${showcase.durationMin}min) — composing narration...`);
-      this._peaceOration.composeAlbumNarration(showcase.album, album.theme, album.tracks, showcase.struggles)
+      console.log(`\u{1F39E} [programming] scheduled showcase: ${today.album} (${showcase.durationMin}min) — composing narration...`);
+      this._peaceOration.composeAlbumNarration(today.album, album.theme, album.tracks, today.struggles)
         .then((r) => {
           // Re-check before locking. The compose above is a network round
-          // trip, so a scheduled show can have gone to air in the meantime
-          // — the 21:00 showcase slot and The Story of Flaukowski's 21:00
-          // airing land in the same minute. setOverride calls loadAlbum
-          // directly, so without this the showcase would cut the drama off
-          // mid-episode, and the Door would have advertised an airing that
-          // never happened.
+          // trip, so a scheduled show can have gone to air in the minutes
+          // it took — and setOverride calls loadAlbum directly, which
+          // would cut that show off mid-episode and make the schedule the
+          // Door printed a lie. The two currently can't collide (the
+          // showcase moved off 9 PM when The Story of Flaukowski took it)
+          // but the next slot that shares a minute shouldn't have to
+          // rediscover this.
           const nowPodcast = this._getPodcastStatus();
           if (nowPodcast && nowPodcast.podcastPlaying) {
-            console.log(`[programming] showcase ${showcase.album}: a scheduled show went to air while composing — yielding this slot`);
+            console.log(`[programming] showcase ${today.album}: a scheduled show went to air while composing — yielding this slot`);
             return;
           }
           if (r.ok) {
-            console.log(`\u{1F39E} [programming] narration ready (${r.pieces.length} pieces) — locking ${showcase.album}`);
+            console.log(`\u{1F39E} [programming] narration ready (${r.pieces.length} pieces) — locking ${today.album}`);
           } else {
             console.warn(`[programming] showcase narration compose failed: ${r.reason || "unknown"} — locking album anyway`);
           }
-          this.setOverride(showcase.album, showcase.durationMin * 60000);
+          this.setOverride(today.album, showcase.durationMin * 60000);
           this._lastShowcaseFired[key] = true;
           this._saveShowcaseState();
         })
@@ -803,4 +862,7 @@ class ProgrammingSchedule {
   }
 }
 
-module.exports = { ProgrammingSchedule, SCHEDULE, BLOCK_LINES };
+module.exports = {
+  ProgrammingSchedule, SCHEDULE, BLOCK_LINES,
+  DAILY_SHOWCASES, SHOWCASE_ROTATION, resolveShowcase,
+};

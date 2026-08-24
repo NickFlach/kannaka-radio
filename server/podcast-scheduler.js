@@ -21,6 +21,7 @@
 
 const path = require("path");
 const fs = require("fs");
+const { dailyRotationIndex } = require("./lib/scheduler-helpers");
 
 // Default show config = the original hardcoded Ghost Signals behavior.
 // A second PodcastScheduler instance with a different `show` airs another
@@ -101,11 +102,9 @@ class PodcastScheduler {
       const monAligned = (jsDay + 6) % 7;        // 0=Mon..6=Sun
       return monAligned;
     }
-    // Day-of-year for any other episode count.
-    const start = new Date(chicago.getFullYear(), 0, 0);
-    const diff = chicago - start;
-    const dayOfYear = Math.floor(diff / 86400000);
-    return ((dayOfYear % episodeCount) + episodeCount) % episodeCount;
+    // Any other count steps one per day through the list — the same
+    // rule the album showcase rotation uses, kept in one place.
+    return dailyRotationIndex(chicago, episodeCount);
   }
 
   stop() {
