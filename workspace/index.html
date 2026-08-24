@@ -1803,11 +1803,15 @@ body.konami-mode .surface-header h1 {
     <p class="ad-buy-intro">Your 30-second spot, read in Kannaka's voice, aired once a day for a week — <strong>$5</strong>. Preview it free before you pay.</p>
     <textarea id="adText" class="ad-textarea" maxlength="480" placeholder="Write your spot — up to about 30 seconds (480 characters). Kannaka will read it aloud on air."></textarea>
     <div class="ad-buy-row">
+      <!-- Labels are refreshed from /api/ads/bands so they carry the station's
+           current zone (and follow DST). These are the fallback if that call
+           fails; they say "station time" rather than naming a zone the page
+           cannot actually verify. -->
       <select id="adBand" class="ad-select" aria-label="Rough time slot">
-        <option value="morning">Morning · 6a–12p</option>
-        <option value="afternoon">Afternoon · 12p–6p</option>
-        <option value="evening">Evening · 6p–12a</option>
-        <option value="late_night">Late night · 12a–6a</option>
+        <option value="morning">Morning · 6a–12p station time</option>
+        <option value="afternoon">Afternoon · 12p–6p station time</option>
+        <option value="evening">Evening · 6p–12a station time</option>
+        <option value="late_night">Late night · 12a–6a station time</option>
       </select>
       <button id="adPreviewBtn" class="ad-btn ad-btn-ghost" onclick="previewAd()">Preview</button>
       <button id="adBuyBtn" class="ad-btn ad-btn-buy" onclick="buyAd()">Buy — $5 / week</button>
@@ -2569,6 +2573,25 @@ async function buyAd() {
   } catch (e) { status.textContent = 'Could not start checkout — try again.'; }
   btn.disabled = false;
 }
+
+// Stamp the band picker with the station's real zone. The page is static and
+// the zone is server config that shifts with DST, so hardcoded labels would
+// eventually promise a slot the station does not keep. Failure is silent: the
+// markup already carries honest "station time" fallbacks.
+(function labelBands() {
+  fetch('/api/ads/bands', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.ok || !Array.isArray(d.bands)) return;
+      var sel = document.getElementById('adBand');
+      if (!sel) return;
+      d.bands.forEach(function (b) {
+        var opt = sel.querySelector('option[value="' + b.id + '"]');
+        if (opt && b.label) opt.textContent = b.label;   // textContent, not innerHTML
+      });
+    })
+    .catch(function () { /* the fallback labels stand */ });
+})();
 
 // Stripe sends the buyer back to `/?ad=paid`. Without this the page looked
 // byte-identical to before the purchase — a real buyer paid $5 on 2026-08-23

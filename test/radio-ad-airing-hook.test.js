@@ -8,15 +8,20 @@
 
 const assert = require('assert');
 const { DJEngine } = require('../server/dj-engine');
-const { currentBand, stationDay } = require('../server/radio-ads-core');
+const { currentBand, stationDay, RADIO_AD_BANDS } = require('../server/radio-ads-core');
 
 let failed = 0;
 async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); } catch (e) { console.error(`  FAIL ${name}: ${e.stack || e.message}`); failed++; } }
 
-// A fixed morning clock so the drift check is deterministic.
-const CLOCK = new Date(Date.UTC(2026, 7, 22, 9, 0)); // 09:00 UTC = morning band
+// A fixed clock so the drift check is deterministic. BAND and DAY are DERIVED
+// from it rather than named, because bands and the airing ledger run on
+// station-local time — naming a band here would re-break the moment RADIO_TZ
+// changes, which is exactly how the drift test broke when the station moved
+// off UTC.
+const CLOCK = new Date(Date.UTC(2026, 7, 22, 9, 0));
 const BAND = currentBand(CLOCK);
 const DAY = stationDay(CLOCK);
+const OTHER_BAND = RADIO_AD_BANDS.find((b) => b !== BAND);
 
 function freshEngine() {
   const changes = [];
@@ -107,7 +112,7 @@ function stageSponsor(eng, over = {}) {
 
   await run('drift: a sponsor reserved for another band/day is NOT overlaid', async () => {
     const { eng } = freshEngine();
-    stageSponsor(eng, { band: 'late_night' }); // wrong band for the 09:00 clock
+    stageSponsor(eng, { band: OTHER_BAND }); // any band the clock is NOT in
     const cur = eng.advanceTrack('a.mp3');
     assert.strictEqual(cur.file, 'house.mp3', 'out-of-band sponsor is skipped');
     assert.strictEqual(eng.hasPendingSponsor(), true, 'and left staged for the poller TTL to release');
