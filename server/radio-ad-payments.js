@@ -113,7 +113,13 @@ class RadioAdPayments {
       // band slot and guarantees no payment lands after the capacity sweep frees
       // it (the sweep grace is 90 min, review M1).
       const expiresAt = Math.floor(this._now() / 1000) + 60 * 60;
-      const params = checkoutSessionParams({ adId: draft.id, band: draft.band, successUrl: this.successUrl, cancelUrl: this.cancelUrl, runDays, expiresAt });
+      // Carry the ad id back with the buyer. It is their reference for support
+      // AND the key that unlocks the free month of analytics, and until this
+      // was added the only place it appeared was our own database — so the
+      // analytics page asked returning customers for an "ad id" they had never
+      // once been shown.
+      const successUrl = this.successUrl + (this.successUrl.includes('?') ? '&' : '?') + 'ref=' + encodeURIComponent(draft.id);
+      const params = checkoutSessionParams({ adId: draft.id, band: draft.band, successUrl, cancelUrl: this.cancelUrl, runDays, expiresAt });
       const session = await api.createCheckoutSession(params, checkoutIdempotencyKey(draft.id));
       if (session && session.id) await this.store.attachCheckout(draft.id, session.id);
       return { adId: draft.id, checkoutUrl: session && session.url, sessionId: session && session.id };

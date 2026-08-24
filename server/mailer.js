@@ -266,8 +266,11 @@ class Mailer {
         `Kannaka reads it herself, in the slot you picked. Tune in:\n` +
         `  ${this.siteOrigin}\n\n` +
         `Your free month of Ghost Signals Analytics is ready too — bring us a\n` +
-        `CSV and we'll tell you what's actually moving in it:\n` +
-        `  ${this.siteOrigin}/analytics\n`,
+        `CSV and we'll tell you what's actually moving in it. This link opens it\n` +
+        `already unlocked:\n` +
+        `  ${this.siteOrigin}/analytics?ad=${encodeURIComponent(adId)}\n\n` +
+        `(If you ever need to unlock it by hand, the reference above IS the ad id\n` +
+        `the page asks for.)\n`,
     });
   }
 

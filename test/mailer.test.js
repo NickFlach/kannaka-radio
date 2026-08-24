@@ -95,6 +95,24 @@ function fakeStripe() { const calls = { refund: [] }; return { calls, async crea
     assert.strictEqual(await m.operatorReviewNeeded({ adId: 'ad_y', band: 'morning', amountCents: 500, runDays: 7, text: 'hi' }), false);
   });
 
+  // The free month was granted server-side on approval but reachable only by
+  // typing an "ad id" the customer had never been shown — so it sat granted and
+  // unreachable, and /analytics looked empty to the people who had paid for it.
+  await run('the approval mail carries a one-click link that unlocks the free month', async () => {
+    const m = capturingMailer();
+    await m.adApproved('buyer@example.com', { adId: 'ad_ABC123', band: 'morning', runDays: 7, startDate: '2026-08-24' });
+    const text = m.outbox[0].text;
+    assert.ok(text.includes('/analytics?ad=ad_ABC123'), 'the link carries the ad id');
+    assert.ok(text.includes('ad_ABC123'), 'and the reference is legible on its own');
+    assert.ok(/reference above IS the ad id/i.test(text), 'and says the reference IS what the page asks for');
+  });
+
+  await run('an ad id with URL-special characters is encoded into the link', async () => {
+    const m = capturingMailer();
+    await m.adApproved('buyer@example.com', { adId: 'ad_a b&c', band: 'morning', runDays: 7 });
+    assert.ok(m.outbox[0].text.includes('/analytics?ad=ad_a%20b%26c'), 'never pasted raw into a URL');
+  });
+
   await run('band labels are human, and an unknown band degrades to itself', () => {
     assert.strictEqual(bandLabel('late_night'), 'Late night · 12a–6a');
     assert.strictEqual(bandLabel('brand_new_band'), 'brand_new_band');

@@ -66,6 +66,15 @@ async function run(name, fn) { try { await fn(); console.log(`  ok  ${name}`); }
     assert.strictEqual(api.calls.checkout[0].params.line_items[0].price_data.unit_amount, 500);
   });
 
+  await run('the success URL carries the ad id back to the buyer', async () => {
+    // Until this, the ad id existed only in our database — so the analytics
+    // page asked returning customers for a reference they had never been shown.
+    const p = api.calls.checkout[0].params;
+    assert.ok(p.success_url.includes('ad=paid'), 'still flags the paid return');
+    assert.ok(p.success_url.includes(`ref=${adId}`), 'and carries the reference');
+    assert.strictEqual(p.cancel_url.includes('ref='), false, 'a cancelled checkout has no reference to give');
+  });
+
   await run('createCheckout rejects invalid text/band before charging', async () => {
     await assert.rejects(() => pay.createCheckout({ text: 'x', band: 'morning' }), /at least/);
     await assert.rejects(() => pay.createCheckout({ text: 'A perfectly valid advertisement here', band: 'noon' }), /invalid band/);
