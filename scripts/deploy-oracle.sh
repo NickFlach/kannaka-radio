@@ -9,6 +9,13 @@
 #   bash scripts/deploy-oracle.sh                  # pull + restart + verify (+rollback on fail)
 #   bash scripts/deploy-oracle.sh --with-piper     # also (re)run install-piper.sh
 #   bash scripts/deploy-oracle.sh --restart-kannaka# also cycle the full kannaka-* fleet
+#   bash scripts/deploy-oracle.sh --force          # deploy even if a show is ON AIR
+#
+# ON-AIR GUARD: the deploy refuses (exit 3) when a scheduled show or a locked
+# album showcase is playing, because `systemctl restart` ends it and the slot
+# does NOT resume — show triggers fire only at minute :00. Slots to know about:
+# 09:00 + 21:00 TSOF, 10:00 + 22:00 Ghost Signals, 11:00 showcase, 19:00 Open
+# Mic (all America/Chicago). Use --force only when interrupting is the point.
 #
 # --restart-kannaka (alias --fleet): after the radio deploy verifies, restart
 # every active kannaka-*.service so no process keeps running an old, replaced
@@ -40,11 +47,13 @@ RADIO_UNIT="${RADIO_UNIT:-kannaka-radio}"
 
 WITH_PIPER=0
 RESTART_KANNAKA=0
+FORCE=0
 for arg in "$@"; do
   case "$arg" in
     --with-piper) WITH_PIPER=1 ;;
     --restart-kannaka|--fleet) RESTART_KANNAKA=1 ;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    --force) FORCE=1 ;;
+    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
     *) echo "unknown arg: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -53,9 +62,53 @@ SSH=(ssh -i "$RADIO_KEY" -o BatchMode=yes -o ConnectTimeout=15 "$RADIO_SSH")
 
 echo "▶ deploying $RADIO_UNIT to $RADIO_SSH:$RADIO_DIR"
 
-"${SSH[@]}" "RADIO_DIR='$RADIO_DIR' RADIO_UNIT='$RADIO_UNIT' WITH_PIPER='$WITH_PIPER' RESTART_KANNAKA='$RESTART_KANNAKA' bash -s" <<'REMOTE'
+"${SSH[@]}" "RADIO_DIR='$RADIO_DIR' RADIO_UNIT='$RADIO_UNIT' WITH_PIPER='$WITH_PIPER' RESTART_KANNAKA='$RESTART_KANNAKA' FORCE='$FORCE' bash -s" <<'REMOTE'
 set -euo pipefail
 cd "$RADIO_DIR"
+
+# ── Don't cut a listener off mid-programme ──────────────────────────────────
+# A scheduled show (Ghost Signals, The Story of Flaukowski) or a locked album
+# showcase is an appointment a listener planned around, and NEITHER resumes
+# after a restart: the show triggers only fire at minute :00, and the showcase
+# slot window is 15 minutes wide. On 2026-08-24 a deploy at 09:01 ended the
+# 9 AM drama 70 seconds into the episode.
+#
+# This runs BEFORE the fast-forward so a refused deploy leaves the checkout
+# exactly where it was, rather than parking it ahead of the running service.
+#
+# An unreachable endpoint is treated as "nothing on air" DELIBERATELY: if the
+# service can't answer, there is no programme to protect and the restart is
+# the remedy, not the hazard. What we must never do is guess "clear" while the
+# service is healthy and mid-episode — hence the [PODCAST] fallback below for
+# builds that predate /api/on-air.
+if [ "$FORCE" = "1" ]; then
+  echo "→ --force: skipping the on-air check"
+else
+  echo "→ on-air check"
+  on_air=$(curl -s --max-time 5 http://127.0.0.1:8888/api/on-air 2>/dev/null || true)
+  if printf '%s' "$on_air" | grep -q '"onAir":true'; then
+    echo "  ✗ ON AIR: $on_air"
+    echo "    deploy refused — wait for it to finish, or re-run with --force"
+    exit 3
+  elif printf '%s' "$on_air" | grep -q '"onAir":false'; then
+    echo "  clear"
+  else
+    # /api/on-air absent (build predates this guard) or service not answering.
+    # Fall back to the [PODCAST] marker the scheduler stamps on the track it
+    # loads — the same signal, one layer coarser.
+    np=$(curl -s --max-time 5 http://127.0.0.1:8888/api/now-playing 2>/dev/null || true)
+    if printf '%s' "$np" | grep -q 'PODCAST'; then
+      echo "  ✗ ON AIR (via now-playing): $np"
+      echo "    deploy refused — wait for it to finish, or re-run with --force"
+      exit 3
+    fi
+    if [ -z "$np" ]; then
+      echo "  service not answering — nothing to interrupt, proceeding"
+    else
+      echo "  clear (no /api/on-air on the running build; [PODCAST] marker absent)"
+    fi
+  fi
+fi
 
 # ── Record the rollback point BEFORE we move HEAD ───────────────────────────
 before=$(git rev-parse HEAD)

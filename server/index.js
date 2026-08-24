@@ -1022,6 +1022,9 @@ const podcastScheduler = new PodcastScheduler({
   getMusicDir: () => MUSIC_DIR,
 });
 podcastScheduler.start();
+// Exposed alongside tsofScheduler so /api/on-air can answer "would a
+// restart cut someone off mid-programme?" for every scheduled show.
+deps.podcastScheduler = podcastScheduler;
 
 // ── The Story of Flaukowski — audio drama, daily 9 AM + 9 PM ─
 // Second scheduler instance over the same engine; the cross-show guard

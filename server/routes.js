@@ -648,6 +648,60 @@ module.exports = function setupRoutes(deps) {
       return;
     }
 
+    // /api/on-air — is a *scheduled programme* playing right now?
+    //
+    // Not "is audio playing" (something always is) but "would ending this
+    // process cut a listener off mid-programme". A scheduled show or a
+    // locked album showcase is an appointment someone planned around, and
+    // neither resumes after a restart — the show triggers only fire at
+    // minute :00, and the showcase's slot window is 15 minutes wide.
+    //
+    // scripts/deploy-oracle.sh reads this before restarting. It exists
+    // because a deploy at 09:01 on 2026-08-24 ended the 9 AM drama 70
+    // seconds into the episode.
+    if (parsed.pathname === "/api/on-air") {
+      const meta = djEngine.state.playlistMeta || [];
+      const cur = meta[djEngine.state.currentTrackIdx] || null;
+      const shows = [
+        { label: "Ghost Signals Podcast", sched: deps.podcastScheduler },
+        { label: "The Story of Flaukowski", sched: deps.tsofScheduler },
+      ];
+
+      let onAir = null;
+      for (const { label, sched } of shows) {
+        let playing = false;
+        try { playing = !!(sched && sched.getStatus && sched.getStatus().podcastPlaying); }
+        catch (_) { playing = false; }
+        if (playing) {
+          onAir = {
+            kind: "show",
+            label,
+            nowPlaying: cur ? cur.title : djEngine.state.currentAlbum,
+            until: null, // runs to the end of the episode; no fixed clock
+          };
+          break;
+        }
+      }
+
+      if (!onAir && deps.programming) {
+        try {
+          const ov = deps.programming.getStatus().override;
+          if (ov && ov.until > Date.now()) {
+            onAir = {
+              kind: "showcase",
+              label: ov.album,
+              nowPlaying: cur ? cur.title : ov.album,
+              until: new Date(ov.until).toISOString(),
+            };
+          }
+        } catch (_) { /* programming not wired yet — treat as clear */ }
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(onAir ? { onAir: true, ...onAir } : { onAir: false }));
+      return;
+    }
+
     // API: get current state
     if (parsed.pathname === "/api/state") {
       const state = djEngine.getState();
