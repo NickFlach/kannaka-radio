@@ -21,6 +21,7 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
@@ -37,12 +38,46 @@ function test(name, cond, detail) {
 /**
  * A home directory that cannot be created on either platform, so
  * `mkdirSync(<home>/.kannaka)` fails deterministically.
- *   win32: a drive letter that does not exist.
+ *   win32: a drive letter that does not exist — FOUND, not assumed.
  *   posix: a path under /dev/null, which is ENOTDIR rather than a missing dir.
+ *
+ * #233: this used to hardcode `Z:`, which is the first letter Windows hands to
+ * a mapped network drive. On a host that has one, `Z:\...` is writable, the
+ * subsystem initialises fine, and all six assertions fail — reporting a
+ * regression that is really just somebody's file server. The unwritable path
+ * is a precondition of the test, so it gets established rather than assumed.
  */
-const UNWRITABLE_HOME = process.platform === 'win32'
-  ? 'Z:\\no-such-drive-gshub-155'
-  : '/dev/null/no-such-home-gshub-155';
+function absentDriveRoot() {
+  // Walk down from Z: so the answer is stable on a machine with few drives,
+  // and skip anything `fs` can reach at all.
+  for (let c = 'Z'.charCodeAt(0); c >= 'D'.charCodeAt(0); c--) {
+    const root = `${String.fromCharCode(c)}:\\`;
+    try {
+      fs.accessSync(root);
+    } catch {
+      return root;
+    }
+  }
+  return null;
+}
+
+const UNWRITABLE_HOME = (() => {
+  if (process.platform !== 'win32') return '/dev/null/no-such-home-gshub-155';
+  const root = absentDriveRoot();
+  if (!root) {
+    // Every letter D-Z is mounted. Rather than run the suite against a
+    // writable path — which would turn six real assertions into six false
+    // failures — say so and stop. A test that cannot establish its own
+    // precondition must not pretend it did.
+    console.error(
+      '  ⚠ gshub-init-failure: no absent drive letter between D: and Z: on this host,\n' +
+      '    so an unwritable HOME cannot be constructed. Skipping rather than reporting\n' +
+      '    a failure that would be about the drive map, not the code.',
+    );
+    process.exit(0);
+  }
+  return path.join(root, 'no-such-drive-gshub-155');
+})();
 
 function freePort() {
   return new Promise((resolve) => {
