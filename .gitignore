@@ -81,3 +81,15 @@ workspace/rare-singles.json
 
 # Python bytecode from workspace scripts
 __pycache__/
+
+# Podcast + drama renders. Scripts, art manifests and episodes.json are the
+# record and ARE tracked; the audio is not — episodes 031-034 alone are 116MB
+# and workspace/tsof is 554MB. Losing a render costs a re-render from the
+# script that is in here; losing the script costs the episode.
+workspace/podcasts/*/*.mp3
+workspace/podcasts/*/*.wav
+workspace/podcasts/renders/
+workspace/tsof/
+# Slideshow art is regenerated from art/manifest.json + images.txt, which ARE
+# tracked. Master tracks no episode art either; this matches it.
+workspace/podcasts/*/art/*.png
