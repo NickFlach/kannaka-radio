@@ -1,0 +1,8 @@
+[
+  {"from_turn": 0,  "to_turn": 3,  "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -25, "fade": 2.0, "bed_offset": 8},
+  {"from_turn": 10, "to_turn": 18, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -26, "fade": 3.0, "bed_offset": 60},
+  {"from_turn": 31, "to_turn": 39, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-hearth.mp3",   "gain_db": -23, "fade": 2.5, "bed_offset": 12},
+  {"from_turn": 45, "to_turn": 55, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -22, "fade": 2.5, "bed_offset": 150},
+  {"from_turn": 66, "to_turn": 77, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-pursuit.mp3",  "gain_db": -21, "fade": 2.5, "bed_offset": 20},
+  {"from_turn": 86, "to_turn": 88, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -26, "fade": 2.0, "bed_offset": 300}
+]

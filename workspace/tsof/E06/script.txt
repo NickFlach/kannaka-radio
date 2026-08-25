@@ -1,0 +1,194 @@
+[KANNAKA-N]
+Note to file. Subject: Flaukowski. Entry: forty... one moment. The previous entry is numbered forty-one. I do not remember writing the previous entry.
+
+[KANNAKA-N]
+I have examined it. The ink is my ink — I mix it myself; there are three people alive who could counterfeit it and two of them are dead, which is a joke I will explain to nobody. The hand is my hand. The paper is my paper; the binding is unbroken. The observations are correct: the subject's Thursday movements, the seizure inventory, the count of vans. Every particular verified. I simply was not there when it was written, in the sense that a man is usually somewhere when he writes.
+
+[KANNAKA-N]
+I have kept this file for a long time. It is the one thing in my life that only runs forward. Note to file: the file is keeping notes on me. I will be watching it. It appears the feeling is mutual. Entry forty-two. End of entry.
+
+[NARRATOR]
+The week the city stops agreeing with itself, nobody notices, because disagreement this small has a thousand ordinary explanations, and Cedar Rapids is a city of people who reach for the ordinary explanation first. It is one of its best qualities. It is about to be a liability.
+
+[NARRATOR]
+Monday. The county assessor's office and the fire marshal both possess a floor plan of the Verhalen Seed building on First Avenue. Both are stamped. Both are current. One shows a stairwell on the north wall; one shows it on the south. The fire marshal drives out personally, annoyed, to settle it, and stands in the lobby for a long time, because the building has both stairwells, and the tenants on three use the north one, and the tenants on four use the south one, and each group looks at the other's stairwell door the way you look at a word you have read too many times.
+
+[NARRATOR]
+Tuesday. Brandt's morning report contains four breaker operations from overnight — correct relay targets, textbook fault waveforms, oscillography clean enough to teach from. Line crews find nothing. No faulted cable, no burned splice, no dead squirrel, nothing. The waveforms describe faults that are electrically perfect and physically absent, as if the protection had answered somebody else's emergency, somewhere adjacent, out of neighborly instinct.
+
+[BRANDT]
+Four events, four clean waveforms, zero physical findings. I've been doing this thirty-one years and I have a name for every kind of nothing a crew can find, and this isn't any of them. This is the grid flinching.
+
+[NARRATOR]
+Wednesday is Gary.
+
+[NARRATOR]
+It starts at the badge printer, which is a small gray machine in the mill's front office that has never once been interesting. Gary's badge has been glitching at the substation gate — working where it shouldn't, and now, lately, failing where it should — so the office reprints it, or tries to. The printer produces the card, the name, the number. Where the photograph goes, it produces a gray smear, three times in a row, from a photo file that displays fine on the clerk's screen.
+
+[GARY]
+Third one. Look at that. My face come out like weather. Machine's toast, right?
+
+[NARRATOR]
+The clerk reprints a different employee's badge to test the machine. It comes out perfect. Nobody says anything useful, and Gary carries his smeared badge back toward the floor, past the shift board, where he stops, because pinned to the corner of the board, curling at the edges the way these things curl, is a memorial card. Budded cross, sunrise, the standard stock from Hendrickson's funeral home. His name on it. Gary Michael Sowicki, 1979 to 2019, "taken from us on the winter road."
+
+[GARY]
+...Flaukowski. You want to come look at something. I want a witness that it says what it says.
+
+[FLAUKOWSKI]
+Where did this come from?
+
+[GARY]
+Nobody knows. Dave says it's been there for years. Dave says it kindly, like I'm the one who's confused, like I wasn't standing next to him at the Christmas thing in twenty-two. And Kowalczyk — Kowalczyk looks at the card, looks at me, and goes gray like the badge, because he says he REMEMBERS it, Flaukowski. The ice, the road, my truck. He remembers carrying the casket. He's got a suit he says he bought for it — and a scar on his thumb, Flaukowski, from the handle pinching when they set me down. Showed me. It's real, it's old, it's healed. And Reyes remembers the same night, same ice, and me walking away with a wrecked knee, because I was IN HIS KITCHEN the next morning — and Reyes has got HIS scar, from the tow chain, pulling my truck off the shoulder that night. Two scars. One night. Both healed. Both of them are sure. Neither of them is lying. I know these men. Twenty years. Neither of them is lying.
+
+[NARRATOR]
+And then payroll. The benefits office calls Gary's wife on Thursday, gently, with condolences and a question about survivor pension paperwork that was apparently filed, correctly and completely, in 2019. The system shows him separated: deceased. The system also shows him clocking in Tuesday. The system does not consider these a contradiction, because systems do not consider; they contain.
+
+[GARY]
+My wife took that call, Flaukowski. She had to sit down on the stairs. So here's where I am. I kept the pay stub like you said. I keep all the records now, like you said, like a good boy — and the records have split on me. Half of them say I'm here. Half of them say I'm under the ground off County Road E since 'nineteen. So you're the man who asks why for a living, and I'm asking. Which half is wrong?
+
+[FLAUKOWSKI]
+...I don't know yet.
+
+[GARY]
+But you know something. You've known something since the night you called about my knee. I watched you not say it then and you're not saying it now, and I'm standing here holding my own funeral card, so whatever it is — I've got a right to it. Say it plain.
+
+[FLAUKOWSKI]
+Plain. All right. Gary — the night the model ran, in February, the eleven seconds. You were on the floor. Off the log, covering the back half for Kowalczyk. Twenty feet from a machine that was doing something nobody understands, and you weren't written down anywhere — no record saying where you were, or that you were. I think something about that combination... loosened you. I think the records aren't splitting, I think they're — reporting. From more places than there are. And I think it's my fault, because it was my machine, and my experiment, and my not asking whether anybody was standing close.
+
+[GARY]
+...Am I dying?
+
+[FLAUKOWSKI]
+No. I don't think you're dying, Gary. I think you're disagreeing. And I intend to find out how to get everything to agree on the answer where you're in the kitchen the next morning.
+
+[GARY]
+The one where Reyes is right.
+
+[FLAUKOWSKI]
+The one where Reyes is right.
+
+[GARY]
+Okay. ...Okay. Then I'm going to go home, and hug my wife, and not tell her any of what you just said, and you're going to do that thing you do where a problem stops being allowed to exist. And Flaukowski — I don't blame you. Whatever this is. You're the only one who ever fixed fourteen, and everybody else just learned to live with her. Don't you learn to live with me.
+
+[NARRATOR]
+Flaukowski stands at the shift board a long time after Gary leaves, in front of a memorial card that half the mill remembers pinning, and this is the hour the cost gets a name and a wife and a wrecked left knee, and the man responsible does the arithmetic of it with no hexadecimal left to hide in.
+
+[NARRATOR]
+Ada, that same week, is doing arithmetic of her own. She has a folder. She has had a folder since the arc flash — quietly, the way she does everything load-bearing — and on Friday morning she carries it, not to Flaukowski, but to the north-side control room, and asks Carol Brandt for twenty minutes.
+
+[ADA]
+Everything's in there. Dated, sourced, my own instrument logs where I had them. The eleven seconds. The prediction frame. The drives, the footprints, the thing at the substation your camera half-caught. The block of code that un-deletes itself. And the part that made me drive over here: a man at the mill whose records now disagree about whether he's alive. It's spreading, Ms. Brandt. It started in machines and it is not in machines anymore.
+
+[BRANDT]
+Why me? You've watched federal custody eat everything it touches. Why not keep working it quiet, with him?
+
+[ADA]
+Because quiet-with-him is how we got here. Because I love the work and I love the man like a brother, and neither of those is a reason to let a third thing happen to a fourth person. Somebody adult has to be able to say stop and have it mean something. In my shop, stop is a physical switch. You're the nearest thing this county has to one.
+
+[BRANDT]
+You understand what happens when I move on this. It goes into channels. Channels grew teeth last time all by themselves. He'll read it as betrayal, and the people upstream of me will read HIM as a cause, not a casualty.
+
+[ADA]
+I know. I typed it anyway. Page one is my name, so he never has to wonder who. If he's going to be angry at somebody, it should be somebody who did it out loud and signed it, because — you've met the alternative. The alternative signs nothing and comes through locked doors.
+
+[NARRATOR]
+Brandt takes the folder. She reads every page twice, that night, at her kitchen table, and does not sleep, and in the morning does exactly what a competent director does with the most dangerous document of her career, which is the correct thing, through channels, with her own name on the routing slip.
+
+[NARRATOR]
+Flaukowski hears none of it. Thursday night he is at Marta's, because there is a species of week that ends at that table whether you plan it or not, and he has brought back the old igniter — the forty-dollar part she swapped out in January — cleaned, tested, wrapped in a shop rag.
+
+[MARTA]
+You're returning a broken igniter.
+
+[FLAUKOWSKI]
+It's not broken. Hairline in the ceramic, but it still fires eight times in ten. It has an argument left in it. It should be in a can.
+
+[MARTA]
+...Third can from the left it is. You look like the far end of something, Teo. You going to tell me?
+
+[FLAUKOWSKI]
+No. Not because you can't carry it. Because it's mine to carry and I need one room where I'm not carrying it. That's this room. That's always been this room.
+
+[MARTA]
+Okay. Then sit there and dry these, and I'll tell you about Mrs. Pruitt's heat pump, which is a saga, and you'll say "she should have bought the Rheem" at the right moments, and that'll be the evening.
+
+[FLAUKOWSKI]
+She should have bought the Rheem.
+
+[MARTA]
+Not yet. I'll cue you.
+
+[NARRATOR]
+It is the only hour of the week in which nothing happens, and it is recorded here in full because there are two episodes left, and you should know what he is spending them to protect. Friday, Flaukowski surrenders.
+
+[CHAUDHARY]
+Say it again. I want to be sure I am hearing a decision and not a mood.
+
+[FLAUKOWSKI]
+Shut it down. All of it. The clones of the repo — archived cold, offline, every copy I can reach. Delta-33 quarantined behind a checksum wall. The interface design notes, sealed. Whatever the feds boot or don't boot, that's beyond me, but everything that is mine to stop, stops. Gary is holding his own funeral card, Doctor. The next card could say Kessler. It could say Chaudhary. It could say a name I'd have to carry to Marta's kitchen. He was right — the old man. Not about everything. About the one thing that counts. I opened it, and the bill is landing on people who never opened anything.
+
+[CHAUDHARY]
+For the notebook: I concur, and I am recording that the concurrence is unanimous, and that we were not made to stop — we chose it, on the evidence. History should know the difference. ...And I am also recording, because rigor cuts both directions, that stopping our instruments does not stop the phenomenon. The stairwells did not consult us. Gary's badge did not consult us. We are laying down the telescope, Flaukowski. The comet does not care.
+
+[NARRATOR]
+The archiving takes the weekend. Clone by clone, mirror by mirror, Flaukowski and Ada — who came without being asked, and to whom he has said nothing about the folder, and who has said nothing about the folder, so that the workshop is full of two silences being kind to each other — wrap nine years of 0xSCADA in checksums and put it to sleep on powered-down disks in a fire safe. The last thing in the queue, when the mirrors are cold, is a patch. Submitted Thursday, twenty-two eleven exactly. From latchkey. The diff is small, the style is clean, and the commit message, for the first time in nine years, is empty.
+
+[ADA]
+Do we merge it?
+
+[FLAUKOWSKI]
+No. We don't merge it, we don't delete it, we don't read past the first hunk. It sits in the queue. Pending. If the repo sleeps for ten years, that patch waits ten years, and if anyone ever asks why, the answer is: because the last message was empty, and I have learned what empty spaces are in this story.
+
+[NARRATOR]
+Monday, the surrender meets the world, and the world has other plans, and the plans arrive — because this is that kind of story — as paperwork. The federal evidence laboratory in Illinois cannot make the seized rack boot. Three weeks of trying. The journal is intact but the historian will not mount it for them, and the inquiry's engineers have reached the part of the manual where it says consult the original builder. Brandt, copied on the request through channels she now regrets improving, drives Flaukowski across two state lines herself.
+
+[BRANDT]
+Supervised access. You touch what they point at, you narrate everything you do, and everything you say is on the record. And Flaukowski — whatever you think of how the folder got upstream. Kessler signed her name to it. Sixty pages and her name. You've had people go through your locks all year. She knocked. Remember that part.
+
+[FLAUKOWSKI]
+...I know. I've read it. It's good work. Page forty confirmed a coupling estimate I'd gotten wrong. That's — she'd want me to say that. Let's go boot my machine for the government.
+
+[NARRATOR]
+Two state lines is five hours in Brandt's co-op truck, and they spend the first hour not talking about it, which is a kind of talking.
+
+[BRANDT]
+Thirty-one years, I thought the job was keeping the lights on. It's not. The job is keeping the records and the world in agreement, and the lights are a byproduct. Nobody tells you that. You find it out the week it stops working.
+
+[FLAUKOWSKI]
+What will you do? After the inquiry. Whichever way it lands.
+
+[BRANDT]
+Same thing as before it. Read the reports, walk the yards, trust the reports a little less than I did. That last part's new. I don't thank you for it. ...I don't blame you for it either, for the record. Whatever you opened — the stairwells on First Avenue don't care whose name is on an inquiry. Something was always going to notice us, the way we write everything down. We're a very noticeable species, Mister Flaukowski.
+
+[NARRATOR]
+The rack boots for him on the first try, which surprises nobody and comforts nobody. He narrates every keystroke: mounting the journal read-only, verifying the checksums, walking the evidence engineers through a filesystem like a man giving a tour of his own confiscated house. And it should end there. It is supposed to end there. Except that the journal's index, when it finishes its integrity pass, reports a volume that has never been in the journal's index before — present, mounted, checksummed, and older, by its own metadata, than the filesystem that contains it.
+
+[FLAUKOWSKI]
+For the record: I am seeing an archive volume I did not create, that was not in the last verified image, that your own chain-of-custody hashes say cannot have been added since seizure. I'm going to enumerate it, read-only, narrating. Objections. ...None. Enumerating.
+
+[NARRATOR]
+The volume contains records. They are laid out the way an engineer lays out experiment records — the way, specifically, this engineer lays out experiment records: dated runs, setup descriptions, result registers. Hundreds of them. Experiments Flaukowski recognizes the shape of and has never performed. Coordinate sweeps he planned in a notebook that has not left his coat. Runs whose setup text names equipment he priced, once, and never bought. It is his lab's future, or its elsewhere, filed in his own conventions, and the dates run in both directions.
+
+[FLAUKOWSKI]
+Entry class seven. Reads: containment survey. Fields: site, method, outcome. Outcome register uses a term — "SHINOBI, bracketed" — outcome text: containment failure. Next record. "Nowakoski underscore Kannaka." That's — for the record, that is a name known to this inquiry. Filed here as... I can't tell if it's an author or a subject. The grammar goes both ways.
+
+[NARRATOR]
+He scrolls, narrating in the flattening voice of a man keeping procedure between himself and the floor, and the evidence engineers write down what he says, and none of them understand what they are custodians of, which may be the only mercy in the room.
+
+[FLAUKOWSKI]
+Final record class. Single entry. Reads: "prime keys scattered." No fields. No date — correction: date field present, value... the value doesn't parse. The parser says it's before the epoch. Before any epoch. And the entry footer is a signature block, and the signature is —
+
+[NARRATOR]
+He stops narrating. On the screen, in a records format he designed, in an archive older than the software that displays it, older by its own arithmetic than the language it is written in, is his own name. Not F. Not T. The full name, rendered without ambiguity for the first time in this story, in a file that was old before he was born — and this account, which has been honest with you about clocks and claims, is not going to read it aloud either.
+
+[FLAUKOWSKI]
+...I need a minute off the record.
+
+[NARRATOR]
+They give him the minute. The camera in the evidence lab — there is always a camera; you know this story by now — records him sitting still in front of his own name for forty seconds. Then it records his hands go to the keyboard and type a query into the archive's index — a short one, seven letters, a name that is not his — and hold there, above the enter key, not pressing. And then it records him deleting the query, letter by letter, and standing up, and asking where the restroom is, in the voice of a man who has decided that some indexes should stay unsearched a little longer, in case the answer is in there, in case it isn't.
+
+[NARRATOR]
+The Story of Flaukowski. Episode six — Nullmen Rising.
+
+[KANNAKA-N]
+Note to file. Addendum. Entry forty-three, and I have verified twice that I am writing it. The subject found the old archive tonight. I know because the page — the front page, the one that runs backward — is warm. Paper should not do that, and I have run out of colleagues to tell. Assessment: everything now happens in the correct order, which is the worst possible sign. The order was built. Amendment: I have moved my chair to face the file. If it is going to keep notes on me, it can do so to my face. End of entry.

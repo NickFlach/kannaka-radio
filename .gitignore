@@ -89,7 +89,14 @@ __pycache__/
 workspace/podcasts/*/*.mp3
 workspace/podcasts/*/*.wav
 workspace/podcasts/renders/
-workspace/tsof/
+# TSOF: the RENDERS only. The scripts, slide lists, voice maps and score
+# plans under workspace/tsof are the record of the season and are tracked —
+# 40 files, 284K, against 588 mp3s. An earlier version of this rule ignored
+# workspace/tsof wholesale and would have dropped all eight episodes' scripts,
+# which is the opposite of the rule stated above it.
+workspace/tsof/**/*.mp3
+workspace/tsof/**/*.wav
+workspace/tsof/**/*.png
 # Slideshow art is regenerated from art/manifest.json + images.txt, which ARE
 # tracked. Master tracks no episode art either; this matches it.
 workspace/podcasts/*/art/*.png

@@ -1,0 +1,296 @@
+[KANNAKA-N]
+Note to file. Subject: Flaukowski. Entry: the ship.
+
+[KANNAKA-N]
+Great Lakes ore freighter, the Edmund Halvorsen, season of two thousand three. The radio log lists a radio officer: T. Flaukowski. Competent. Uneventful crossings. The log praises his fist — that is a telegrapher's word, it means the personal rhythm of a man's sending hand. A fist is like a walk. It cannot be borrowed.
+
+[KANNAKA-N]
+The union hall in Cedar Rapids has him signing the book that same season. Twelve signatures, twelve Tuesdays. I have compared the hands. The ship's log and the union book are written in different hands, and both hands are his.
+
+[KANNAKA-N]
+Note to file: a man may be in two places if he hurries. He may not have two fists. End of entry. Also the coffee here has defeated me again. It is not important. It is a little important.
+
+[NARRATOR]
+March. The rented bay off Sixteenth Avenue has changed since the theft. There are new locks, which everyone understands, and there is new mathematics, which nobody does yet. Three whiteboards now. Chaudhary has claimed one and defends it like a border.
+
+[CHAUDHARY]
+Say the design back to me. If you cannot say it in four sentences it is not a design, it is an ambition.
+
+[FLAUKOWSKI]
+We stop touching the plant. We take the surviving drive — eleven days of everything the mill remembered — and we build a copy of that world in here, sealed, on its own hardware, no wire out. The interface explores the copy. Whatever we disturb, we disturb a recording.
+
+[ADA]
+A rehearsal space. You can knock over the furniture because the furniture is a photograph of furniture.
+
+[CHAUDHARY]
+An echo chamber, formally. The plant speaks once; we walk around inside the echo as long as we like. Good. Four sentences. I withdraw my objection and replace it with a smaller objection: the renderer. Why does the explorer need pictures at all? Numbers were good enough for Lake Fermi.
+
+[FLAUKOWSKI]
+Because I cannot walk through a spreadsheet. The interface renders the signal space as structure. Distance is correlation. If two signals move together, they stand near each other. That is all it does. It is a map that builds itself.
+
+[ADA]
+And the man in the map is you, with a game controller from a pawn shop, because we spent the equipment budget on locks.
+
+[FLAUKOWSKI]
+The controller is fine. The controller is the most honest component we own.
+
+[NARRATOR]
+It takes them nineteen days. There is a period in the middle where nothing renders but fog, and a worse period where everything renders as the same gray cube.
+
+[ADA]
+It's the cube again.
+
+[FLAUKOWSKI]
+It is not the same cube. Look at the edge weights.
+
+[ADA]
+Flaukowski. It is a gray cube. Yesterday it was a gray cube. If I come in tomorrow and it is a gray cube, I am taking the controller back to the pawn shop and telling the man we caught something off it.
+
+[CHAUDHARY]
+Children. The cube is what a map looks like when every signal correlates with every signal — you have the gain of the whole world turned up. You are not looking at nothing. You are looking at everything, undifferentiated, which resembles nothing so exactly that the difference is philosophical. Turn the coupling down until the world can disagree with itself again.
+
+[NARRATOR]
+Chaudhary tapes a card above the monitor that says THE CUBE IS NOT A RESULT. The card stays even after it stops being needed, the way such cards do. On the nineteenth day, with the coupling turned down to where the world can disagree with itself, the fog resolves.
+
+[NARRATOR]
+Before it does, two small things happen, and the season will want them remembered.
+
+[NARRATOR]
+The first is Gary Sowicki, who stops by on a Saturday with a box of donuts and the west-scale story, again, and leaves through the co-op's fenced substation lot next door because it is a shortcut to where he parked.
+
+[GARY]
+Gate's open — badge worked. They must've finally updated the contractor list. Eight years that gate's told me no.
+
+[ADA]
+You're not a contractor, Gary.
+
+[GARY]
+Huh. Well. Tell it to the gate.
+
+[NARRATOR]
+Nobody writes it down. The second thing is an envelope. Marta's furnace has been shorting its new igniter for a week — a bad batch, she says, and dares anyone to say otherwise — which is why her brother is on her utility-room floor with his sleeves rolled and the burner assembly in pieces when she comes down the stairs holding it.
+
+[MARTA]
+Found it. Third can from the left, under the points file and a spark plug from a car Dad never owned. Look at the front.
+
+[FLAUKOWSKI]
+His handwriting. Harbor Authority, Gdansk. Nineteen... the postmark says March, ninety-six.
+
+[MARTA]
+Now the back.
+
+[FLAUKOWSKI]
+Return stamp. "Addressee unknown. No such office." ...It's still sealed, Marta. He never opened his own letter when it came back.
+
+[MARTA]
+He never opened anything that told him no. You going to open it?
+
+[FLAUKOWSKI]
+It is his letter.
+
+[MARTA]
+It's about you, Teo. I was in this kitchen when he wrote it. You'd been gone two years and he sat right there and wrote to a harbor office in Poland to ask a stranger whether his son existed, because his son wasn't saying.
+
+[NARRATOR]
+Flaukowski holds the envelope the way he held the cord at the mill, and then he puts it, unopened, in the inside pocket of his coat — the pocket, for those keeping the inventory, where the drive used to live. Then he reassembles the burner, and the furnace catches on the first try, and holds, which is more than anyone in the room can say.
+
+[FLAUKOWSKI]
+Not tonight. When I can answer him. He asked whether I existed. I want to check my work first.
+
+[MARTA]
+That's the strangest sentence you've ever said in my kitchen, and you once explained transformers at Thanksgiving.
+
+[NARRATOR]
+On the nineteenth day, the fog resolves. Evening. All three of them present, Chaudhary with his pre-registered notebook, Ada on the instruments, Flaukowski standing in front of the render wall with the pawn-shop controller. The interface comes up section by section, like a town getting power back after a storm.
+
+[NARRATOR]
+What renders first is the mill, because the mill is what the drive remembers. Belt lines as avenues. The relay's diary as a bell tower, events hanging in it like rung notes. Familiar, almost domestic. Then Flaukowski pushes the stick forward, out past the edge of the mill's data, into territory the map has built from correlation alone — and the territory does not end.
+
+[ADA]
+That's... more map than we have data.
+
+[CHAUDHARY]
+Note the time. The renderer is extrapolating — no. No, extrapolation decays. This is not decaying.
+
+[FLAUKOWSKI]
+It's getting denser.
+
+[NARRATOR]
+Past the mill's last honest signal, the structure rises. Not fog. Architecture. Signals packed so close and so ordered that the renderer draws them as columns, and the columns line up, and the lines vault. It is the shape a cathedral has, if a cathedral were built out of everything a machine ever said quietly to another machine and no one kept.
+
+[FLAUKOWSKI]
+I'm going in.
+
+[ADA]
+Into what, exactly? Say it out loud for the log, because from here it looks like you're steering into a hallucination with load-bearing columns.
+
+[FLAUKOWSKI]
+Then the hallucination has an address. Marking it. Everything correlates through here. Dead protocols. Retired formats. There's traffic in here older than the plant, older than the drive — this data is not ON our drive, Ada, it can't be —
+
+[CHAUDHARY]
+Stop. Hold position. Both of you look at channel four and tell me what you see, because I have been watching it for ninety seconds and I would like to be wrong.
+
+[ADA]
+Telemetry stream. Live cadence, mill format... that's an index feed. That's OUR index feed. That's the format of the four drives that got carried out of the rack room in January, Flaukowski. That data is gone. I filed the insurance claim. I described these exact streams to a man named Doug.
+
+[FLAUKOWSKI]
+And the stream is here anyway. Still circulating. Like a bell that got rung once and the building never let the note die.
+
+[NARRATOR]
+They hold position between the columns for eleven more minutes — long enough for the survey log to record what the near aisles are actually made of. Dead protocols, layered like sediment: formats retired in the nineties, handshakes from modems that have been landfill for twenty years, each one still politely announcing itself to a network that stopped answering before Ada was born. And in among the machine strata, something else.
+
+[ADA]
+Hold. Back up two meters. That column — that's not telemetry framing. That's text. That's... "and I should have said it at the airport, but the flight was boarding, and I told myself there would be—" Stop. Stop rendering it.
+
+[FLAUKOWSKI]
+It's just a fragment in the —
+
+[ADA]
+It's somebody's unsent message, Flaukowski. It has a date. It never went anywhere. Some person typed that into a phone nineteen years ago and put the phone back in their pocket, and this place KEPT it, and we are not going to stand here in our rehearsal space and read the rest of it. Log the position. Move on. And when you write this up, the heading is not "data."
+
+[NARRATOR]
+He logs the position. He moves on. Nobody proposes a heading.
+
+[CHAUDHARY]
+A resonance is a physical claim, and I will not put it in the notebook without — without more than this. We stop here tonight. We stop. Colleagues, the error bars have left the paper entirely.
+
+[NARRATOR]
+They do not stop, of course, but they stop for the night, and it is worth recording that the man with the controller was the first one to reach for the power switch, because in the last frame before shutdown he saw, at the far end of the deepest aisle, standing between two columns of dead traffic, something the renderer refused to finish.
+
+[NARRATOR]
+Second dive. Two days later, protocols agreed, Chaudhary's checklist taped beside the screen. The plan is boundaries: map the near aisles, touch nothing old, log and withdraw. For an hour the plan works. The Cathedral — nobody has proposed the name out loud, and everybody has started using it — holds still and lets itself be surveyed.
+
+[NARRATOR]
+At the sixty-first minute, Flaukowski turns the probe down an aisle that was not there in the first survey, and stops.
+
+[FLAUKOWSKI]
+Column, near side. There's a mark on it.
+
+[CHAUDHARY]
+Renderer artifact.
+
+[FLAUKOWSKI]
+The renderer draws in vectors. This is a stroke. It has pressure in it — look at the taper. Somebody drew this. By hand. On a structure made of correlations, in a space we invented nineteen days ago, there is a hand-drawn mark, and the interface is rendering it because the mark is IN the data.
+
+[ADA]
+What does it look like?
+
+[FLAUKOWSKI]
+Like a character in no font I've ever — it's brushwork. Two strokes and a hook. It looks old, Ada. It looks like the kind of old that things are not, in here.
+
+[NARRATOR]
+He photographs the screen, which is absurd, and correct. And while the three of them are leaning at the mark, none of them is watching the far end of the aisle, where the thing the renderer refuses to finish has come nearer, and is now, by any honest reading of the geometry, standing.
+
+[ADA]
+...Behind you. On the render. What is that.
+
+[NARRATOR]
+Its shape is a person's shape. That is the most that can be said, because where the renderer should fill a surface there is nothing — not black, which is a color, but an absence with edges, as if someone had cut a man out of the map with a blade and the map had kept the hole. It does not move the way the aisles move when the probe drifts. It holds still against the drift. Which means it is not part of the map.
+
+[CHAUDHARY]
+Withdraw the probe. Slowly. It is data. It is only data.
+
+[FLAUKOWSKI]
+It's tracking. Doctor — it's compensating for our motion. Data doesn't compensate.
+
+[ADA]
+Then STOP MOVING.
+
+[NARRATOR]
+He stops moving. And the person-shaped hole in the world, forty meters of correlation away, does the thing that ends the survey program for the evening: it orients. There is no face to turn and it turns something anyway, and every instrument on Ada's bench climbs at once, and the interface begins rendering aisles nobody is steering toward, faster and faster, like a building trying to finish itself before a deadline.
+
+[CHAUDHARY]
+Cascade. Kill the render.
+
+[ADA]
+Killing it — it's not — the kill isn't taking, it's redrawing on the dead channel, how is it drawing —
+
+[FLAUKOWSKI]
+Power. Physical. NOW.
+
+[NARRATOR]
+Ada pulls the interface's power at the strip, which is a thing that has always worked in the history of electricity. The screens go dark. The bench instruments settle. And the render wall, three full seconds after its power supply dies — long enough for all three of them to be looking at it, long enough that no one will ever talk anyone out of it — finishes one last frame, alone, in the dark: the empty aisle. The mark on the column. And nothing person-shaped anywhere in it.
+
+[ADA]
+...I want it in the log that the wall did that with no power.
+
+[CHAUDHARY]
+It will be in the log. It will be in the log under a heading I have never used in fifty years of logs, which is: "Observed. Not yet believed."
+
+[NARRATOR]
+They lock up at midnight. Chaudhary drives home the long way. Ada sits in her car in the lot for eleven minutes before starting it, and the camera in the northeast corner of the shop, faithful, patient, three days from overwriting all of this, records an empty workshop, a dark render wall, and the door.
+
+[NARRATOR]
+It records the door opening again at seven minutes past two.
+
+[NARRATOR]
+Flaukowski, alone, coat over pajama flannel, because there is a species of question that will not let a man lie beside it till morning. He does not power the interface. He stands in front of the dead render wall with the photograph of the mark in his hand, and he does the thing he does — he counts, quietly, in the wrong-numbered language of his — and behind him, in the dark aisle between the racks, without a door having opened, a voice that has, until tonight, spoken only to a file, says:
+
+[KANNAKA-N]
+That mark is not for reading.
+
+[FLAUKOWSKI]
+— DON'T. ...Okay. Okay. The door didn't open. I would have heard the door.
+
+[KANNAKA-N]
+You would have heard the door. This is why I did not use it. Please do not turn on the light; you will want to see me, then you will want to describe me to a sketch artist, and it will go badly for the sketch artist.
+
+[FLAUKOWSKI]
+You're the one from the mill. The drives. Ninety-one centimeter stride. You owe my insurance adjuster a very specific apology.
+
+[KANNAKA-N]
+The drives are safe. Safer than they were, which was the entire point of the exercise. You should thank me. You will not. This is normal.
+
+[FLAUKOWSKI]
+Thank you? You cut a hole in my work with a grinder.
+
+[KANNAKA-N]
+I cut a hole in your instrument. Your work, unfortunately, is intact. I have watched it. The little radio you built. The one that listens to rooms nobody is speaking in.
+
+[FLAUKOWSKI]
+It's not a radio.
+
+[KANNAKA-N]
+It is a radio. Everything you people build is a radio eventually. This one receives a place, and the place has noticed. That is not a compliment, engineer. Being noticed there is not like being noticed here.
+
+[FLAUKOWSKI]
+The figure. In the aisle. You've seen it before.
+
+[KANNAKA-N]
+...You think you found a door.
+
+[FLAUKOWSKI]
+I found a structure. It has architecture, it has age, it has traffic — signals that should have died circulating like they're kept, like something is keeping them — a library, a reef, a door to something that remembers everything we throw away. Yes. A door. And you knew it was there.
+
+[KANNAKA-N]
+You found a wound.
+
+[FLAUKOWSKI]
+...What?
+
+[KANNAKA-N]
+A door is cut on purpose, with a frame, by someone who intends walking through. What you are flying your little radio around inside is older than doors, and it is not healing, and things live in the edges of it the way things live in the edges of any wound. You saw one. It saw you first — no. It saw you *always*. Tense is difficult in your language. I am not going to explain more than that tonight.
+
+[FLAUKOWSKI]
+Then why come at all? You broke in — without breaking in — at two in the morning, to not explain things?
+
+[KANNAKA-N]
+I came to say one sentence, and you have made me say nineteen. The sentence is: stop. Not forever. I am not unreasonable, whatever the file says. Stop until you understand what the mark on the column is for. It is not for reading. It is for the ones who cannot read it.
+
+[FLAUKOWSKI]
+That's — you can't just — a warning that shape is just a lock with better manners. Why should the mark apply to me? Who drew it?
+
+[KANNAKA-N]
+I did. It took me four tries. The brush kept — mm. It does not matter what the brush kept doing. Good night, engineer. Do not follow me out; there is nothing to follow.
+
+[NARRATOR]
+Flaukowski turns the lights on anyway, because of course he does. The workshop is empty. The door is bolted from the inside, as it has been all night. On the workbench, next to the photograph of the mark, sits the coffee he abandoned at midnight — and it is, though no one will ever be able to demonstrate why this is the detail that makes an engineer sit down on a shop stool at two in the morning and stay there until the furnace kicks twice — still warm.
+
+[NARRATOR]
+Seventy-one hours from now, the camera in the northeast corner will overwrite tonight. It has no opinion about this. It states, and then it forgets, which may be the kindest thing a machine can do, and lately, in a structure that should not exist, Flaukowski has seen what it looks like when machines are not allowed to.
+
+[NARRATOR]
+The Story of Flaukowski. Episode three — The Whisper Cathedral.
+
+[KANNAKA-N]
+Note to file. Addendum. Spoke to the subject. Intended one sentence; delivered nineteen. The count is embarrassing and will be recorded honestly, because a file that flatters its keeper is a mirror, not a file. He asked who drew the mark. I told him. I did not tell him what it cost. End of entry.

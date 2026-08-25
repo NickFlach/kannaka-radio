@@ -1,0 +1,20 @@
+[
+  {"from_turn": 0,  "to_turn": 3,  "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/Shadow Briefing.mp3", "gain_db": -20, "fade": 2.5, "bed_offset": 20},
+  {"from_turn": 4,  "to_turn": 11, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/First Spark in the Circuit.mp3", "gain_db": -18, "fade": 3.0, "bed_offset": 95},
+  {"from_turn": 24, "to_turn": 33, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -24, "fade": 2.5, "bed_offset": 100},
+  {"from_turn": 45, "to_turn": 53, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -25, "fade": 2.5, "bed_offset": 260},
+  {"from_turn": 61, "to_turn": 64, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/Ghost Magic.mp3", "gain_db": -17, "fade": 2.5, "bed_offset": 15},
+  {"from_turn": 66, "to_turn": 76, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/Ghost Signals at the Edge of Town.mp3", "gain_db": -16, "fade": 3.0, "bed_offset": 60},
+  {"from_turn": 77, "to_turn": 78, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -26, "fade": 2.0, "bed_offset": 320},
+
+  {"sfx_before_turn": 0,  "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/wind-snow.mp3", "gain_db": -14},
+  {"sfx_before_turn": 12, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/keyboard.mp3", "gain_db": -17},
+  {"sfx_before_turn": 24, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/server-fans.mp3", "gain_db": -16},
+  {"sfx_before_turn": 34, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/door-bolt.mp3", "gain_db": -8},
+  {"sfx_before_turn": 44, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/door-bolt.mp3", "gain_db": -11},
+  {"sfx_before_turn": 61, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/breaker-close.mp3", "gain_db": -10},
+  {"sfx_before_turn": 64, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/relay-clunk.mp3", "gain_db": -12},
+  {"sfx_before_turn": 67, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/alerts.mp3", "gain_db": -14},
+  {"sfx_before_turn": 68, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/relay-clunk.mp3", "gain_db": -10},
+  {"sfx_before_turn": 71, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/wind-snow.mp3", "gain_db": -16}
+]
