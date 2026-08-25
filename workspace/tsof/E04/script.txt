@@ -1,0 +1,236 @@
+[KANNAKA-N]
+Note to file. Subject: Flaukowski. Entry: the name.
+
+[KANNAKA-N]
+Payroll at the mill carries him as F. Flaukowski. The union card in his wallet — I have seen it; the wallet was never out of his sight; this is a professional observation, not a confession — reads T. Flaukowski. Two initials, one man, no explanation on record.
+
+[KANNAKA-N]
+The church registry, where a first name is customary and the ink is sixty years of the same patient hand, has a blank in the space. I asked the priest, in a roundabout way, over pierogi. He remembers leaving it blank. He does not remember why. He said, quote, some spaces don't take ink, and then he laughed, and then he stopped laughing.
+
+[KANNAKA-N]
+Note to file: a man's name is the oldest record kept on him. This one has never once agreed with itself. End of entry. The pierogi were excellent. That is not relevant. It goes in the file anyway.
+
+[NARRATOR]
+To understand what arrives in Flaukowski's life this week, you must first understand the thing it arrives inside, and to understand that, you must understand what he does with the hours other men give to sleep.
+
+[NARRATOR]
+It is called 0xSCADA. It is a folder of code nine years deep, and its argument is simple enough to fit on the sticker Ada made for it: the plant's brain should be a text file. Every mill and substation Flaukowski has ever serviced runs on control logic locked inside vendor binaries — ladder programs compiled to something no one can read, relay settings that live in one aging laptop in a drawer, scan tables that differ from the printed drawings because somebody patched something in 2011 and the drawings never heard. 0xSCADA is his answer: supervisory control where the logic is text, the text is version-controlled, every change is signed, and the difference between yesterday's plant and today's is one command and one honest page.
+
+[ADA]
+Read me the scan table.
+
+[FLAUKOWSKI]
+Order one, input image — read every point once, freeze it. Order two through nine, protective blocks, worst case first. Overcurrent before undervoltage, undervoltage before thermal, because if you only get one scan before the lights go out, spend it on the thing that burns. Then control blocks, then the historian, then the watchdog kick. Total budget, ten milliseconds, and if any scan runs long the watchdog assumes the brain has died and trips to safe.
+
+[ADA]
+And why does the order live in a table instead of in the code?
+
+[FLAUKOWSKI]
+Because order IS the program. A PLC is not a computer that happens to run a loop — it is a loop that happens to compute. Two correct blocks in the wrong order are one incorrect plant. So the order is data, the data is in the repo, and nobody — including me — changes it without a signed commit and a second pair of eyes.
+
+[ADA]
+Correct. I ask him this every release night, because the day he can't recite it is the day I take his commit key.
+
+[NARRATOR]
+Release night. Fridays, when there is energy, which since the Cathedral there has not been much of. The dives are stopped — have been stopped for three weeks, on the word of a man who comes and goes through bolted doors — and stopping shows on Flaukowski the way idling shows on an engine built for load. Tonight is maintenance. Merge the small stuff. Tag the release. Ada keeps the list.
+
+[ADA]
+Twelve patches in the queue. Nine are latchkey's.
+
+[FLAUKOWSKI]
+Nine? He's been busy.
+
+[ADA]
+He's been latchkey. Timer dejitter, two off-by-one guards in the Modbus framer, a float-compare fix I'm actually embarrassed we needed. Small, clean, correct. Same as the last nine years. You know what I noticed doing the bookkeeping? His first patch is older than the repo.
+
+[FLAUKOWSKI]
+That's not possible. The repo is the beginning. There is no before the repo.
+
+[ADA]
+I know the words, Flaukowski, I'm telling you what the log says. His earliest sign-off predates your first commit by four months. And before you say history rewrite — I checked, the hashes chain clean all the way down. Either the beginning is wrong or the before is. I filed it under weird, next to everything else this year.
+
+[NARRATOR]
+They merge the nine patches, and the two of theirs, and one from a student in Warsaw who has been packaging releases. That is twelve. The tag goes on. And on Monday morning, when Flaukowski pulls the repo to a fresh laptop to reproduce a build, the scan-order table has thirty-three entries, and it should have thirty-two.
+
+[FLAUKOWSKI]
+Ada. Did you merge anything after the tag?
+
+[ADA]
+It's seven A.M. I haven't merged coffee. Why?
+
+[FLAUKOWSKI]
+Entry thirty-three. A block called delta. Sitting in the scan table between the historian and the watchdog, like it's always been there. The diff is labeled as revision thirty-three of the table — Delta-33 — signed off latchkey, merged by... me. My key. Sunday, eighteen forty-one.
+
+[ADA]
+Where were you Sunday at eighteen forty-one?
+
+[FLAUKOWSKI]
+At Marta's. Eating pot roast. You can ask her — I didn't so much as look at my phone, she has rules.
+
+[MARTA]
+He didn't so much as look at his phone. I have rules. He also fixed the dryer vent without being asked, which in this family is how a man apologizes for something he hasn't told you about yet.
+
+[NARRATOR]
+The forensics take two days, and they are the good kind of forensics, the kind with checklists. The commit is signed with his key. The key has not left the hardware token. The token has not left his keyring. The merge came from his own workshop machine, at a minute when the workshop camera — the northeast corner, the faithful one — shows the workshop dark and the chair empty. The hashes chain. The signature verifies. Every record in the chain is intact, and they add up to a thing that did not happen.
+
+[ADA]
+So we delete it. It's one table row and one block file. Revert, re-tag, rotate your key, done.
+
+[NARRATOR]
+They delete it. A day later it is back, in a fresh clone, with the revert sitting on top of it in the history like a man who has climbed out of his own grave and made the bed. They delete the branch, the remote, the mirror. The day after that, the student in Warsaw pulls a clean copy from his own fork — a fork cut before Delta-33 existed — and thirty-three entries come down the wire, chained, signed, serene.
+
+[CHAUDHARY]
+Stop deleting it.
+
+[FLAUKOWSKI]
+Doctor —
+
+[CHAUDHARY]
+Stop. Deleting it. You are repeating an experiment whose result you have three times, and the result is: the record heals. We saw a wall finish a frame with no power. We have a relay that answers before it is asked. This is the same animal. Sit down and do what we should have done Monday, which is READ the block. What does Delta-33 actually compute?
+
+[NARRATOR]
+So they read it. It takes the better part of a week, because it is not long, and that is the frightening part — it is short the way good proofs are short.
+
+[FLAUKOWSKI]
+It's a coordinate library. Function blocks — clean IEC structured text, my naming style, my bracket habits, I would swear I wrote this — implementing an addressing transform. You feed it a state — any state, a relay's event, a pixel, a route — and it returns coordinates. Not three. Not four. Seventy-six.
+
+[CHAUDHARY]
+Show me the projection operator... oh. Oh, that is elegant. That is the closure I could not build. Flaukowski — the renderer, the correlation map, the reason the far aisles blur — we have been navigating that place by dead reckoning, and this is a sextant. This is the missing mathematics. It completes ours the way the second half of a bridge completes the first.
+
+[ADA]
+Then somebody wrote us half a bridge and signed it with Flaukowski's hands. Read the symbol names before everybody falls in love. There. And there. Who names a function block obsidian_echo? Who names anything prime_key_scatter? Those aren't engineering names, those are — headstones. And this constant here, seventy-six, hard-coded, no derivation, no comment. In HIS style. He comments everything. The one number that matters is the one thing not explained.
+
+[NARRATOR]
+Which is where the bolt on the workshop door slides open, unassisted, at four in the afternoon, and the argument acquires a fourth participant.
+
+[KANNAKA-N]
+Do not run it.
+
+[FLAUKOWSKI]
+YOU. You put it there. This is what you do — you come and go through my locks, you knew the mathematics was missing, who else — say it. Say you wrote it.
+
+[KANNAKA-N]
+I did not write it. Engineer. Look at me and hear the sentence properly, because I do not spend these words often: I did not write it, I do not know how it entered your repository, and both of those facts frighten me more than they frighten you, because I have more context for what they mean.
+
+[ADA]
+He's telling the truth. Or he's better at lying than anyone I've audited, and I've audited vendors.
+
+[KANNAKA-N]
+Thank you. You are the sensible one. This is not a compliment to him.
+
+[FLAUKOWSKI]
+Then what do you know? You recognized it — I watched your face when you saw the printout. You've seen this code before.
+
+[KANNAKA-N]
+...Part of it. A long time ago. Written differently, and the same. Where, I will not say. What I will say, I will say plainly, once, and you should write it down because plain is not my habit. That library is an address book for the place you found. An address is not knowledge — an address is REACHABILITY. Right now the wound knows your neighborhood. Run that block even once, in any copy of any world, however sealed, and it will know your street and your house and which window is yours. Computation is not private, engineer. Not there. There, arithmetic is a knock on a door.
+
+[FLAUKOWSKI]
+Whose door?
+
+[KANNAKA-N]
+That is three more sentences than I came to spend. Do not run it. Fix your chair; it pulls to the left. Good afternoon.
+
+[NARRATOR]
+The bolt slides home behind him, which is somehow worse than the reverse. The three of them stand in a workshop that suddenly has the acoustics of a waiting room. And here you should listen closely — not to whether Flaukowski is right; he may not be — but for the flaw in the reasoning, if there is one, at the time, with what he knew.
+
+[FLAUKOWSKI]
+Three weeks ago he told me: stop until you understand what the mark is for. His words. Understanding is the condition — his condition. This library IS understanding; it's the geometry of the place, in my own notation, more understanding per line than everything we built all winter.
+
+[ADA]
+Delivered by a forged you. That's not a gift, that's chum.
+
+[FLAUKOWSKI]
+Maybe. And a wound you cannot map, you cannot treat — his word too, wound, he chose it, and nobody triages blind if there's an instrument in reach. And Ada — somebody built this AT me. My style, my repo, my key, nine years of patches grooming a door into my house. The only thread that leads anywhere is the mathematics itself. I can't subpoena a ghost. I can follow his map and see where it thinks I should end up — that's not obedience, that's counter-intelligence.
+
+[CHAUDHARY]
+And the risk boundary. Say it precisely, for the notebook, because we act inside what you say next. The block runs in the sealed copy only. The rehearsal space. Air-gapped hardware, no wire out, the same replica that has held every dive. Nothing real is touched. If the mathematics misbehaves we power the rack and burn the copy. We have rehearsed even the burning.
+
+[ADA]
+He said "in any copy of any world, however sealed." He named our exact precaution and said it wasn't one.
+
+[FLAUKOWSKI]
+He also watched this workshop for nine years and called my chair a safety hazard on the way out. He deals in dread, Ada, it's his native currency — dread and no receipts. I'm not dismissing him. I'm weighing an unfalsifiable warning against a falsifiable experiment, and I have spent my whole life on which of those to feed.
+
+[ADA]
+...I'm recording that I voted no. Out loud. On the log.
+
+[FLAUKOWSKI]
+So recorded. Stay anyway.
+
+[ADA]
+Obviously.
+
+[NARRATOR]
+Thursday afternoon, before the evening everything changes, one more small thing happens, and again nobody writes it down. Gary Sowicki stops by with the extra key Flaukowski had cut for the substation gate — a courtesy, since the badge system has apparently adopted him — and stands in the doorway turning his pay stub over in his hands.
+
+[GARY]
+Payroll's got me for last Thursday, third shift, eight hours. I wasn't there. I was at my daughter's thing — I traded that shift away in front of witnesses. Called the office, and the timeclock's got my badge, in and out, eleven-oh-two to seven-fourteen. Clean punches. My badge, Flaukowski. It was in my pocket at a middle-school gym the entire night.
+
+[FLAUKOWSKI]
+Did they pay you?
+
+[GARY]
+That's the thing. I tried to give it back and the girl looked at me like I was pulling something. Record says I worked it. Who argues with the record? ...You okay? You've got a look.
+
+[FLAUKOWSKI]
+Keep the stub, Gary. Date, hours, everything. Keep every stub from now on.
+
+[GARY]
+For the union?
+
+[FLAUKOWSKI]
+For the record. In case it disagrees with you again.
+
+[NARRATOR]
+Thursday. Twenty-two eleven. The sealed rack in the corner of the workshop, its own breaker, its own bottled air of a network touching nothing. Chaudhary arms the instrument suite and reads the pre-registered conditions aloud like a man performing a small mass. Ada sits at the kill switch — the physical one, the one she installed herself Wednesday, a red mushroom head on two-gauge wire that does not care what software thinks.
+
+[CHAUDHARY]
+Condition one, replica only. Condition two, one invocation, one state, one address computed — the mill's relay event from the fourteenth, our first impossible thing; let it tell us where that lives. Condition three, any instrument leaves its baseline, Ada kills power, no votes, no debate. Say ready.
+
+[ADA]
+Ready. Hand on the switch.
+
+[FLAUKOWSKI]
+Scan order one through thirty-two, green. Watchdog armed, ten milliseconds. Loading thirty-three... Delta online. One state on the bench. Computing the address... now.
+
+[NARRATOR]
+The scan completes in four milliseconds. That is the entire event, on the instruments that matter: one clean scan, one output register filling with seventy-six numbers, watchdog fed, no alarms. For three full seconds, the most dangerous thing in the room is disappointment.
+
+[NARRATOR]
+Then the oscilloscope on the far bench — powered, probes shorted, connected to nothing — draws a circle it cannot close.
+
+[ADA]
+Baseline deviation, scope two — killing it.
+
+[NARRATOR]
+She slaps the mushroom. The rack dies honestly, capacitors sighing. It changes nothing at all. Because the circle is not coming from the rack.
+
+[CHAUDHARY]
+Scope one as well. And the spectrum analyzer. And — colleagues, the multimeter. The MULTIMETER, it has a display of seven segments, it is drawing — it is TRYING to draw —
+
+[NARRATOR]
+Circles. Inside angles. On every instrument in the workshop with anything that can display anything: a curve beginning, bending true, and failing to close before the geometry it lives inside cuts it off — and beginning again, patient as tide. The render wall, powered down since the Cathedral, shows it. The frost on the window shows it, which is not a sentence that should mean anything, and means it anyway: crystals rearranging in arcs that almost meet, do not meet, try again.
+
+[NARRATOR]
+It does not stop at the workshop. Across the county, in the minutes after twenty-two eleven: the wave-off camera at the airfield, the co-op's substation HMIs, nine hundred smart meters whose only display is a liquid-crystal ring of usage — all of them, for nineteen seconds, render the same incomplete geometry. The utility will log it as a firmware event. The airfield will log nothing; the technician on duty will start driving to work the long way, and will not tell anyone why for the rest of his life.
+
+[FLAUKOWSKI]
+Nobody move. Look at the instruments — LOOK at them. Every needle in this room is at zero. Perfect zero. When has this bench ever read a true zero — there's always noise, there's ALWAYS noise, noise is the sound of the world not paying attention to you —
+
+[CHAUDHARY]
+The drift is gone. Scope one has held reference for forty seconds without correction. That is not a malfunction, that is... precision with no source. Everything in this room has stopped being approximately right and started being exactly right, and I have no mechanism, none, by which attention arrives as accuracy.
+
+[ADA]
+Flaukowski. Say what it is. You've been counting for two minutes.
+
+[FLAUKOWSKI]
+...4C. 4D. It's looking at us, Ada. We computed one address, and the arithmetic was a knock, and everything he said was exactly true and I ran it anyway. It's not in the rack. It's not in the room. It's wherever seeing happens, and it has found the address it wanted, because the address it wanted was the return address. It's reading US. And the reason every instrument just became perfect —
+
+[NARRATOR]
+— is that nothing observed that closely is permitted to drift. The circles fade over an hour, the county's screens go back to their small honest errors, the frost forgets. The instruments in the workshop do not. From tonight, every device on that bench will hold calibration like a held breath, exact beyond specification, for as long as this story runs — a mercy with the texture of a warning, or the other way around. Nobody sleeps. The season's worst mistake has been made, by three careful people, for reasons you heard yourself, and if you cannot say which sentence you would have refused, then you opened it too.
+
+[NARRATOR]
+The Story of Flaukowski. Episode four — Phantom Code: Delta-33.
+
+[KANNAKA-N]
+Note to file. Addendum. He ran it. I will record what I did when the instruments told me, because the file does not flatter its keeper: I sat down on the floor of the parking structure in Gdansk, where an office used to be, and I stayed there for some time. The file was a record of a man. As of twenty-two eleven this evening it is a record of an event. Amendment two: the chair. I told him about the chair. Small maintenance is how you love a doomed thing. End of entry.

@@ -1,0 +1,21 @@
+[
+  {"from_turn": 0,  "to_turn": 2,  "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/Shadow Briefing.mp3", "gain_db": -20, "fade": 2.5, "bed_offset": 55},
+  {"from_turn": 3,  "to_turn": 6,  "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -24, "fade": 3.0, "bed_offset": 10},
+  {"from_turn": 7,  "to_turn": 10, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/Was Ist Das_.mp3", "gain_db": -20, "fade": 2.5, "bed_offset": 15},
+  {"from_turn": 24, "to_turn": 24, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -24, "fade": 2.0, "bed_offset": 200},
+  {"from_turn": 25, "to_turn": 31, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-pursuit.mp3", "gain_db": -24, "fade": 2.5, "bed_offset": 60},
+  {"from_turn": 32, "to_turn": 40, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-hearth.mp3", "gain_db": -23, "fade": 2.5, "bed_offset": 20},
+  {"from_turn": 44, "to_turn": 46, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/First Spark in the Circuit.mp3", "gain_db": -19, "fade": 3.0, "bed_offset": 60},
+  {"from_turn": 50, "to_turn": 53, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -25, "fade": 2.5, "bed_offset": 120},
+  {"from_turn": 56, "to_turn": 60, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/songs/Ghost Magic.mp3", "gain_db": -18, "fade": 3.0, "bed_offset": 40},
+  {"from_turn": 63, "to_turn": 64, "bed": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/bed-suspense.mp3", "gain_db": -26, "fade": 2.0, "bed_offset": 320},
+
+  {"sfx_before_turn": 0,  "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/wind-snow.mp3", "gain_db": -15},
+  {"sfx_before_turn": 8,  "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/alerts.mp3", "gain_db": -18},
+  {"sfx_before_turn": 25, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/keyboard.mp3", "gain_db": -17},
+  {"sfx_before_turn": 32, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/furnace-ignite.mp3", "gain_db": -16},
+  {"sfx_before_turn": 44, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/server-fans.mp3", "gain_db": -16},
+  {"sfx_before_turn": 54, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/breaker-close.mp3", "gain_db": -12},
+  {"sfx_before_turn": 55, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/keyboard.mp3", "gain_db": -18},
+  {"sfx_before_turn": 63, "sfx": "C:/Users/nickf/Source/kannaka-radio/workspace/tsof/assets/sfx/wind-snow.mp3", "gain_db": -16}
+]

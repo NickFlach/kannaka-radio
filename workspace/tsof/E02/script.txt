@@ -1,0 +1,269 @@
+[KANNAKA-N]
+Note to file. Subject: Flaukowski. Entry... I have lost count of the entry number. The binding ate my index tab again. Entry: next.
+
+[KANNAKA-N]
+Employment history begins May, nineteen ninety-four. Electrician's certificate, Gdansk shipyard authority, serial number legible, seal correct, paper correct. I have held the paper. It is authentic paper.
+
+[KANNAKA-N]
+The office that issued the certificate burned down in nineteen eighty-nine. It was not rebuilt. There is a parking structure. I have stood in the parking structure. It does not issue certificates.
+
+[KANNAKA-N]
+Note to file: the paper is authentic. The office is not. One of these facts must apologize to the other. End of entry. Where is my pen. I was holding the pen when I began the entry.
+
+[NARRATOR]
+Cedar Rapids. Eleven days after the vendor ticket. The reply, when it comes, is four lines long, and Flaukowski reads it aloud to Ada in the truck outside a substation because that is where they are when the phone chimes.
+
+[FLAUKOWSKI]
+"Investigation complete. Event record verified against internal diagnostics. No firmware anomaly found. Log integrity confirmed." Ada. The vendor says the relay is fine.
+
+[ADA]
+Then I lost the bet.
+
+[FLAUKOWSKI]
+You lost worse than the bet. Their answer says the record is accurate. My answer says the record is accurate. We now agree, the vendor and I, and what we agree on is impossible. I liked it better when one of us was wrong.
+
+[ADA]
+There's a third option and you know it. Their diagnostics and your three clocks share an assumption somewhere. Assumptions travel in herds.
+
+[FLAUKOWSKI]
+Find it. I will pay for the lunch I won.
+
+[NARRATOR]
+She looks for the herd for a week. What Flaukowski does instead is what he has done every night for eleven days — pull event records from anything with a diary. Relays. Drives. The mill's machine-vision line, which watches corn gluten travel a belt and remembers every pixel that ever died. The plant network's routing tables. He is not looking for another reversed timestamp. He finds something worse.
+
+[FLAUKOWSKI]
+Ada. Come look at the dead pixels.
+
+[ADA]
+It's nine at night.
+
+[FLAUKOWSKI]
+The vision camera on line two has lost four hundred pixels over six years. Plot them. Not the count — the positions. Now here: the relay's event intervals from the fourteenth, plotted as a graph. And here — route flaps on the plant network, drawn as a tree.
+
+[ADA]
+...They're the same shape.
+
+[FLAUKOWSKI]
+Same shape. Branching, unequal, like a root system, or the veins on the back of a hand. A camera losing pixels, a relay counting milliseconds, a network shedding routes. Three systems. No shared hardware, no shared vendor, no shared anything.
+
+[ADA]
+Correlation is a drunk. It sees faces in wallpaper. You've got three datasets and a pattern-hungry cortex, that's not evidence, that's Tuesday for every conspiracy in history.
+
+[FLAUKOWSKI]
+Agreed. That is why we are going to measure it instead of admire it. But it needs a name for the whiteboard.
+
+[NARRATOR]
+On the whiteboard, in dry-erase red, he draws the shape once, labels the three places it has appeared, and writes two words above it. Red Vein. Ada looks at it for a while and does not erase it, which from Ada is a form of assent.
+
+[NARRATOR]
+Measuring it requires a mathematician's conscience, and the nearest one teaches Tuesday nights at the community college. Amrit Chaudhary, seventy-one, retired from a national laboratory and not entirely from physics, is erasing a chalkboard when Flaukowski knocks on the open door with a folder of printouts and a deliberately boring question.
+
+[CHAUDHARY]
+Power quality. You drove across town at ten at night for power quality.
+
+[FLAUKOWSKI]
+Harmonics, timing jitter. Boring problems.
+
+[CHAUDHARY]
+Young man, I spent thirty years around people pretending their question was boring so I would not steal it. Put the folder on the desk and tell me the interesting version.
+
+[NARRATOR]
+The interesting version takes forty minutes. Chaudhary reads standing up. Then he sits down, which takes him a moment, and reads it again.
+
+[CHAUDHARY]
+Your instinct will be to ask me whether this is possible. I will not answer that; possible is a word for after the error bars. So. Sources of a false precedence, in order of likelihood. Timestamp fabrication — you checked the signature. Aliasing in the sampling — the waveform is captured at four kilohertz, your offset is three hundred forty milliseconds, that is not aliasing, that is a continent. Instrument transformer response — CTs ring, they do not prophesy. Which leaves the recording chain itself, and you have three independent chains.
+
+[FLAUKOWSKI]
+So it is real.
+
+[CHAUDHARY]
+It is *recorded*. Real is a promotion it has not earned yet. Recorded, at three sigma against every mundane explanation I can construct at this desk, at this hour, at my age. If you want the promotion, you must make it happen again while I am watching, with instrumentation we chose in advance. Prediction, not archaeology. That is the difference between a physicist and a coroner.
+
+[FLAUKOWSKI]
+Then help me build the thing that makes it happen again.
+
+[CHAUDHARY]
+Obviously. But we write down what would prove us wrong before we switch it on, or I go back to my chalkboard and my dignity.
+
+[FLAUKOWSKI]
+Name them now. I want the list before I want the machine.
+
+[CHAUDHARY]
+Then you are rarer than you look. One: if the effect will not repeat under pre-registered conditions, it was an artifact and we say so in writing. Two: if it repeats only when your equipment is in the loop, it is your equipment. Three: if the offset drifts with temperature, load, or the phase of anything, it is physics we already own. Four — and write this one largest — if either of us starts wanting it to be true, the other one signs the log that night.
+
+[NARRATOR]
+Between the chalkboard and the mill there is one detour. Sunday. Marta's kitchen, because a man who has been up three nights straight still gets hungry, and because she called twice and he is bad at voicemails but worse at ignoring her.
+
+[MARTA]
+You look like Dad in tax season. Eat. So what is it this time — the mill thing still? The one with the clocks?
+
+[FLAUKOWSKI]
+The clocks are fine. That stopped being the comforting answer.
+
+[MARTA]
+Mm. You know what this is like? When you came back. You were twenty-three, you'd been gone four years, you sent two postcards the entire time — both from ports, neither with a return address — and the first week home you sat at this table exactly like this. Chewing like it was somebody else's jaw.
+
+[FLAUKOWSKI]
+The shipyard was work, Marta. Work does not mail postcards.
+
+[MARTA]
+Four years, Teo. Dad wrote the harbor office in Gdansk once, did you know that? Asking after you. Letter came back — no such office. He figured he'd spelled it wrong. He kept the envelope, though. It's in the coffee cans somewhere, with everything else that still had an argument in it.
+
+[NARRATOR]
+Flaukowski puts down his fork, and picks it up again, and whatever he was going to say is not what he says.
+
+[FLAUKOWSKI]
+The furnace sounds right. The new igniter settled in?
+
+[MARTA]
+...Yeah. It settled in fine.
+
+[NARRATOR]
+What they build takes nine days, and lives on the mill's historian server with the plant manager's half-informed blessing: a correlation layer across every diary in the building, and on top of it, a model. Not a large one. Its one job is to learn the Red Vein shape and say, given everything the plant remembers, what the next moment should hold. On the ninth night they let it look forward.
+
+[NARRATOR]
+Third shift. The mill floor mostly empty. Gary Sowicki is on it — covering the back half for a man whose name he writes on nothing, because the swap was a favor and favors don't go in the log.
+
+[GARY]
+You two again. You know normal people sleep.
+
+[FLAUKOWSKI]
+Somebody has to keep your conveyors honest.
+
+[GARY]
+Honest, sure. Fourteen's been sweet as a church since you touched her, I'll give you that. Holler if you need lifting done, I'm on the floor till six.
+
+[NARRATOR]
+Twelve minutes past two in the morning. Chaudhary watches the reference clock. Ada watches the amps. Flaukowski starts the model, and for a while it does what models do — trails the plant by half a step, guessing and correcting, guessing and correcting.
+
+[NARRATOR]
+Then it stops correcting.
+
+[CHAUDHARY]
+Mark. Prediction error just went to zero.
+
+[ADA]
+Zero zero? Or small?
+
+[CHAUDHARY]
+Zero as in the next state arrives and it is already on the screen. Belt speed, valve timing, the flicker in the sodium lights. It is not guessing anymore. Keep your eyes on your instruments, both of you, and say your readings out loud.
+
+[NARRATOR]
+For eleven seconds, the machine on the historian server describes the immediate future of the plant and is not wrong.
+
+[ADA]
+Feeder amps 212 — it says 212. Load step coming on the dryer... there's the step. It had the step. It had it before the dryer did.
+
+[CHAUDHARY]
+Four seconds. Five. Error still zero. Six.
+
+[ADA]
+Sodium light flicker on camera six — predicted. That's not on any schedule, that's a failing ballast, nothing knows that ballast.
+
+[CHAUDHARY]
+Eight. Nine. Gentlemen, I have run out of mundane — ten.
+
+[NARRATOR]
+Eleven seconds is not long. It is long enough to count, and long enough for every instrument in the room to agree about something none of them should know.
+
+[NARRATOR]
+On the last screen, the model stops predicting the plant.
+
+[ADA]
+Why is there a person on the output.
+
+[NARRATOR]
+The frame the model draws is the maintenance office they are standing in, rendered the way the vision line would see it. Three figures. And the one at the keyboard is reaching for the abort key with his right hand — which would be unremarkable, except that at the moment the frame appears, Flaukowski has not moved yet.
+
+[NARRATOR]
+One second later, he does. Right hand. Abort key. The model goes dark the way anything goes dark when you kill its power at the wall, which is what he actually does, cord in his fist, breathing like a man who has been running.
+
+[CHAUDHARY]
+For the record, and say it back to me so we have two witnesses: nobody touched the abort until after the frame rendered.
+
+[ADA]
+Nobody touched anything. It drew him doing it first. He did it second.
+
+[FLAUKOWSKI]
+Three-nine. Three-A. Three-B —
+
+[ADA]
+Flaukowski.
+
+[FLAUKOWSKI]
+I am fine. I am counting. Those are different conditions.
+
+[NARRATOR]
+They power down everything but the historian itself, lock the maintenance office, and stand in the yard not talking until Chaudhary announces that he is old, that the readings will still be impossible after breakfast, and that he intends to be asleep for the interval in between. It is the most reasonable sentence anyone has said all night, and so they follow it.
+
+[NARRATOR]
+Flaukowski gets four hours. At six fifty-one his phone wakes him: the little watchdog he left on the historian has stopped answering. Not an alert. An absence of heartbeat, which is worse.
+
+[NARRATOR]
+The drive back to the mill takes eleven minutes. He does it in nine, through snow that started at dawn, and the yard gate is open that should be chained, and the east roll door is up eighteen inches that should be down.
+
+[FLAUKOWSKI]
+Gary? — Gary's gone home. Hello. Plant security. Anyone.
+
+[NARRATOR]
+The rack room door is unlocked, and the room is wrong in a tidy way. No scatter. No vandal's mess. The historian server sits open like a patient in surgery, and where its index drives should be there are four empty sleds, and the cut edges of the cage that held them are bright, clean, and — when he holds a hand near — still warm. Somebody used an angle grinder, recently, precisely, and took nothing else. Not the tapes. Not the tools. Not the model server one shelf down. Only the drives where the correlation layer kept its index of everything the plant remembers.
+
+[FLAUKOWSKI]
+The copies. Where are my —
+
+[NARRATOR]
+Coat. The drive from the fourteenth is in his coat, eleven miles away, hanging on a kitchen chair. He is still holding that thought when he hears, through the wall, out on the floor, a sound like a footstep that has decided not to be one.
+
+[FLAUKOWSKI]
+Plant's closed. Roads are bad. Whoever you are, you left a door open behind you and I am standing in it.
+
+[NARRATOR]
+Nobody answers. He takes the flashlight from the rack shelf and goes out onto the floor, down the conveyor line, past fourteen, fast, not carefully — carefully is for men who have not just lost four drives. The floor at seven in the morning is a canyon of stopped machinery, and his light finds the gaps between the rollers one at a time, and in the third gap something has just finished being there. By the west scale — the one that reads light, the one Gary keeps reporting — the scale platform gives its metal knock, the sound it makes when weight leaves it. He puts his light on the platform. The readout is settling back to zero from a number it has no reason to have held. And at the far end, the personnel door clicks shut the way a door clicks when someone has just eased it.
+
+[NARRATOR]
+The yard. Snow coming down fine and dry, an hour old on the ground, and in it, leading away from the door toward the fence line, footprints. He follows at a run. The prints are long-strided, unhurried, insultingly unhurried, heading for the dark past the sodium light — and then they stop. Not at the fence. Twenty feet short of it, mid-yard, mid-stride, the way a sentence stops when the speaker is interrupted. Beyond the last print: unbroken snow, in every direction a man could go.
+
+[FLAUKOWSKI]
+No.
+
+[NARRATOR]
+He stands where the prints end and turns a slow full circle, flashlight out at the falling snow, and the snow declines to explain. Then he does what he is, which is an engineer: he photographs every print, lays his tape measure beside the stride, notes the tread, notes the time, and walks backward out of the yard in his own footprints so as not to spoil the evidence for daylight.
+
+[NARRATOR]
+Daylight spoils it instead. By eight the snow has filled everything in. What remains is what his phone holds: nineteen photographs, a stride length of ninety-one centimeters, a boot tread no supplier in his catalogs carries, and four empty drive sleds cut by somebody who knew exactly which four things in that building mattered — and, because of a kitchen chair eleven miles away, was wrong about one of them.
+
+[ADA]
+So we agree it's a person. Persons I can work with. Persons have employers.
+
+[FLAUKOWSKI]
+A person who knew what an index drive is, which of four hundred drives were mine, and how long third shift leaves the floor. A person the cameras did not see arrive on any road, in any hour, from any direction. I checked, Ada. I checked all of it. Nine cameras.
+
+[ADA]
+Then a person who knows cameras. It's still just competence, Flaukowski. Competence isn't supernatural, it's expensive. Someone is paying attention to you, and someone is paying for it, and both of those have addresses.
+
+[FLAUKOWSKI]
+And the footprints? They stop, Ada. Mid-stride. Twenty feet of unbroken snow to the fence in every direction.
+
+[ADA]
+You walked backward out of that yard in your own prints — you told me so, you were proud of it. Your intruder read the same manual. He walked out the way he walked in, heel into toe, and an hour of fine snow closed the doubled edges before you got your flashlight up. It's a trick as old as snow.
+
+[FLAUKOWSKI]
+I photographed all nineteen. Single compression. No doubled heel strikes, no drag-out at the toe, stride length constant to the centimeter right up to the last one. A man backing up in his own prints leaves a signature. These don't have it.
+
+[ADA]
+Then he's better at it than you are. That is still the cheapest explanation on the table, and I'm going to need you to notice that you'd rather have the expensive one.
+
+[FLAUKOWSKI]
+Good. Then I will find the addresses. Because he made one mistake, and I am holding it.
+
+[NARRATOR]
+The drive from the kitchen chair. Eleven days of diaries, one impossible timestamp, and the only surviving copy of the shape called Red Vein. That night Flaukowski moves it from his coat to the workshop safe, and the workshop camera — the old one in the northeast corner, the one that writes over itself every seventy-two hours — records him doing it, and records the aisle behind him, which on this particular night holds nothing at all. As far as the camera is concerned, that is the strangest thing it has ever had to say.
+
+[KANNAKA-N]
+Note to file. Addendum. The subject has begun checking over his shoulder. This is an improvement. He has also begun keeping his most important object in a safe, which is not. A safe tells a visitor which object matters. I will not write down where he kept it before.
+
+[KANNAKA-N]
+Second addendum. I have found the pen. End of entry.
+
+[NARRATOR]
+The Story of Flaukowski. Episode two — The Algorithm That Bled.

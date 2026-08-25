@@ -1,0 +1,260 @@
+[NARRATOR]
+Cedar Rapids, Iowa. February. A county road runs straight between snow fields until it reaches a corn wet-mill on the river, steam standing off the stacks in the cold. Six forty in the morning. In the plant's east electrical room, under one failed fluorescent tube, two contract engineers are looking at a motor control cabinet, and the cabinet has just tripped for the fortieth time in ten months.
+
+[ADA]
+There it goes. Right on schedule.
+
+[FLAUKOWSKI]
+It is not on schedule. It is on Tuesdays.
+
+[ADA]
+That's what I said. C-14 trips most Tuesdays, first shift, cold mornings. The plant knows. The plant does not care. We are here for the historian upgrade, not for their conveyor.
+
+[FLAUKOWSKI]
+Somebody reset it forty times without asking it one question. That bothers me more than the trip.
+
+[NARRATOR]
+A man comes across the floor in insulated coveralls, hard hat under his arm, lunch pail in his hand. Third shift, going home late. The badge on his chest says Sowicki.
+
+[GARY]
+You looking at fourteen? Don't bother. She's done that since before my time. Moisture gets in the peckerhead, cold morning, she lets go. You get used to it.
+
+[FLAUKOWSKI]
+Why?
+
+[GARY]
+Why what?
+
+[FLAUKOWSKI]
+Why does everyone believe it is moisture? Has anyone opened the connection box and found water?
+
+[GARY]
+Not that I ever heard. It's just what gets said. It's how she works.
+
+[FLAUKOWSKI]
+That is not a reason. That is a habit with seniority.
+
+[GARY]
+Ha. Well. She's all yours, buddy. I'm eleven hours into an eight-hour shift — Kowalczyk's kid had a thing at church, I took his back half. Hey, you're the one on the work order, right? F-something Flaukowski — is that an initial or a smudge?
+
+[FLAUKOWSKI]
+Flaukowski is plenty.
+
+[GARY]
+Suit yourself. Tell the day guys the west scale is reading light again.
+
+[NARRATOR]
+He waves without turning around and is gone through the roll door into the snow. Flaukowski already has the thermal camera out.
+
+[ADA]
+We are not paid for this.
+
+[FLAUKOWSKI]
+The camera was already in the truck.
+
+[NARRATOR]
+Forty minutes. The connection box is dry and has always been dry. What the camera finds is a current transformer reading one phase of a motor fed from a variable frequency drive, and the drive's switching noise beating against the overload's sample rate. On cold mornings the motor draws long and slow, the beat lines up, and the protection sees a phantom.
+
+[FLAUKOWSKI]
+There. It is not protecting the motor. It is protecting itself from arithmetic.
+
+[ADA]
+So write it up. Recommend they move the CT upstream of the filter, retune the overload class, vendor reviews it in April, maybe.
+
+[FLAUKOWSKI]
+Or I change two parameters now and the plant stops losing an hour of throughput every Tuesday.
+
+[ADA]
+It's not our system.
+
+[FLAUKOWSKI]
+It is nobody's system, Ada. That is the problem. Everyone here operates it and no one owns it. Watch the amps for me.
+
+[NARRATOR]
+He makes the change. He racks the breaker back in and stands clear.
+
+[FLAUKOWSKI]
+Closing C-14.
+
+[NARRATOR]
+The contactor pulls in. The conveyor rolls. The amps climb, settle, and hold flat.
+
+[FLAUKOWSKI]
+Closed. Loaded. Holding.
+
+[ADA]
+Ten months of Tuesdays. You know what the plant will say. They'll say the weather turned.
+
+[FLAUKOWSKI]
+The weather gets credit for most of my work. The weather and April vendors.
+
+[NARRATOR]
+That should have been the end of it. A nuisance trip, a stubborn man, an ordinary fix. It would have been, except that documentation is documentation, and Flaukowski does his.
+
+[ADA]
+You're pulling event records? Now?
+
+[FLAUKOWSKI]
+The fix goes in the report. The report gets the record. Ninety seconds.
+
+[NARRATOR]
+The feeder protecting that section of the plant is a relay the size of a telephone book, and it keeps a diary. Every event, time-stamped to the millisecond. Flaukowski scrolls the file the way other men read box scores. Then he stops scrolling.
+
+[FLAUKOWSKI]
+Ada.
+
+[ADA]
+We are leaving.
+
+[FLAUKOWSKI]
+Look at the fourteenth. The ground fault on the east feeder — the one that took out the pellet line for an afternoon. Look at the sequence.
+
+[ADA]
+Fault current at 06:12:31 point 190. Relay operation at… huh.
+
+[FLAUKOWSKI]
+Say it.
+
+[ADA]
+Operation logged at 06:12:30 point 850. That's the trip stamped three hundred forty milliseconds before the current. So the clocks are off. You know these logs, two devices, two clocks, somebody's GPS antenna is under a pigeon. Sequence-of-events files lie about order all the time. It's the first thing they lie about.
+
+[FLAUKOWSKI]
+Both stamps are from the same relay. One device. One clock. It cannot skew against itself.
+
+[ADA]
+Then it's a firmware bug. Buffer writes out of order under load, events reassembled wrong, vendor errata nobody read. I will bet you lunch there's a known issue.
+
+[FLAUKOWSKI]
+Take the bet. Then explain the waveform capture. The relay records the actual electrical waveform when it operates. The capture shows the trip signature — there, that shape — beginning, settled, confident. And the fault current arrives a third of a second later, into a breaker that has already decided.
+
+[ADA]
+Devices don't decide before the reason exists. So the record is wrong. Records are allowed to be wrong. It's the one thing they're reliably good at.
+
+[FLAUKOWSKI]
+Or the record is fine and the order is wrong.
+
+[ADA]
+Do you hear yourself? Those are the two options — a fifty-dollar firmware bug, or causality. When the log disagrees with cause and effect, you side with cause and effect, every time, and you go home. It's a vendor ticket. I'm filing it as a vendor ticket.
+
+[NARRATOR]
+She files it as a vendor ticket. It is, on the evidence in the room, the correct thing to do. Flaukowski copies the event file onto a drive and puts the drive in his coat, which is also, on the evidence in the room, the correct thing to do. In the truck, for eleven miles, neither of them mentions it.
+
+[ADA]
+You put the file in your coat.
+
+[FLAUKOWSKI]
+The report needs it.
+
+[ADA]
+The report needs it on the network drive, where I already put it. The copy in your coat is for two in the morning. I've watched you do this — the substation ferroresonance thing, the scale house, that ground grid you dug up in the rain because the numbers were, quote, too clean.
+
+[FLAUKOWSKI]
+The numbers were too clean. The grid was gone. There was one strap left and a lot of optimism.
+
+[ADA]
+And you were right, and it cost you three weekends, and the client paid for one. All I'm saying is — when the vendor answers the ticket and it's a firmware advisory with a number on it, let it be a firmware advisory. Don't be disappointed.
+
+[FLAUKOWSKI]
+Why would I be disappointed?
+
+[ADA]
+That's what worries me. You didn't say I won't be.
+
+[NARRATOR]
+Sunday. A brick house on the northwest side, radio on low in the kitchen, snow ticking against the window. His sister still lives in the house they grew up in and runs the business their father left — heating, cooling, twenty-six years of other people's basements. Dinner is pot roast. The furnace, downstairs, is misfiring.
+
+[MARTA]
+Hear that? Tick-tick-tick, whoomp. Igniter's going. Third one this winter I've heard do that.
+
+[FLAUKOWSKI]
+You want me to look at it?
+
+[MARTA]
+I want you to eat. I'll swap it Tuesday, it's a forty-dollar part. Dad would've kept the old one in a coffee can, and the can, and the shelf the can sat on.
+
+[FLAUKOWSKI]
+He never threw away a part that still had an argument in it.
+
+[MARTA]
+He never threw away anything that agreed with him, is what you mean. You'd have gotten along better if you weren't the same person.
+
+[NARRATOR]
+Flaukowski's fork has stopped moving. His thumb is going, though — tapping the table edge, small, even counts.
+
+[MARTA]
+You're counting.
+
+[FLAUKOWSKI]
+I am not counting.
+
+[MARTA]
+Three-E, three-F, forty. You count in that language of yours when something's stuck in your teeth. Since you were sixteen. What is it — the job? The one with the ceiling grain dust, what's-it, the mill?
+
+[FLAUKOWSKI]
+A machine wrote something down in the wrong order.
+
+[MARTA]
+That's it? Machines write things down wrong constantly. Half my thermostats think it's 1980.
+
+[FLAUKOWSKI]
+Your thermostats are wrong about the time. This one is wrong about before and after. It is a different kind of wrong. Nobody builds a machine that is wrong that way.
+
+[MARTA]
+So it's broken.
+
+[FLAUKOWSKI]
+Maybe.
+
+[MARTA]
+You don't think it's broken.
+
+[FLAUKOWSKI]
+I think I have checked the ways it could be broken, and I am running out of them, and the ones that are left are worse than broken.
+
+[MARTA]
+Okay. Well. Whatever it is — eat first. You're no good to before-and-after on an empty stomach.
+
+[NARRATOR]
+He eats. He fixes the igniter on his way out anyway, in his church clothes, in eleven minutes, and leaves the old part on the workbench in a coffee can. She watches the truck to the end of the block, the way she does.
+
+[NARRATOR]
+Monday night. Tuesday morning, strictly. A rented bay in an industrial strip off Sixteenth Avenue: workbenches, a salvaged server rack, two oscilloscopes, coffee cans of fasteners, one wall shingled in hand-pinned schematics. The wood stove is drawing well. Flaukowski has the event file up on three screens and has been checking clocks for four hours.
+
+[FLAUKOWSKI]
+Relay clock, disciplined by satellite. Checks. Plant historian, disciplined by the same signal, different antenna, different pigeon. Checks. My own capture from the maintenance port, time source number three. Checks. Three clocks. All of them agree with each other and none of them agree with sense.
+
+[NARRATOR]
+He speaks to the empty shop the way some men keep a logbook.
+
+[FLAUKOWSKI]
+Firmware errata: read all of it. Every advisory back nine years, including the ones the vendor spells badly. Nothing about timestamps. Nothing about ordering. Buffer reorder: the diary writes each event once, in place, sequence numbers intact. Order is preserved. No reassembly. Ada — you owe me lunch.
+
+[NARRATOR]
+There is one possibility left that would let him sleep, and he saves it for last the way a man saves the best excuse.
+
+[FLAUKOWSKI]
+Tampering. Somebody edited the file. Fine. The file carries a checksum. Recompute it. Matches. The relay signs its own diary, and the signature is good. Nobody touched this record. The record is intact, the clocks are honest, the order is wrong. Pick two, any two, and the third breaks something I was not planning to think about this year.
+
+[NARRATOR]
+He runs the waveform again at one-tenth speed. On the center screen the trip signature rises — that settled, confident shape — and beneath it the timeline crawls, and the fault it answers has not happened yet.
+
+[FLAUKOWSKI]
+One more time. Slower.
+
+[NARRATOR]
+Watch the room now. This is the part the room remembers. There is a camera in the northeast corner of the shop, an old one, left by the previous tenant, that records over itself every seventy-two hours. It has no opinion. It states.
+
+[NARRATOR]
+The recording shows a workbench in a pool of lamplight, and a man at the bench with his back to the room, running the same three seconds of electricity again and again. It shows the wood stove, the wall of pinned drawings, the dark aisle between the racks. At twelve fifty-one, it shows the dark aisle differently. There is a shape in it. The shape has the proportions of a tall man in a long coat, and it is standing entirely still, at the edge of the lamplight, facing the bench. It does not approach. It does not leave. The lamplight ends four feet short of it and stays there.
+
+[FLAUKOWSKI]
+Again. Slower.
+
+[NARRATOR]
+For fifty-five minutes the recording shows two figures: one who moves, bent over the bench, and one who does not. At one forty-six the man at the bench straightens, rubs his eyes, and reaches for the lamp. The aisle, by then, holds nothing but the dark it is supposed to hold. The camera records the light going out. It records the door. It records the truck leaving, and the snow starting again, small and dry.
+
+[NARRATOR]
+Flaukowski never turned around. As far as he knows, the night contained a waveform, three honest clocks, and a question with its order reversed. The recording will hold the rest of it for seventy-two hours, and then, having heard no objection, will quietly write it over.
+
+[NARRATOR]
+The Story of Flaukowski. Episode one — Shadows in the Cornstone.
