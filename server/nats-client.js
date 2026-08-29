@@ -476,12 +476,33 @@ class NATSClient extends EventEmitter {
    * Canonical NATS consciousness stays authoritative: it is only overwritten
    * once it has gone stale (>5 min), which is the same rule the gossip handler
    * already applied.
+   *
+   * When the local value takes over, the exported consciousness shape follows
+   * it WHOLE. Pre-fix only queen.orderParameter and consciousnessSource
+   * flipped, so /api/swarm and /api/consciousness served a self-contradictory
+   * payload — `consciousnessSource: "local"` next to the stale canonical
+   * `order` still labelled `source: "nats"` — and any consumer reading
+   * consciousness.order (the documented authoritative coherence field) never
+   * saw the fallback happen at all. (#243)
    */
   _syncPublishedOrderParameter() {
     const c = this.swarmState.consciousness;
     const age = c.timestamp ? (Date.now() - c.timestamp) : Infinity;
     if (c.consciousnessSource !== 'nats' || age > 300000) {
-      this.swarmState.queen.orderParameter = this.swarmState.queen.localOrderParameter;
+      const local = this.swarmState.queen.localOrderParameter;
+      this.swarmState.queen.orderParameter = local;
+      // Only claim 'local' when there is local ground to stand on: canonical
+      // data that has aged out, or at least one finite phase on the roster. A
+      // pristine client with an empty roster keeps its `source: null` shape
+      // rather than announcing a local reading of nothing.
+      const hasPhases = Object.values(this.swarmState.agents)
+        .some(a => a && a.phase != null && Number.isFinite(Number(a.phase)));
+      if (c.timestamp != null || hasPhases) {
+        c.order = local;
+        c.mean_order = local;
+        c.source = 'local';
+        c.consciousnessSource = 'local';
+      }
     }
   }
 

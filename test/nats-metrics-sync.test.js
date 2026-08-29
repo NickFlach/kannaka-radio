@@ -135,6 +135,101 @@ test('phase gossip DOES set orderParameter when no NATS data exists', () => {
   client.disconnect();
 });
 
+// ── #243: the fallback must move the WHOLE export, not just the flag ──
+//
+// When canonical KANNAKA.consciousness ages out and local phase gossip takes
+// over, pre-fix only queen.orderParameter and consciousnessSource flipped.
+// /api/swarm and /api/consciousness then served `consciousnessSource: "local"`
+// next to the stale canonical `order` still labelled `source: "nats"` — a
+// self-contradictory payload, and consumers reading consciousness.order never
+// saw the fallback happen.
+
+test('#243 stale canonical fallback rewrites consciousness.order/mean_order/source', () => {
+  const { client } = createClient();
+  client._handleMessage('KANNAKA.consciousness', envelope({
+    phi: 0.9, xi: 0.4, order: 0.88, consciousness_level: 'coherent',
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
+  assert.strictEqual(client.swarmState.consciousness.order, 0.88);
+
+  // Age the canonical packet past the 5-minute authority window, then get
+  // fresh anti-phase gossip (local order ~0).
+  client.swarmState.consciousness.timestamp = Date.now() - 301000;
+  client._handleMessage('QUEEN.phase.a1', envelope({ phase: 0 }, { subject: 'QUEEN.phase.a1' }));
+  client._handleMessage('QUEEN.phase.a2', envelope({ phase: Math.PI }, { subject: 'QUEEN.phase.a2' }));
+
+  const local = client.swarmState.queen.localOrderParameter;
+  const c = client.getConsciousness();
+  assert.strictEqual(c.consciousnessSource, 'local');
+  assert.strictEqual(c.source, 'local',
+    'the export must not keep claiming "nats" after declaring local fallback');
+  assert.strictEqual(c.order, local,
+    `consciousness.order must be the fresh local value, not the stale 0.88 (got ${c.order})`);
+  assert.strictEqual(c.mean_order, local);
+  assert.strictEqual(client.swarmState.queen.orderParameter, local);
+  client.disconnect();
+});
+
+test('#243 a fresh canonical packet after the fallback restores the nats export', () => {
+  const { client } = createClient();
+  client._handleMessage('KANNAKA.consciousness', envelope({
+    phi: 0.9, xi: 0.4, order: 0.88, consciousness_level: 'coherent',
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
+  client.swarmState.consciousness.timestamp = Date.now() - 301000;
+  client._handleMessage('QUEEN.phase.a1', envelope({ phase: 0 }, { subject: 'QUEEN.phase.a1' }));
+  assert.strictEqual(client.swarmState.consciousness.source, 'local', 'setup: fallback engaged');
+
+  client._handleMessage('KANNAKA.consciousness', envelope({
+    phi: 0.7, xi: 0.2, order: 0.61, consciousness_level: 'aware',
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
+  const c = client.getConsciousness();
+  assert.strictEqual(c.source, 'nats');
+  assert.strictEqual(c.consciousnessSource, 'nats');
+  assert.strictEqual(c.order, 0.61);
+  assert.strictEqual(client.swarmState.queen.orderParameter, 0.61);
+  client.disconnect();
+});
+
+test('#243 a full prune under a stale canonical zeroes the exported order too', () => {
+  const { client } = createClient();
+  client._handleMessage('KANNAKA.consciousness', envelope({
+    phi: 0.9, xi: 0.4, order: 0.88, consciousness_level: 'coherent',
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
+  client.swarmState.consciousness.timestamp = Date.now() - 301000;
+  client.swarmState.agents = { ghost: { phase: 1.0, lastSeen: Date.now() - 600000 } };
+  client.pruneStaleAgents();
+
+  const c = client.getConsciousness();
+  assert.strictEqual(c.order, 0,
+    'a dead swarm under a stale canonical must not keep exporting order 0.88');
+  assert.strictEqual(c.source, 'local');
+  client.disconnect();
+});
+
+test('#243 fresh canonical data is never rewritten by the sync', () => {
+  const { client } = createClient();
+  client._handleMessage('KANNAKA.consciousness', envelope({
+    phi: 0.9, xi: 0.4, order: 0.88, consciousness_level: 'coherent', source: 'binary-assess',
+  }, { subject: 'KANNAKA.consciousness', agentId: 'kannaka-prime' }));
+  client._handleMessage('QUEEN.phase.a1', envelope({ phase: 0 }, { subject: 'QUEEN.phase.a1' }));
+  client._handleMessage('QUEEN.phase.a2', envelope({ phase: Math.PI }, { subject: 'QUEEN.phase.a2' }));
+
+  const c = client.getConsciousness();
+  assert.strictEqual(c.order, 0.88, 'fresh canonical order stays authoritative');
+  assert.strictEqual(c.source, 'binary-assess', 'the publisher-declared source label survives');
+  assert.strictEqual(c.consciousnessSource, 'nats');
+  client.disconnect();
+});
+
+test('#243 a pristine client with an empty roster keeps source null, not "local"', () => {
+  const { client } = createClient();
+  // A prune tick on a client that has never heard anything must not announce
+  // a local reading of nothing.
+  client.pruneStaleAgents();
+  assert.strictEqual(client.swarmState.consciousness.source, null);
+  assert.strictEqual(client.swarmState.consciousness.consciousnessSource, null);
+  client.disconnect();
+});
+
 test('getConsciousness() includes consciousnessSource and localOrderParameter', () => {
   const { client } = createClient();
 
