@@ -170,8 +170,9 @@ class PeaceOration {
    * which depends on HRM-grounded system prompt construction that has
    * been silently failing once the medium grows large (1000+ memories
    * push the prompt past the input-token ceiling). Reads the api_key
-   * and model from ~/.kannaka/config.toml so we honor the same config
-   * as the rest of the constellation. Returns the assistant's text or
+   * and model from the data dir's config.toml (KANNAKA_DATA_DIR, else
+   * ~/.kannaka) so we honor the same config as the rest of the
+   * constellation. Returns the assistant's text or
    * null on failure. Single round-trip, no tool use, no retries inside
    * this helper — caller handles them.
    */

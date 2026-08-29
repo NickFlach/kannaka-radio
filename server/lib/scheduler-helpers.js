@@ -508,8 +508,9 @@ function composeViaKannakaAsk(kannakabin, prompt, opts = {}) {
  * Compose via Anthropic's /v1/messages directly — bypasses `kannaka ask`,
  * which has historically silent-failed once the HRM grows large (system-prompt
  * construction busts the input-token ceiling without surfacing). Reads the
- * api_key + model from env or ~/.kannaka/config.toml so it honors the same
- * config as the rest of the constellation. Single round-trip; caller retries.
+ * api_key + model from env or the data dir's config.toml — KANNAKA_DATA_DIR
+ * when set, else ~/.kannaka — so it honors the same shared-config contract as
+ * the rest of the constellation. Single round-trip; caller retries.
  */
 function composeViaAnthropicDirect(prompt, opts = {}) {
   const maxTokens = opts.maxTokens || 4096;
@@ -517,7 +518,12 @@ function composeViaAnthropicDirect(prompt, opts = {}) {
   let apiKey = process.env.ANTHROPIC_API_KEY || process.env.KANNAKA_LLM_API_KEY || "";
   let cfgModel = opts.model || "";
   try {
-    const cfgPath = path.join(os.homedir(), ".kannaka", "config.toml");
+    // KANNAKA_DATA_DIR wins, matching every other data-dir read in this repo.
+    // Pre-fix this looked only at ~/.kannaka, so a relocated install had the
+    // noon/midnight oration silently compose nothing: the scheduler ran, found
+    // no api_key, and returned null without ever attempting the request. (#284)
+    const dataDir = process.env.KANNAKA_DATA_DIR || path.join(os.homedir(), ".kannaka");
+    const cfgPath = path.join(dataDir, "config.toml");
     if (fs.existsSync(cfgPath)) {
       const cfg = fs.readFileSync(cfgPath, "utf8");
       if (!apiKey) { const m = cfg.match(/api_key\s*=\s*"([^"]+)"/); if (m) apiKey = m[1]; }
