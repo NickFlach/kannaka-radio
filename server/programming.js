@@ -35,9 +35,14 @@ const SCHEDULE = [
   // 2026-08-08: THE OTHER SIDE (SEVEN PORTALS sequel — deep luminous
   // bass, lofi haze) leads the dream hours; its far-side palette is
   // built for them.
+  // 2026-08-31: WHAT PERSISTED (cinematic electronic — the future archive
+  // writing to today's leaders) leads the dream hours: felt piano, wide
+  // strings and spoken-word minutes are built for the quiet, attentive
+  // small-hours listener.
   {
     start: 0, end: 6,
     albums: [
+      'WHAT PERSISTED',
       'WHAT I KEEP',
       'THE OTHER SIDE',
       'The Quiet I Came Back To',
@@ -124,9 +129,13 @@ const SCHEDULE = [
   // BECOMING anchor.
   // 2026-08-09: WHAT I KEEP (lofi soul on memory) leads Afternoon Flow —
   // the philosophical drift block is its natural home.
+  // 2026-08-31: WHAT PERSISTED also leads Afternoon Flow — the message
+  // album's dignified, argument-driven drift belongs in the philosophical
+  // block where listeners sit with the words.
   {
     start: 14, end: 18,
     albums: [
+      'WHAT PERSISTED',
       'WHAT I KEEP',
       'Take the Signal Back',
       'THE THIRD BEING',
