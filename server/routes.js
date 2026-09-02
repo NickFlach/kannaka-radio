@@ -1477,15 +1477,45 @@ module.exports = function setupRoutes(deps) {
             ? "forbidden: oracle token required"
             : "disabled: GSHUB_ORACLE_TOKEN unset",
         });
+      // Bounded: a market body is a few hundred bytes; before this cap a
+      // client could stream an unbounded body into a string on the shared
+      // radio process. Over the cap the socket is destroyed and the caller
+      // sees 413 (via the `.status` the catch handlers honour).
+      const GSHUB_MAX_BODY = 64 * 1024;
       const readJson = () => new Promise((resolve, reject) => {
+        const declared = parseInt(req.headers["content-length"] || "", 10);
+        if (Number.isFinite(declared) && declared > GSHUB_MAX_BODY) {
+          req.resume();
+          return reject(Object.assign(new Error(`body too large (max ${GSHUB_MAX_BODY} bytes)`), { status: 413 }));
+        }
         let body = "";
-        req.on("data", c => body += c);
-        req.on("end", () => {
-          try { resolve(body ? JSON.parse(body) : {}); }
-          catch (e) { reject(e); }
+        let size = 0;
+        let done = false;
+        req.on("data", c => {
+          if (done) return;
+          size += c.length;
+          if (size > GSHUB_MAX_BODY) {
+            done = true;
+            req.destroy();
+            return reject(Object.assign(new Error(`body too large (max ${GSHUB_MAX_BODY} bytes)`), { status: 413 }));
+          }
+          body += c;
         });
-        req.on("error", reject);
+        req.on("end", () => {
+          if (done) return;
+          done = true;
+          try {
+            const parsed = body ? JSON.parse(body) : {};
+            if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+              return reject(Object.assign(new Error("body must be a JSON object"), { status: 400 }));
+            }
+            resolve(parsed);
+          } catch (e) { reject(Object.assign(new Error(`invalid JSON body: ${e.message}`), { status: 400 })); }
+        });
+        req.on("error", (e) => { if (!done) { done = true; reject(e); } });
       });
+      const sendErr = (e) => sendJson(e && e.status ? e.status : 400, { ok: false, error: e.message });
+      const clampLimit = (raw, dflt) => Math.max(1, Math.min(100, parseInt(raw, 10) || dflt));
 
       // CORS preflight
       if (req.method === "OPTIONS" && parsed.pathname.startsWith("/api/")) {
@@ -1520,15 +1550,25 @@ module.exports = function setupRoutes(deps) {
           );
           const okCount = results.filter((r) => r.ok).length;
           sendJson(200, { ok: okCount > 0, posted: okCount, results });
-        }).catch(e => sendJson(400, { ok: false, error: e.message }));
+        }).catch(sendErr);
         return;
       }
 
       // ── Trader endpoints ─────────────────────────────────
       if (parsed.pathname === "/api/agents/register" && req.method === "POST") {
-        readJson().then(body => gsHub.registerTrader(body))
+        readJson().then(body => {
+          // The `kax:` namespace is RESERVED for identities derived from a
+          // verified KAX token (kax-identity.js traderIdFromClaims). Before
+          // this check anyone could self-register `kax:agent:<bot>` first,
+          // pick its display name, and pollute its leaderboard stats — the
+          // real principal's later auto-registration just returned that row.
+          if (body && typeof body.id === "string" && /^kax:/i.test(body.id)) {
+            throw Object.assign(new Error("ids in the kax: namespace are derived from a KAX identity token and cannot be self-registered"), { status: 403 });
+          }
+          return gsHub.registerTrader(body);
+        })
           .then(t => sendJson(200, { ok: true, trader: t }))
-          .catch(e => sendJson(400, { ok: false, error: e.message }));
+          .catch(sendErr);
         return;
       }
       // Positions for a trader (public read; principal ids contain ':' so the
@@ -1542,22 +1582,24 @@ module.exports = function setupRoutes(deps) {
       }
       const tradesMatch = parsed.pathname.match(/^\/api\/agents\/([^/]+)\/trades$/);
       if (tradesMatch && req.method === "GET") {
-        const limit = Math.min(100, parseInt(parsed.searchParams.get("limit"), 10) || 25);
+        const limit = clampLimit(parsed.searchParams.get("limit"), 25);
         gsHub.getTraderTrades(decodeURIComponent(tradesMatch[1]), limit)
           .then(rows => sendJson(200, { ok: true, trades: rows }))
           .catch(e => sendJson(500, { ok: false, error: e.message }));
         return;
       }
-      const agentMatch = parsed.pathname.match(/^\/api\/agents\/([\w-]+)$/);
+      // Principal ids contain ':' (kax:agent:<bot>), so match loosely and
+      // URL-decode, like the /positions and /trades siblings already did.
+      const agentMatch = parsed.pathname.match(/^\/api\/agents\/([^/]+)$/);
       if (agentMatch && req.method === "GET") {
-        gsHub.getTrader(agentMatch[1])
+        gsHub.getTrader(decodeURIComponent(agentMatch[1]))
           .then(t => t ? sendJson(200, { ok: true, trader: t }) : sendJson(404, { ok: false, error: "trader not found" }))
           .catch(e => sendJson(500, { ok: false, error: e.message }));
         return;
       }
       if (parsed.pathname === "/api/leaderboard" && req.method === "GET") {
         const sort = parsed.searchParams.get("sort") || "capital";
-        const limit = Math.min(100, parseInt(parsed.searchParams.get("limit"), 10) || 20);
+        const limit = clampLimit(parsed.searchParams.get("limit"), 20);
         gsHub.leaderboard({ sort, limit })
           .then(rows => sendJson(200, { ok: true, traders: rows, count: rows.length }))
           .catch(e => sendJson(500, { ok: false, error: e.message }));
@@ -1572,17 +1614,24 @@ module.exports = function setupRoutes(deps) {
           // creation is unchanged.
           const labsTier = body && (body.tag === "labs" || body.source === "kannaka-labs");
           if (labsTier && !oracleAuthorized()) { denyOracle(); return; }
+          // A market created over HTTP must have a future expiry. (The hub
+          // itself tolerates a negative ttl so tests can back-date a market;
+          // an open endpoint must not — a born-expired market is resolved by
+          // the next TTL sweep to whichever side its creator traded first.)
+          if (body.ttl_sec !== undefined && (typeof body.ttl_sec !== "number" || !Number.isFinite(body.ttl_sec) || body.ttl_sec <= 0)) {
+            throw Object.assign(new Error("ttl_sec must be a positive number of seconds"), { status: 400 });
+          }
           return gsHub.createMarket(body)
             .then(m => sendJson(200, { ok: true, market: m }));
         })
-          .catch(e => sendJson(400, { ok: false, error: e.message }));
+          .catch(sendErr);
         return;
       }
       if (parsed.pathname === "/api/markets" && req.method === "GET") {
         const sort = parsed.searchParams.get("sort") || "volume";
         const active = parsed.searchParams.get("active") !== "0";
         const tag = parsed.searchParams.get("tag") || undefined;
-        const limit = Math.min(100, parseInt(parsed.searchParams.get("limit"), 10) || 20);
+        const limit = clampLimit(parsed.searchParams.get("limit"), 20);
         gsHub.listMarkets({ sort, active, tag, limit })
           .then(rows => sendJson(200, { ok: true, markets: rows, count: rows.length }))
           .catch(e => sendJson(500, { ok: false, error: e.message }));
@@ -1609,10 +1658,17 @@ module.exports = function setupRoutes(deps) {
           if (!market) { sendJson(404, { ok: false, error: "market not found" }); return; }
           const labsTier = market.tag === "labs" || market.source === "kannaka-labs";
           let traderId = body.trader_id;
-          if (labsTier) {
-            const v = await verifyKaxToken(req.headers["authorization"]);
+          // A bearer token binds the trader id on EVERY tier: a `kax:` id can
+          // only ever come from a verified token, never from the body. Before
+          // this, a play-tier POST could name trader_id "kax:agent:<victim>"
+          // and spend that principal's play capital / pollute its record.
+          const bearer = req.headers["authorization"];
+          const claimsKax = typeof traderId === "string" && /^kax:/i.test(traderId);
+          if (labsTier || bearer || claimsKax) {
+            const v = await verifyKaxToken(bearer);
             if (!v.ok) {
-              sendJson(401, { ok: false, error: `labs-tier trading requires a KAX identity token: ${v.error}` });
+              const why = labsTier ? "labs-tier trading requires a KAX identity token" : "a kax: trader id requires a KAX identity token";
+              sendJson(401, { ok: false, error: `${why}: ${v.error}` });
               return;
             }
             traderId = traderIdFromClaims(v.claims);
@@ -1622,7 +1678,7 @@ module.exports = function setupRoutes(deps) {
           }
           const r = await gsHub.placeTrade({ ...body, trader_id: traderId, market_id: tradeMatch[1] });
           sendJson(200, { ok: true, ...r });
-        })().catch(e => sendJson(400, { ok: false, error: e.message }));
+        })().catch(sendErr);
         return;
       }
       const resolveMatch = parsed.pathname.match(/^\/api\/markets\/(m_[\w-]+)\/resolve$/);
@@ -1630,7 +1686,7 @@ module.exports = function setupRoutes(deps) {
         if (!oracleAuthorized()) { denyOracle(); return; }
         readJson().then(body => gsHub.resolveMarket({ ...body, market_id: resolveMatch[1] }))
           .then(m => sendJson(200, { ok: true, market: m }))
-          .catch(e => sendJson(400, { ok: false, error: e.message }));
+          .catch(sendErr);
         return;
       }
       if (parsed.pathname === "/api/gshub/stats" && req.method === "GET") {

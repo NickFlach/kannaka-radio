@@ -19,6 +19,8 @@ process.env.KAX_LEDGER_MINT_TOKEN = 'mint-tok';
 process.env.KAX_LEDGER_TRADE_TOKEN = 'trade-tok';
 process.env.KAX_SERVICE_TOKEN = 'read-tok';
 
+// Skip locally without sqlite3, FAIL under CI (#277): see test/lib/sqlite3-guard.js.
+require('./lib/sqlite3-guard')('ghostsignals-idempotency-budget');
 const { GhostSignalsHub } = require('../server/ghostsignals-hub');
 
 function tmpDbPath() {

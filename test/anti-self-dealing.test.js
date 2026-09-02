@@ -7,6 +7,8 @@ const assert = require('assert');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+// Skip locally without sqlite3, FAIL under CI (#277): see test/lib/sqlite3-guard.js.
+require('./lib/sqlite3-guard')('anti-self-dealing');
 const { GhostSignalsHub } = require('../server/ghostsignals-hub');
 
 function tmpDbPath() {

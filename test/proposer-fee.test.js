@@ -18,6 +18,8 @@ process.env.KAX_SERVICE_TOKEN = 'read-tok';
 process.env.PROPOSER_FEE_BPS = '200';        // 2%
 process.env.PROPOSER_FEE_MIN_TRADERS = '3';
 
+// Skip locally without sqlite3, FAIL under CI (#277): see test/lib/sqlite3-guard.js.
+require('./lib/sqlite3-guard')('proposer-fee');
 const { GhostSignalsHub } = require('../server/ghostsignals-hub');
 
 function tmpDbPath() {
