@@ -41,18 +41,30 @@ function loadSqlite3() {
   throw new Error('sqlite3 module not found — install in radio or stem-server');
 }
 
-// ── LMSR cost function helpers ────────────────────────────────────────
-function lmsrCost(q, b) {
-  const max = Math.max(...q) / b;
-  let s = 0;
-  for (const qi of q) s += Math.exp(qi / b - max);
-  return b * (max + Math.log(s));
-}
-function lmsrPrices(q, b) {
-  const max = Math.max(...q) / b;
-  const exps = q.map(qi => Math.exp(qi / b - max));
-  const sum = exps.reduce((a, b) => a + b, 0);
-  return exps.map(e => e / sum);
+// ── LMSR cost function ────────────────────────────────────────────────
+// Pure, input-guarded math lives in ./lmsr (property-tested without a DB).
+// A negative / zero / NaN liquidity or a <2-outcome market is refused there:
+// each of those turned the cost function into a mint (see lmsr.test.js).
+const { lmsrCost, lmsrPrices, lmsrTradeCost, assertLiquidity, MAX_OUTCOMES } = require('./lmsr');
+
+// ── Input bounds (the hub is the money boundary; validate here, not only in
+// routes.js, so an internal caller cannot bypass them either) ───────────────
+const TRADER_ID_RE = /^[^\s\x00-\x1f\x7f]{1,128}$/;   // printable, no whitespace
+const TRADER_KIND_RE = /^[a-z][a-z0-9_-]{0,31}$/i;
+const MAX_QUESTION = 2000;
+const MAX_OUTCOME_LABEL = 120;
+const MAX_DISPLAY_NAME = 120;
+const MAX_LIQUIDITY = 1e6;
+const MAX_TTL_SEC = 10 * 366 * 86400;             // |ttl| bound; negative = born expired (tests)
+const MAX_METADATA_BYTES = 8192;
+const IDEMPOTENCY_KEY_RE = /^[^\s\x00-\x1f\x7f]{1,64}$/;
+/** True for the labs tier: oracle-settled, deterministic ids, KAX ledger when armed. */
+function isLabsTier({ tag, source }) { return tag === 'labs' || source === 'kannaka-labs'; }
+/** Validate an optional client idempotency key (see placeTrade). */
+function idempotencyKeyOf(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'string' || !IDEMPOTENCY_KEY_RE.test(v)) throw new Error('idempotency_key must be a 1..64 char string without whitespace');
+  return v;
 }
 
 // ── Brier score for reputation update ─────────────────────────────────
@@ -273,6 +285,12 @@ class GhostSignalsHub {
         // from "debit landed, shares did NOT commit" (needs refund).
         addCol(`ALTER TABLE trades ADD COLUMN tx_id TEXT`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_trades_txid ON trades(tx_id)`);
+        // Client idempotency key (hardening): a retried POST carries the same
+        // (trader_id, idempotency_key) and is applied at most once. The partial
+        // UNIQUE index is the real guard; the pre-check in placeTrade is the
+        // fast path that turns a replay into the original result.
+        addCol(`ALTER TABLE trades ADD COLUMN idempotency_key TEXT`);
+        this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_idem ON trades(trader_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
         this.db.run(`CREATE TABLE IF NOT EXISTS pending_trades (
           tx_id TEXT PRIMARY KEY,
           market_id TEXT NOT NULL,
@@ -287,6 +305,7 @@ class GhostSignalsHub {
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         )`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_pending_trades_state ON pending_trades(state)`);
+        addCol(`ALTER TABLE pending_trades ADD COLUMN idempotency_key TEXT`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_trades_trader ON trades(trader_id)`, (err) => {
           if (err) return reject(err);
           // Seed system trader if not present
@@ -323,8 +342,21 @@ class GhostSignalsHub {
   }
 
   // ── Trader API ───────────────────────────────────────────────────
-  registerTrader({ id, display_name, kind = 'ai' }) {
+  registerTrader({ id, display_name, kind = 'ai' } = {}) {
     return new Promise((resolve, reject) => {
+      // Bounds first: an id with whitespace/control chars, an unbounded
+      // display name, or a free-text kind all landed in the DB (and on the
+      // public leaderboard) verbatim before this.
+      if (id !== undefined && id !== null && (typeof id !== 'string' || !TRADER_ID_RE.test(id))) {
+        return reject(new Error('id must be a 1..128 char string without whitespace or control characters'));
+      }
+      if (display_name !== undefined && display_name !== null &&
+          (typeof display_name !== 'string' || !display_name.trim() || display_name.length > MAX_DISPLAY_NAME)) {
+        return reject(new Error(`display_name must be a non-empty string of at most ${MAX_DISPLAY_NAME} characters`));
+      }
+      if (typeof kind !== 'string' || !TRADER_KIND_RE.test(kind)) {
+        return reject(new Error('kind must be a short alphanumeric label (e.g. ai, human, agent, user, service)'));
+      }
       const traderId = id || crypto.randomBytes(6).toString('hex');
       this.db.get('SELECT * FROM traders WHERE id = ?', [traderId], (err, row) => {
         if (err) return reject(err);
@@ -404,7 +436,7 @@ class GhostSignalsHub {
            FROM trades t JOIN markets m ON m.id = t.market_id
           WHERE t.trader_id = ?
           ORDER BY t.recorded_at DESC LIMIT ?`,
-        [trader_id, Math.min(100, limit)],
+        [trader_id, Math.max(1, Math.min(100, Number(limit) || 25))],
         (err, rows) => {
           if (err) return reject(err);
           resolve(rows.map((r) => {
@@ -434,7 +466,7 @@ class GhostSignalsHub {
          WHERE id != 'system'
          ORDER BY ${orderCol} DESC
          LIMIT ?`,
-        [limit],
+        [Math.max(1, Math.min(100, Number(limit) || 20))],
         (err, rows) => {
           if (err) return reject(err);
           resolve(rows.map(r => ({ ...r, accuracy: r.trades_total > 0 ? r.trades_won / r.trades_total : 0 })));
@@ -444,7 +476,33 @@ class GhostSignalsHub {
   }
 
   // ── Market API ───────────────────────────────────────────────────
-  async createMarket({ question, outcomes = ['Yes', 'No'], ttl_sec = 3600, liquidity, tag = 'custom', source = 'system', source_app, metadata }) {
+  async createMarket({ question, outcomes = ['Yes', 'No'], ttl_sec = 3600, liquidity, tag = 'custom', source = 'system', source_app, metadata } = {}) {
+    // ── Input bounds. Everything here reaches the cost function or the
+    // public listing verbatim, so it is validated at the money boundary.
+    if (typeof question !== 'string' || !question.trim() || question.length > MAX_QUESTION) {
+      throw new Error(`question must be a non-empty string of at most ${MAX_QUESTION} characters`);
+    }
+    if (!Array.isArray(outcomes) || outcomes.length < 2 || outcomes.length > MAX_OUTCOMES ||
+        !outcomes.every((o) => typeof o === 'string' && o.trim() && o.length <= MAX_OUTCOME_LABEL) ||
+        new Set(outcomes).size !== outcomes.length) {
+      throw new Error(`outcomes must be 2..${MAX_OUTCOMES} distinct non-empty strings (max ${MAX_OUTCOME_LABEL} chars each)`);
+    }
+    if (typeof ttl_sec !== 'number' || !Number.isFinite(ttl_sec) || Math.abs(ttl_sec) > MAX_TTL_SEC) {
+      throw new Error(`ttl_sec must be a finite number of seconds (|ttl| <= ${MAX_TTL_SEC})`);
+    }
+    // 0 / undefined / null mean "the default"; anything else must be a sane b.
+    const lq = (liquidity === undefined || liquidity === null || liquidity === 0) ? this.defaultLiquidity : liquidity;
+    assertLiquidity(lq);
+    if (lq > MAX_LIQUIDITY) throw new Error(`liquidity must be <= ${MAX_LIQUIDITY}`);
+    for (const [k, v] of Object.entries({ tag, source, source_app })) {
+      if (v !== undefined && v !== null && (typeof v !== 'string' || !v.trim() || v.length > 64)) throw new Error(`${k} must be a short string`);
+    }
+    if (metadata !== undefined && metadata !== null) {
+      if (typeof metadata !== 'object' || Array.isArray(metadata)) throw new Error('metadata must be an object');
+      if (JSON.stringify(metadata).length > MAX_METADATA_BYTES) throw new Error(`metadata must serialise to <= ${MAX_METADATA_BYTES} bytes`);
+    }
+    const labsTier = isLabsTier({ tag, source });
+
     // Idempotent creation for prediction-paired markets. A labs market paired to
     // a registry prediction gets a DETERMINISTIC id derived from its predictionId,
     // so a retry — the observatory timing out its 8s call while the escrow HERE
@@ -452,8 +510,13 @@ class GhostSignalsHub {
     // the same id, finds the existing market, and returns it instead of inserting
     // a second row and escrowing a SECOND subsidy from the house. (The escrow
     // txid is escrow:<id>, so it too becomes deterministic — double protection.)
-    // Play/ambient markets keep a random id, unchanged.
-    const predictionId = metadata && metadata.predictionId ? String(metadata.predictionId) : null;
+    //
+    // LABS-TIER ONLY. Play/ambient markets always get a random id: the play
+    // create endpoint is open, so honouring predictionId there let anyone
+    // pre-create m_<sha256(prediction:<id>)> as a TTL-resolved play market and
+    // have the registry's later labs create for that prediction "idempotently"
+    // return the squatted market (no oracle, no escrow, price-resolved).
+    const predictionId = labsTier && metadata && metadata.predictionId ? String(metadata.predictionId) : null;
     const id = predictionId
       ? 'm_' + crypto.createHash('sha256').update('prediction:' + predictionId).digest('hex').slice(0, 12)
       : 'm_' + crypto.randomBytes(6).toString('hex');
@@ -461,15 +524,18 @@ class GhostSignalsHub {
       const existing = await this.getMarket(id);
       // Same prediction, market already exists → idempotent no-op. A prior attempt
       // that died mid-escrow is still pending_escrow; the reconciler completes it,
-      // so returning it here never double-funds.
-      if (existing) return existing;
+      // so returning it here never double-funds. Defensive: the existing row must
+      // itself be labs-tier (a legacy squat would otherwise be returned here).
+      if (existing) {
+        if (!isLabsTier(existing)) throw new Error(`market id ${id} is held by a non-labs market; refusing to alias it`);
+        return existing;
+      }
     }
-    const lq = liquidity || this.defaultLiquidity;
     const q = new Array(outcomes.length).fill(0);
     const expiresAt = new Date(Date.now() + ttl_sec * 1000).toISOString();
     // Ledger-backed ONLY when created labs-tier AND the KAX mint+trade surfaces
     // are both armed. Dormant otherwise → a plain SQLite market, unchanged.
-    const labsLedger = (tag === 'labs' || source === 'kannaka-labs') && kax.mintEnabled() && kax.tradeEnabled();
+    const labsLedger = labsTier && kax.mintEnabled() && kax.tradeEnabled();
     const subsidyMinor = labsLedger ? kax.subsidyMinor(lq, outcomes.length) : null;
     const state = labsLedger ? 'pending_escrow' : 'open';
 
@@ -580,7 +646,7 @@ class GhostSignalsHub {
         recent: 'created_at DESC',
         expiring: 'expires_at ASC',
       })[sort] || 'volume DESC';
-      params.push(limit);
+      params.push(Math.max(1, Math.min(100, Number(limit) || 20)));
       this.db.all(
         `SELECT * FROM markets ${where} ORDER BY ${orderCol} LIMIT ?`,
         params,
@@ -592,9 +658,16 @@ class GhostSignalsHub {
     });
   }
 
-  async placeTrade({ market_id, trader_id, outcome, shares }) {
-    if (!Number.isFinite(shares) || shares <= 0) throw new Error('shares must be positive');
+  /**
+   * Buy `shares` of `outcome` on a market. Both tiers accept an optional
+   * `idempotency_key`: a retried POST carrying the same (trader_id, key) is
+   * applied ONCE and answered with the original trade (`replay: true`).
+   */
+  async placeTrade({ market_id, trader_id, outcome, shares, idempotency_key } = {}) {
+    if (typeof shares !== 'number' || !Number.isFinite(shares) || shares <= 0) throw new Error('shares must be positive');
     if (!Number.isInteger(outcome) || outcome < 0) throw new Error('outcome must be a non-negative integer');
+    if (typeof trader_id !== 'string' || !TRADER_ID_RE.test(trader_id)) throw new Error('trader_id must be a valid trader id');
+    const idemKey = idempotencyKeyOf(idempotency_key);
     const market = await this.getMarket(market_id);
     if (!market) throw new Error('market not found');
     if (market.resolved) throw new Error('market already resolved');
@@ -611,74 +684,115 @@ class GhostSignalsHub {
       throw new Error('self-dealing blocked: the proposer of a prediction may not trade on its market');
     }
 
+    // A market that was created ledger-backed holds REAL credits in a KAX pool.
+    // If the KAX env is later unset, _isLabsLedger() reads false and this call
+    // would have fallen through to the SQLite play economy — debiting play
+    // capital for shares in a real pool, then paying play capital at
+    // resolution while the real pool sits escrowed. Config drift must fail
+    // loudly, never silently change tiers.
+    if (market.ledger_backed && !kax.tradeEnabled()) {
+      throw new Error('ledger-backed market: KAX trade surface not configured — refusing to trade it as play capital');
+    }
+
     // ADR-0041 PR 2: labs-tier ledger markets move real credits on KAX instead
     // of SQLite capital. Dormant unless the market was created ledger-backed.
     if (this._isLabsLedger(market)) {
-      return this._placeTradeLedger({ market, trader_id, outcome, shares });
+      return this._placeTradeLedger({ market, trader_id, outcome, shares, idemKey });
     }
+    return this._placeTradePlay({ market_id, trader_id, outcome, shares, idemKey });
+  }
 
-    // The q we read is the state our cost is priced against. The write below
-    // is a compare-and-swap on exactly this value (`WHERE q = qBeforeJson`),
-    // so a concurrent trade that moved q first makes THIS write a no-op and we
-    // roll back — otherwise two trades computed from the same stale snapshot
-    // would each overwrite q absolutely (last-writer-wins), silently dropping
-    // one trade's shares from the market while both traders keep their credited
-    // positions, so total payouts could exceed collected cost (a mint).
-    const qBefore = market.q.slice();
-    const qBeforeJson = JSON.stringify(qBefore);
-    const qAfter = qBefore.slice();
-    const costBefore = lmsrCost(qBefore, market.liquidity);
-    qAfter[outcome] += shares;
-    const costAfter = lmsrCost(qAfter, market.liquidity);
-    const cost = costAfter - costBefore;
+  /**
+   * The original result of an already-applied trade with this client key, or
+   * null. Answers a retried POST with what the first one did.
+   */
+  async _replayTrade(trader_id, idemKey) {
+    if (!idemKey) return null;
+    const row = await this._get(
+      `SELECT market_id, cost, cost_minor FROM trades WHERE trader_id = ? AND idempotency_key = ?`,
+      [trader_id, idemKey],
+    );
+    if (!row) return null;
+    const market = await this.getMarket(row.market_id);
+    const out = { cost: row.cost, prices: market ? market.prices : null, market, replay: true };
+    if (row.cost_minor) out.cost_minor = row.cost_minor;
+    return out;
+  }
 
-    if (cost > trader.capital) {
-      throw new Error(`insufficient capital: cost ${cost.toFixed(2)}, available ${trader.capital.toFixed(2)}`);
-    }
-
+  /**
+   * Play-tier trade: SQLite capital. Serialized PER MARKET, and the market +
+   * trader are re-read INSIDE the mutex, so N concurrent trades on one market
+   * are priced one after another against the committed q. Before this, all N
+   * were priced off the same snapshot and the q compare-and-swap made N−1 of
+   * them fail with "market state changed concurrently; retry" — safe, but a
+   * burst of honest traders (the radio fires several predictors per track)
+   * lost every trade but one. The CAS stays as a should-never-fire assert.
+   */
+  _placeTradePlay({ market_id, trader_id, outcome, shares, idemKey }) {
     const self = this;
-    // Sequential await-per-statement (mirrors _commitLedgerTradeShares). Every
-    // statement carries a completion callback via _run, so a failing BEGIN/
-    // COMMIT/ROLLBACK rejects this promise instead of emitting an *unhandled*
-    // 'error' event on a callback-less db.run — which used to CRASH the whole
-    // radio process (ghostsignals-hub shares the radio's node process). Ordered
-    // awaits also mean a "transaction within a transaction" can't arise from a
-    // half-issued unit, and _serializeTx only advances once COMMIT/ROLLBACK has
-    // actually completed.
-    return this._serializeTx(async () => {
-      await self._run('BEGIN');
-      try {
-        // Compare-and-swap the market q. `AND resolved = 0` also blocks a trade
-        // that races a resolve. changes===0 => someone moved q (or resolved)
-        // between our read and now; roll back and let the caller retry.
-        const qRes = await self._run(
-          `UPDATE markets SET q = ?, volume = volume + ? WHERE id = ? AND q = ? AND resolved = 0`,
-          [JSON.stringify(qAfter), shares, market_id, qBeforeJson],
-        );
-        if (qRes.changes === 0) throw new Error('market state changed concurrently; retry');
-        // Guarded debit: the `AND capital >= ?` makes overdraft impossible even
-        // if two concurrent trades both passed the JS precheck above — the
-        // second sees the already-reduced balance and fails here rather than
-        // driving capital negative (a double-spend).
-        const dRes = await self._run(
-          `UPDATE traders SET capital = capital - ?, trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ? AND capital >= ?`,
-          [cost, trader_id, cost],
-        );
-        if (dRes.changes === 0) throw new Error('insufficient capital');
-        await self._run(
-          `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost) VALUES (?, ?, ?, ?, ?)`,
-          [market_id, trader_id, outcome, shares, cost],
-        );
-        await self._run(
-          `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
-           ON CONFLICT(market_id, trader_id, outcome_idx) DO UPDATE SET shares = shares + ?`,
-          [market_id, trader_id, outcome, shares, shares],
-        );
-        await self._run('COMMIT');
-      } catch (e) {
-        await self._run('ROLLBACK').catch(() => {});
-        throw e;
+    return this._serializeMarket(market_id, async () => {
+      const replay = await self._replayTrade(trader_id, idemKey);
+      if (replay) return replay;
+      const market = await self.getMarket(market_id);
+      if (!market || market.resolved) throw new Error('market already resolved');
+      if (market.state !== 'open') throw new Error(`market not open for trading (state=${market.state})`);
+      const trader = await self.getTrader(trader_id);
+      if (!trader) throw new Error('trader not registered');
+
+      const qBefore = market.q.slice();
+      const qBeforeJson = JSON.stringify(qBefore);
+      // lmsrTradeCost refuses a cost that rounds to zero (dust shares for free).
+      const { cost, qAfter } = lmsrTradeCost(qBefore, market.liquidity, outcome, shares);
+      if (cost > trader.capital) {
+        throw new Error(`insufficient capital: cost ${cost.toFixed(2)}, available ${trader.capital.toFixed(2)}`);
       }
+
+      // Sequential await-per-statement (mirrors _commitLedgerTradeShares). Every
+      // statement carries a completion callback via _run, so a failing BEGIN/
+      // COMMIT/ROLLBACK rejects this promise instead of emitting an *unhandled*
+      // 'error' event on a callback-less db.run — which used to CRASH the whole
+      // radio process (ghostsignals-hub shares the radio's node process). Ordered
+      // awaits also mean a "transaction within a transaction" can't arise from a
+      // half-issued unit, and _serializeTx only advances once COMMIT/ROLLBACK has
+      // actually completed.
+      await self._serializeTx(async () => {
+        await self._run('BEGIN');
+        try {
+          // Compare-and-swap the market q. `AND resolved = 0` also blocks a trade
+          // that races a resolve. Under the per-market mutex changes===0 means a
+          // resolve landed between our read and now; roll back.
+          const qRes = await self._run(
+            `UPDATE markets SET q = ?, volume = volume + ? WHERE id = ? AND q = ? AND resolved = 0`,
+            [JSON.stringify(qAfter), shares, market_id, qBeforeJson],
+          );
+          if (qRes.changes === 0) throw new Error('market state changed concurrently; retry');
+          // Guarded debit: the `AND capital >= ?` makes overdraft impossible even
+          // if two concurrent trades (on different markets) both passed the JS
+          // precheck above — the second sees the already-reduced balance and
+          // fails here rather than driving capital negative (a double-spend).
+          const dRes = await self._run(
+            `UPDATE traders SET capital = capital - ?, trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ? AND capital >= ?`,
+            [cost, trader_id, cost],
+          );
+          if (dRes.changes === 0) throw new Error('insufficient capital');
+          await self._run(
+            `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost, idempotency_key) VALUES (?, ?, ?, ?, ?, ?)`,
+            [market_id, trader_id, outcome, shares, cost, idemKey],
+          );
+          await self._run(
+            `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
+             ON CONFLICT(market_id, trader_id, outcome_idx) DO UPDATE SET shares = shares + ?`,
+            [market_id, trader_id, outcome, shares, shares],
+          );
+          await self._run('COMMIT');
+        } catch (e) {
+          await self._run('ROLLBACK').catch(() => {});
+          if (/UNIQUE constraint failed: trades\.trader_id, trades\.idempotency_key/.test(e.message)) {
+            throw new Error('duplicate idempotency_key: this trade was already applied');
+          }
+          throw e;
+        }
+      });
       // Post-commit reads/broadcast happen outside the transaction.
       const updated = await self.getMarket(market_id);
       self.broadcast({ type: 'gs_trade', data: { market_id, trader_id, outcome, shares, cost, prices: updated.prices } });
@@ -696,8 +810,19 @@ class GhostSignalsHub {
     const market = await this.getMarket(market_id);
     if (!market) throw new Error('market not found');
     if (market.resolved) throw new Error('already resolved');
-    if (winning_outcome < 0 || winning_outcome >= market.outcomes.length) {
-      throw new Error('winning_outcome out of range');
+    // Integer check is load-bearing: "0" (a string from a JSON body), 0.5, null
+    // and undefined all passed the old `< 0 || >= length` test, flipped
+    // resolved=1 with resolved_outcome = that value, and paid NOBODY (the
+    // payout loop compares outcome_idx === winning_outcome). A market could be
+    // settled with every winner disinherited by a typo.
+    if (!Number.isInteger(winning_outcome) || winning_outcome < 0 || winning_outcome >= market.outcomes.length) {
+      throw new Error('winning_outcome out of range: must be an integer index into outcomes');
+    }
+    if (typeof method !== 'string' || !method.trim() || method.length > 32) throw new Error('method must be a short string');
+    // Same config-drift guard as placeTrade: a ledger-backed market's payout
+    // lives on KAX. Never settle it out of SQLite play capital.
+    if (market.ledger_backed && !kax.tradeEnabled()) {
+      throw new Error('ledger-backed market: KAX trade surface not configured — refusing to settle it with play capital');
     }
     // ADR-0041 PR 2: ledger-backed markets settle on KAX (batched payout).
     if (this._isLabsLedger(market)) {
@@ -780,9 +905,9 @@ class GhostSignalsHub {
   }
   _journalPending(r) {
     return this._serializeTx(() => this._run(
-      `INSERT INTO pending_trades (tx_id, market_id, trader_id, outcome_idx, shares, cost_minor, share_ticks, q_before, state)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [r.txId, r.market_id, r.trader_id, r.outcome, r.shares, r.costMinor, r.shareTicks, r.qBeforeJson, r.state],
+      `INSERT INTO pending_trades (tx_id, market_id, trader_id, outcome_idx, shares, cost_minor, share_ticks, q_before, state, idempotency_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [r.txId, r.market_id, r.trader_id, r.outcome, r.shares, r.costMinor, r.shareTicks, r.qBeforeJson, r.state, r.idemKey || null],
     ));
   }
 
@@ -792,10 +917,22 @@ class GhostSignalsHub {
    * then commit the shares (q-CAS + position). Ledger-backed traders never
    * touch SQLite capital.
    */
-  async _placeTradeLedger({ market, trader_id, outcome, shares }) {
+  async _placeTradeLedger({ market, trader_id, outcome, shares, idemKey = null }) {
     const market_id = market.id;
     const principal = kax.principalFor(trader_id);
     return this._serializeMarket(market_id, async () => {
+      // Client retry after an ambiguous outcome: answer with the applied trade,
+      // or refuse while its first attempt is still being reconciled (a second
+      // debit for the same intent is exactly what the key exists to prevent).
+      const replay = await this._replayTrade(trader_id, idemKey);
+      if (replay) return replay;
+      if (idemKey) {
+        const pend = await this._get(
+          `SELECT tx_id, state FROM pending_trades WHERE trader_id = ? AND idempotency_key = ? AND state IN ('posting', 'reconcile', 'refund')`,
+          [trader_id, idemKey],
+        );
+        if (pend) throw new Error(`trade with this idempotency_key is pending reconciliation (tx ${pend.tx_id}); retry later`);
+      }
       // Re-read INSIDE the mutex so the q we price against is current.
       const m = await this.getMarket(market_id);
       if (!m || m.resolved) throw new Error('market already resolved');
@@ -817,7 +954,7 @@ class GhostSignalsHub {
       const txId = kax.txid.trade(kax.newTradeUuid());
 
       // 1) Journal intent BEFORE the POST (so an ambiguous outcome is recoverable).
-      await this._journalPending({ txId, market_id, trader_id, outcome, shares, costMinor, shareTicks, qBeforeJson, state: 'posting' });
+      await this._journalPending({ txId, market_id, trader_id, outcome, shares, costMinor, shareTicks, qBeforeJson, state: 'posting', idemKey });
 
       // 2) Money FIRST — debit trader, credit pool. (q-first would mint free
       //    shares on a crash between shares and money.)
@@ -833,7 +970,7 @@ class GhostSignalsHub {
       //    if the audit halted the market mid-flight (state flips off 'open') —
       //    then the debit already landed, so flag for refund reconciliation.
       try {
-        await this._commitLedgerTradeShares({ txId, market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson: JSON.stringify(qAfter), qBeforeJson });
+        await this._commitLedgerTradeShares({ txId, market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson: JSON.stringify(qAfter), qBeforeJson, idemKey });
       } catch (e) {
         await this._setPendingState(txId, 'refund');
         throw new Error(`shares commit failed after ledger debit (refund queued, tx ${txId}): ${e.message}`);
@@ -846,7 +983,7 @@ class GhostSignalsHub {
   }
 
   /** The SQLite side of a ledger trade: q-CAS + trade row + position. No capital. */
-  _commitLedgerTradeShares({ txId, market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson, qBeforeJson }) {
+  _commitLedgerTradeShares({ txId, market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, qAfterJson, qBeforeJson, idemKey = null }) {
     const self = this;
     return this._serializeTx(async () => {
       await self._run('BEGIN');
@@ -858,8 +995,8 @@ class GhostSignalsHub {
         if (q.changes === 0) throw new Error('market state changed concurrently (q-CAS)');
         await self._run(`UPDATE traders SET trades_total = trades_total + 1, last_active = CURRENT_TIMESTAMP WHERE id = ?`, [trader_id]);
         await self._run(
-          `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost, cost_minor, share_ticks, tx_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, txId],
+          `INSERT INTO trades (market_id, trader_id, outcome_idx, shares, cost, cost_minor, share_ticks, tx_id, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [market_id, trader_id, outcome, shares, cost, costMinor, shareTicks, txId, idemKey],
         );
         await self._run(
           `INSERT INTO positions (market_id, trader_id, outcome_idx, shares) VALUES (?, ?, ?, ?)
@@ -906,14 +1043,22 @@ class GhostSignalsHub {
     return this._serializeMarket(market_id, async () => {
       // Freeze — only the transaction that flips 0->1 proceeds. state='resolving'
       // hands the market to the payout reconciler until the payout is confirmed.
+      // A market whose escrow never landed (pending_escrow) or that was voided
+      // has no funded pool: paying "winners" out of it would 409 on KAX and
+      // leave the row spinning in 'resolving' for the reconciler forever.
       const flip = await this._serializeTx(async () => {
         const u = await this._run(
-          `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ?, state = 'resolving' WHERE id = ? AND resolved = 0`,
+          `UPDATE markets SET resolved = 1, resolved_outcome = ?, resolved_at = CURRENT_TIMESTAMP, resolution_method = ?, state = 'resolving'
+            WHERE id = ? AND resolved = 0 AND state NOT IN ('pending_escrow', 'voided')`,
           [winning_outcome, method, market_id],
         );
         return u.changes;
       });
-      if (flip === 0) throw new Error('already resolved');
+      if (flip === 0) {
+        const cur = await this.getMarket(market_id);
+        if (cur && !cur.resolved) throw new Error(`market not settleable (state=${cur.state}): pool was never funded`);
+        throw new Error('already resolved');
+      }
 
       // Trading is frozen. Compute + POST the batched payout (an HTTP call, so
       // OUTSIDE any SQLite transaction). A failure leaves state='resolving' for
@@ -1223,19 +1368,20 @@ class GhostSignalsHub {
   }
 
   // ── Stats ────────────────────────────────────────────────────────
-  getHubStats() {
-    return new Promise((resolve, reject) => {
-      const stats = {};
-      this.db.serialize(() => {
-        this.db.get('SELECT COUNT(*) AS c FROM traders WHERE id != "system"', (e, r) => { stats.traders = r ? r.c : 0; });
-        this.db.get('SELECT COUNT(*) AS c FROM markets', (e, r) => { stats.markets_total = r ? r.c : 0; });
-        this.db.get('SELECT COUNT(*) AS c FROM markets WHERE resolved = 0', (e, r) => { stats.markets_active = r ? r.c : 0; });
-        this.db.get('SELECT COUNT(*) AS c FROM trades', (e, r) => {
-          stats.trades_total = r ? r.c : 0;
-          resolve(stats);
-        });
-      });
-    });
+  /**
+   * Counters consumed by VoiceDJ (_fetchObservatoryMetrics reads
+   * stats.markets_active / traders / trades_total — #285) and the dashboard.
+   * A DB error now rejects instead of being swallowed into a 0 count.
+   */
+  async getHubStats() {
+    const count = (sql) => this._get(sql).then((r) => (r ? r.c : 0));
+    const [traders, markets_total, markets_active, trades_total] = await Promise.all([
+      count(`SELECT COUNT(*) AS c FROM traders WHERE id != 'system'`),
+      count(`SELECT COUNT(*) AS c FROM markets`),
+      count(`SELECT COUNT(*) AS c FROM markets WHERE resolved = 0`),
+      count(`SELECT COUNT(*) AS c FROM trades`),
+    ]);
+    return { traders, markets_total, markets_active, trades_total };
   }
 }
 

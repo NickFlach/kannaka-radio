@@ -74,6 +74,32 @@ function bareDJ() {
     assert.strictEqual(data.phi, 0.42);
   });
 
+  await test('#285 the wrapped { ok, stats } envelope of /api/gshub/stats populates the market counters', async () => {
+    // routes.js serves GET /api/gshub/stats as { ok: true, stats: {...} } with
+    // the hub's counter names (markets_active / traders / trades_total).
+    // The stub answers every path with this body, so the constellation call
+    // sees no phi (stays null) and the gshub call sees the live envelope.
+    const stub = stubServer(200, { ok: true, stats: { markets_active: 5, traders: 9, trades_total: 12 } });
+    const port = await stub.listen();
+    const savedObs = process.env.OBSERVATORY_URL;
+    const savedPort = process.env.RADIO_PORT;
+    process.env.OBSERVATORY_URL = `http://127.0.0.1:${port}`;
+    process.env.RADIO_PORT = String(port);
+    try {
+      const metrics = await bareDJ()._fetchObservatoryMetrics();
+      assert.strictEqual(metrics.active_markets, 5, `active_markets from stats.markets_active, got ${metrics.active_markets}`);
+      assert.strictEqual(metrics.total_traders, 9, `total_traders from stats.traders, got ${metrics.total_traders}`);
+      assert.strictEqual(metrics.total_trades, 12, `total_trades from stats.trades_total, got ${metrics.total_trades}`);
+      assert.strictEqual(metrics.phi, null, 'no phi in that body → stays null');
+    } finally {
+      if (savedObs === undefined) delete process.env.OBSERVATORY_URL;
+      else process.env.OBSERVATORY_URL = savedObs;
+      if (savedPort === undefined) delete process.env.RADIO_PORT;
+      else process.env.RADIO_PORT = savedPort;
+      await stub.close();
+    }
+  });
+
   await test('#201 observatory metrics stay null when both endpoints answer 503', async () => {
     const stub = stubServer(503, {
       error: 'offline',

@@ -18,6 +18,8 @@ process.env.KAX_SERVICE_TOKEN = 'read-tok';
 // (in prod the grace period protects live in-flight trades from false refunds).
 process.env.KAX_RECONCILE_GRACE_MS = '0';
 
+// Skip locally without sqlite3, FAIL under CI (#277): see test/lib/sqlite3-guard.js.
+require('./lib/sqlite3-guard')('kax-ledger-reconcile');
 const { GhostSignalsHub } = require('../server/ghostsignals-hub');
 const kax = require('../server/kax-ledger');
 
